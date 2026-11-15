@@ -1,0 +1,310 @@
+# Trace 分析面板插件 — 概要设计
+
+> 面向 DeepSeek Harness（DSH）的 trace 日志分析面板插件。本文档记录需求澄清结论、技术底座、架构设计与实施顺序，作为后续实现与 Spec 的单一事实来源。
+>
+> 运行时版本锚点：`sessionQuery` 服务及 `SessionEvent*` 类型来自当前运行安装的 Cordis 运行时 Inspection，非记忆推断。
+
+## 0. 交付铁律（每次交付前必做，最高优先级）
+
+> 这是本项目的**第一优先级**操作规范。任何改动在向用户说「完成」之前，必须先完成**端到端交付验证**，并把**真实结果**如实报告。禁止用「应该没问题」「刷新看看」「语法通过」这类未经验证的表述当作完成。
+
+### 0.1 硬性要求
+
+1. **不得把「语法通过 / 单测通过」当作「完成」**。语法与单测只能证明没有语法/纯函数错误，不能证明改动在真实运行时**真正生效**。
+2. **必须做端到端验证**，至少包括：
+   - 改动是否真的被运行时加载（例如：抓取运行中服务端实际返回的 client bundle / 路由响应，确认新代码真的被吐出，而不是只检查磁盘文件）。
+   - 界面/行为是否真的变化（抓取实际渲染产物、检查关键标记是否出现、或拿到用户屏幕/真实运行态证据）。
+   - 关键数据是否真实正确（例如：run 切分、耗时、token 统计）。
+3. **报告真实结果**：明确写出「验证了什么、真实结果是什么」。若某一步**没有验证到**，必须标注「未验证」及原因，并**不得**宣称已完成。
+4. **验证通过才可说完成**；验证不过就继续修，不把验证动作甩给用户（例如只说「你刷新看看」）。
+5. **每次交付附带验证清单**：列出验证项、各自通过/失败/未验证，以及证据（抓取到的关键标记、命令输出、测试结果）。
+
+### 0.2 交付前标准检查清单（每次都要跑）
+
+- [ ] `node --check` 语法校验（client / index / lib）。
+- [ ] 纯函数单测 `node --test`（如有改动）。
+- [ ] JSON / package 校验。
+- [ ] **端到端**：从运行中的服务抓取实际生效的产物，确认新代码/新文案真的被加载（例如 fetch 服务端 bundle 并 grep 关键标记）。
+- [ ] 对照改动逐条核对真实结果，未验证项明确标注。
+- [ ] **样式遵循 `docs/DESIGN.md` §5**（DSH design tokens；禁止写死颜色/圆角/加粗，颜色只用 `--dsw-alias-*`）。
+- [ ] 文档（agent.md / SPEC / TEST / DESIGN / DETAIL）与代码保持一致。
+
+### 0.3 本次教训（记录在案）
+
+- 「Hades Lab 改名生效、但时间线仍是旧样式」——根因是我只改了「时间线」tab，而用户默认看到的是「概览」tab 的柱状图（同样存在空白浪费的旧布局）。我在未确认用户实际所在 tab、未做端到端视觉验证的情况下，两次宣称「已修复/已生效」，浪费了用户时间与 Token。
+- 教训：**凡收到「没生效」的反馈，先定位用户实际看到的是哪个界面 / 哪条渲染路径，再做端到端验证，最后才下结论；绝不未经验证就宣称完成。**
+- 「Hades Lab 加载奇慢 vs 轨迹瞬间」——先用真实会话量化：首屏 payload 26.7 MB、`JSON.parse` 107 ms、建树仅 16.7 ms，才确定瓶颈是**下行体积/解析**而非聚合计算。
+- 教训：**性能问题必须先量化（payload 字节数、parse/序列化毫秒数、请求次数），再动手；交付时必须给出改造后的真实数字，禁止用「应该变快了」结案。**
+
+## 1. 目标与背景
+
+用户反馈：系统自带的 trace 记录面板（即会话的「轨迹 / Trajectory」视图）「非常难用，没有产品化可视化能力」，只能看到原始 JSON，没有时间线/分组、看不到血缘/子任务关系、没有搜索过滤、也看不到性能/token 开销。
+
+目标：新建一个独立的 trace 分析面板插件，把 DSH 的事件溯源日志（Session event log）变成可读、可过滤、可定位瓶颈、可导出分析结果的产品级可视化界面。
+
+## 2. 需求澄清结论（用户确认）
+
+| 维度 | 结论 |
+|---|---|
+| 形态与位置 | 主对话区视图环（`conversation.view` 槽，紧邻内置「轨迹 / Trajectory」），名「Hades Lab」；点击视图环上的「Hades Lab」Tab 打开 |
+| 分析范围 | 仅当前会话，跟随当前 session 走 |
+| 核心可视化 | 事件时间线/瀑布图、会话血缘树、Token 用量统计、耗时/性能分析 |
+| 增强需求 | 异常工具链调用自动高亮（token 消耗大、耗时长等） |
+| 实时性 | 实时跟随（增量更新）+ 手动刷新快照 |
+| 主要痛点 | 全部：原始 JSON 难读、无时间线/分组、无血缘、无搜索过滤、无性能/token |
+| 附加能力 | 导出（JSON/JSONL/复制）、深浅色主题适配 |
+| 本地化 | 未勾选，但按 DSH 规范 UI 文案必须走 locale 服务；中文优先，英文兜底 |
+
+## 3. 技术底座（已通过 Inspection 验证）
+
+### 3.1 Trace 的本质
+
+DSH 的「trace」= 会话事件日志（event-sourced Session log）。每个会话是一条有序 `SessionEvent` 序列，字段为：
+
+```
+SessionEvent = { type, seq, time, data, ignorable?, surfaceOp?, sourceEventSeqs? }
+```
+
+- `seq`：会话内单调递增序号（`SessionSeq`）。
+- `time`：事件时间戳（epoch ms）。
+- `surface`：`current | shadowed | log-only`（当前有效 / 被替换遮蔽 / 仅日志）。
+- `sourceEventSeqs` / `surfaceOp`：事件溯源链 —— 哪些事件被替换、哪些是来源。
+
+已知事件类型（`SessionEventMap`，未截断部分见 §3.3）：
+
+```
+turn/start, turn/end, step/start, step/end,
+user/message, developer/message, system/message,
+assistant/message, assistant/attempt,
+tool/call, tool/result,
+request/header, request/context, session/end-seed, …（更多，见运行时）
+```
+
+关键事件数据形态：
+
+- `assistant/message` → `{ turn, step, message, stream: AssistantStreamRecord[], usage?: TokenUsage, interrupted? }`
+- `tool/call` → `{ turn, step, callId, name, arguments }`
+- `tool/result` → `{ turn, step, message, error?, meta? }`
+- `request/header` → `{ header: EpochHeader, reason, startsSeries? }`
+- `TokenUsage` → `{ inputTokens, outputTokens, totalTokens?, cacheReadTokens?, cacheWriteTokens?, reasoningTokens? }`
+
+### 3.2 只读数据源：`sessionQuery` 服务（Host）
+
+面板所需数据全部来自该服务的只读方法：
+
+| 方法 | 返回 | 用途 |
+|---|---|---|
+| `listEvents(sessionId)` | `SessionEventRecord[]`（seq/type/time/surface） | 时间线骨架 |
+| `readEvent({sessionId, seq, before?, after?})` | `SessionEventWindow`（完整事件 + 上下文窗口） | 事件详情 |
+| `traceSession(sessionId)` | `SessionLineageTrace`（祖先 + 后代树 + 根） | 血缘树 |
+| `traceEvent({sessionId, seq})` | `SessionEventTraceObservation`（替换链 + 来源/派生） | 事件来源追溯 |
+| `filterEvents(sessionId, filters)` | `SessionEventSearchDocument[]`（语义文本） | 搜索过滤 |
+| `readSession(sessionId)` | `SessionLogSnapshot`（完整原始事件日志） | 快照/导出 |
+| `readSurface(sessionId)` | `SessionSurfaceSnapshot` | 当前模型表面 |
+| `listSessions` / `filterSessions` | `SessionRecord[]` | （预留，跨会话扩展用） |
+
+### 3.3 重要类型（节选，来源：运行时 Service Inspection）
+
+```
+SessionEventRecord  { sessionId, seq, type, time, surface }
+SessionEventWindow  { session, inheritedEventCount, target, events, startSeq, endSeq }
+SessionLineageTrace { target, ancestors, descendants: SessionLineageNode[], (complete + root) | (incomplete + unresolvedParentId) }
+SessionLineageNode  { session: SessionRecord, descendants: SessionLineageNode[] }
+SessionEventTraceObservation { target, replacedBy?, replacementChain, replacedEventSeqs, sourceEventSeqs, derivedEventSeqs, session }
+SessionHeader       { version, id, createdAt, cwd?, parentSession?, isSeeded, origin?, delegationDepth?, agentPreset? }
+SessionRecord       { header, live, persisted, formatStatus? }
+```
+
+> `SessionEventMap` 的完整事件类型清单在运行时返回中被截断，实现时以 `cordis_inspect_query` 的 `sessionQuery` 精确契约为准补全。
+
+### 3.4 信息架构（最终定稿）
+
+经多轮澄清，最终对齐 DSH 原生事件模型，树形结构为：
+
+```
+session
+└─ run（一次指令；统计单位，0-based：run0, run1, … runN）
+   ├─ 标签 = `run N · <触发它的真实用户 prompt 文本>`；run0 恒为「系统提示词」
+   └─ step（迭代，step/start → step/end；一次 agent loop）
+      └─ 操作（request / assistant / tool call+result …）
+```
+
+术语对照（含历史叫法，避免再次混淆）：
+
+| 概念 | 含义 | 曾用叫法（已弃） |
+|---|---|---|
+| `run`（一次指令） | 一条真实用户指令的完整执行；统计/分组单位 | 曾叫「turn」「回合」 |
+| `step`（迭代） | 一次「调模型→调工具」循环 = 一次 agent loop | 曾叫「turn」 |
+| 系统提示词 | run0（第一条真实用户指令之前的 system/developer message） | — |
+| `user/message` | 触发 run 的指令文本（仅 `source.kind === 'user'` 计为真实用户输入） | 作为 run 标签，不单设层 |
+
+**run 的切分规则（已定稿，关键）**：
+
+- 只有**真实用户消息**才开启新 run：`user/message` 且 `data.source.kind === 'user'`。
+- 运行时注入的上下文（`runtime-context` / `skill-catalog` / `time-context` 等 `source.kind ≠ 'user'` 的 `user/message`）**不**开启新 run，归入当前 run 或 run0。
+- **run0 = 系统提示词**：第一条真实用户指令之前的所有事件（`system/message`、`developer/message`、运行时上下文注入等）聚合为 run0，`isSystemPrompt = true`、`prompt = null`。
+- 因此 run1 才是第一条真实用户指令（用户的第一条 prompt），与直觉一致。
+
+长程任务的坑（已处理）：
+
+1. **follow-up 续跑**：agent 会 `followup()` 自我唤醒、无新真实用户 prompt 时继续跑。此时这些事件仍挂在**当前 run** 下（不另开 run）；若确无 prompt，标签以「续跑」兜底。
+2. **step 编号重置**：step 编号每个 run 从 1 起；step 嵌套在所属 run 下，天然不撞号。实现上**按事件自带的 `data.step` 分组**（assistant/tool/result 都带 step 号），分组后**按出现顺序重编号为 1,2,3…**（原始 step 号在 subagent 委派下会交错/重置，不可靠）。
+3. **`step/start` 早于 `user/message`**：系统提示词与用户指令同处 step 1，`step/start` 可能出现在触发它的 `user/message` **之前**。因此 `turn/*`、`step/*` 标记事件**不参与分组**（只作状态参考）；run 与 step 的时间/耗时都以**叶子事件 `time` 的最小/最大值**计算（单调递增、恒非负、口径一致），而非 step 起止（会把 step 起止错配到 run 切分点，产生负耗时/空 step）。
+4. **异常结束**：`turn/end.reason ≠ completed`（error / aborted / interrupted…）时对应 run 标红（`turn/start`、`turn/end` 不参与 run 切分，仅作状态参考）。
+
+## 4. 架构设计
+
+### 4.1 总体形态
+
+一个「bundle」（Host 半 + Client 半），非单文件装饰插件：
+
+- **Host 半**（`index.js`）：`export function apply(ctx, config)`，负责把 `sessionQuery` 的只读方法包装成 Client 可调用的数据通道，并声明 `Config`（异常高亮阈值等）。
+- **Client 半**（`client.js`）：`window.__ModuleLoader__.load({ id, factory })`，注册主对话区视图（`conversation.view` 槽），用 React 渲染分析界面。
+- **资源**：`cordis.patch.yml`（插入 Host 行）、`locale/*.json`（meta.title/meta.description + UI 文案）、`icon.svg`、`docs/DETAIL.md`。
+
+### 4.2 扩展点与形态（已确认，来自 `@deepseek-ai/dsh-client-ui-conversation` / `dsh-client-ui-trajectory` 源码）
+
+主对话区视图环（与内置「对话 / 轨迹」同一排 Tab）由 `conversation.view` 槽提供（`@deepseek-ai/dsh-client-ui-conversation` 声明）：
+
+1. **client `inject` 声明槽来源**：`@deepseek-ai/dsh-client-ui-conversation` + `@deepseek-ai/dsh-client-locale`（+ `@deepseek-ai/dsh-client-ui-session`）。最小集为 `['slots', 'locale']`。
+2. **视图注册**：`ctx.slots.inject('conversation.view', () => ctx.slots.register({ name:'conversation.view', id, order, locale:NS, label:()=>t('view.title'), inject:(sessionId)=>({ sessionId }) }, Body))`，返回 disposer。
+   - `id`：实现身份，全局唯一（本插件 `VIEW_ID = 'hades-eye'`）。
+   - `order`：视图环排序；内置轨迹为 `order: 10`，本插件 `order: 11`（紧邻「轨迹」右侧）。
+   - `label()`：Tab 文案函数，返回 `t('view.title')`（zh/en「Hades Lab」）。
+   - `inject(sessionId)`：视图每次打开时回调，返回注入给 Body 的 props（这里透传 `sessionId`）。
+3. **Body 组件 props**：框架注入标准 `ConvViewProps`（`useSession`/`useTrajectory`/`useDuration`/`renderSlot` 等）+ 上一步 `inject` 返回的 props + 由 `locale:NS` 注入的 `t`。本插件只用 `{ sessionId, t }`。
+
+可发现性：视图环 Tab 即入口，无需 guide 卡片或会话头按钮（已移除）。
+
+### 4.3 数据桥（Host ↔ Client）
+
+`sessionQuery` 的方法无 `@Remote`，Client 不能直接调用。采用**已证实**的路由方案（同 `@deepseek-ai/dsh-api-session-controller` 的 `SessionMediaReferences`，其在认证 `connection.fetch` 通道挂 `GET /api/file`）：
+
+- **Host**：`ctx.webServer.register(route)` 注册只读 JSON 路由（`/api/trace-analyzer/*`），handler 内调 `ctx.sessionQuery.*` 返回 JSON；仅只读、不写会话。
+- **Client**：同源 `fetch('/api/trace-analyzer/...')` 请求该路由（认证由 Host 的 `connection.requestRejection` 围栏 + 浏览器登录态保证）；Body 组件拿到 `sessionId` 后拼请求。
+
+（备选：Typert `@Remote` 类型化 Remote，成本高，仅当路由方案受阻时启用。）
+
+数据来源补充：`@deepseek-ai/dsh-api-session-controller` 已提供 `session/events`、`session/follow` Remote 与 Client `sessions.retain` 历史流，但**不含** `traceSession`（血缘）/`traceEvent`（事件溯源），故血缘树与事件溯源仍需走 `sessionQuery` 的自建桥。
+
+### 4.4 目录结构
+
+```
+dsh-trace-analyzer/
+├── package.json            # dsh.bundle.patch + dsh.client（web / immediately / inject）
+├── cordis.patch.yml        # 插入 Host 行 trace-analyzer
+├── index.js                # Host 半：数据桥 + Config
+├── client.js               # Client 半：注册 conversation.view「Hades Lab」+ React 树视图（内置建树逻辑副本）
+├── lib/                    # （实现时拆分）Host 聚合/转换纯函数（可单测）
+│   ├── aggregate.js        # 时间线分组 / token 汇总 / 耗时统计 / 异常判定
+│   └── types.js
+├── locale/
+│   ├── en.json
+│   └── zh.json
+├── docs/DETAIL.md          # 详情页
+├── icon.svg
+└── test/                   # 单元/集成测试（见 docs/TEST.md）
+```
+
+### 4.5 核心模块划分
+
+| 模块 | 数据来源 | 职责 |
+|---|---|---|
+| 运行总览（单视图，原「概览 + 时间线」合并，无 tab） | `/runs`（轻量投影）→ 客户端渲染 | KPI 大卡片 + run 表：run 文字 + **角色徽标** + 单条指标条（时间/Token，数值在条内）+ 点行**就地展开**为**分组**（run 与全部 step 同一淡蓝底 + 连续 3px 左轨，F130）；step 行 index 与 run 对齐、角色徽标同列、条内数值与 Turn 一致、另一维度条后常驻、**动词+对象标题**（F23.1，无文本事件压缩成标题标记，F23.2 在详情里补说明行）；点 step → **内容面板直出**（模型/计时/Token/概述/工具参数/结果，F129；每块带角色徽标 F131）+ 单选选中态（F128）+ 按时间/Token 排序（FLIP）；展开时才拉 `/run`、点 step 才拉 `/step` |
+| 事件详情 | `/event` → `readEvent`（按需） | 操作展开时取事件原文 JSON + 溯源链（溯源链待接入 UI） |
+| 导出 | 内存数据 | 单事件 JSON、整段 JSONL、复制（待做） |
+
+> **交互**：点 run 行**就地展开** step/操作（不再跨 tab 下钻）；step/操作逐层展开；排序用 FLIP 动画。
+
+> **建树位置（M6 已改）**：`buildTraceTree` 等聚合逻辑**只在 Host**（`lib/aggregate.js`，权威实现 + 单测）。原 client.js 内嵌副本已删除，避免两份实现漂移；代价是 Host 侧改动需重启应用生效（客户端仍可 HMR）。详见 §4.7。
+
+### 4.6 实时性设计
+
+- **实时**：Host 侧订阅 `session/event`（scoped 到当前 Agent）推送增量事件；Client 通过桥的增量接口（或轮询轻量 `listEvents`）追加到时间线尾部。
+- **手动刷新**：按钮触发一次完整快照重建（清客户端缓存 + 重新请求 `/runs`）。
+- 遵循 practices.md：不轮询 `agent/status`；增量只追加、不改写已渲染节点；大会话分页/虚拟化。
+
+### 4.7 性能架构：阶段化加载（M6，替代一次性全量快照）
+
+**基线实测**（真实会话：6800+ 事件 / 79 run / ~930 step；`mockup/measure-perf.mjs`、`mockup/measure-phases.mjs`、`mockup/verify-perf.mjs`、`mockup/inspect-step-content.mjs`，以及运行中 Host 的 `/bench` 探针）：
+
+| 项 | 基线（v1 全量快照） | 改造后（实测） |
+|---|---|---|
+| 首屏 payload | 27.5 MB | **31.0 KB** |
+| 首屏 `JSON.parse`（客户端） | 108.8 ms | **0.1–0.2 ms** |
+| `/runs` 服务端耗时（live Host） | 880–1600 ms（`readSession` 读盘+回放校验） | **~20–37 ms**（内存路径） |
+| 展开单个 run（步索引） | 无（早已整包在手） | 按需，p50 1.8 / p90 6.5 / max 39.8 KB |
+| 点开单个 step（容器+清单） | 无（内容混在整包/嵌套里） | 按需，p50 1.2 / p95 2.2 / max 7.5 KB |
+| 事件原文 JSON | 随全量下发（其中 `data.stream` 占 12.8 MB） | 点「原文」时才 `readEvent` 取（单窗口 ≤ 64 KB） |
+
+**根因**：v1 的 `/summary` 把 `readSession()` 全部原始事件整包下发（含 `assistant/message.data.stream` 流式块），客户端再 `buildTraceTree`。内置轨迹之所以「瞬间出下一层」，是因为它读**客户端已加载的会话内存**（`sessions.binding` + `uiConversation` 增量快照）并用虚拟行渲染，完全没有 HTTP 往返。**瓶颈是 payload 体积、解析与全量读盘，不是聚合计算**（建树 ~3 ms）。
+
+**关键发现（live 内存路径）**：Host 侧 `ctx.sessionQuery.inspectSession(sessionId, (s) => ({ header: s.header, events: s.snapshotEvents() }))` 对**活动会话**直接返回内存中的完整事件日志（与轨迹同源），实测 **0 ms**，事件数与 `readSession` 完全一致；`readSession` 需读盘 + 回放校验，约 900 ms。因此 live 会话走内存路径，冷/持久化会话回退 `readSession`，两者共用同一份 `lib/aggregate.js` 投影，结果一致。
+
+**四段式契约（唯一数据通道，替代 `/summary`）**：
+
+1. `GET /runs?sessionId=` → `{ header, meta:{sessionId,slowMs,serverMs,generatedAt}, counts:{events,runs,steps}, tokens:{total}, kpi:{errors,slow,abnormal,slowest}, runs:[{idx,prompt,isSystemPrompt,stepCount,token,time,startTime,endTime,hasError,hasSlow}] }`。
+2. `GET /run?sessionId=&idx=` → `{ idx, prompt, isSystemPrompt, startTime, endTime, steps:[{step,startTime,endTime,timeMs,token,hasError,text}], serverMs }`（**只发步索引**，不再带 `events[]`/`tools[]`）。
+3. `GET /step?sessionId=&idx=&step=` → `{ idx, step, startTime, endTime, timeMs, model:{provider,model}, usage:{input,output,cacheRead,cacheWrite,reasoning}, counts:{models,tools,contexts}, operations:[{kind:'assistant',seq,time,text,usage} | {kind:'tool',seq,callSeq,resultSeq,name,args,result,error,isError,durationMs,startTime,endTime} | {kind:'context',seq,time,text} | {kind:'system',seq,time,text}], slowMs, serverMs }`（Step 展开容器的唯一来源；行序 = 事件 seq 序；文本/参数/结果各截断 400 字符）。
+4. `GET /event?sessionId=&seq=` → `readEvent` 原文窗口（仅点「原文」时调用）。
+
+不再下发 `events` 数组；`data.stream` 永不进入下行数据。
+
+**Host 侧**：`lib/aggregate.js` 提供纯函数 `buildRunsPayload(events, opts)` / `buildRunsPayloadFrom(tree, tokens, tools, opts)` / `buildRunDetail(tree, tools, idx, opts)` / `buildStepContent(tree, tools, idx, stepIdx, opts)`；`index.js` 以 `inspectSession(...s.seq)` 作版本键按会话缓存快照（LRU 8），版本未变时展开 run/step 只做纯投影。树叶子额外保留 `usage`（分项）、`argsText`/`resultText`（各 ≤400）、`provider`/`model`，供 `/step` 直接投影（只在 Host 内存，不进 `/run`）。
+
+**Client 侧**：删除内嵌 `buildTraceTree` 副本（Host 为唯一实现），只做渲染；模块级缓存（runs / run 步索引 / step 内容 / event）让切回会话、重复展开零请求；表头常驻显示实测「首屏 xx ms · xx KB · 服务端 xx ms」，缓存命中显示「缓存命中」，作为可复核的性能验收证据。
+
+**代价（如实记录）**：投影逻辑移到 Host 后，Host 改动需重启应用生效（客户端仍可 HMR）；开发期可用 `plugin_manager` 关闭再开启该入口触发重载。这是换取「首屏 KB 级 + 展开按需」的必要代价。
+
+**运维/验收探针**（仅 loopback，返回常量与体积/耗时，不含会话内容）：`GET /api/trace-analyzer/health`、`GET /api/trace-analyzer/bench?sessionId=latest`。
+
+**已知限制（如实记录）**：`/run` 体积与 run 的 step 数线性相关（≈120 B/step），当前最长 run 约 40 KB；`/step` 与单个 step 的工具数相关，p95 2 KB / max 6.9 KB。两者都在门槛内；若某 run 出现数千 step，再考虑「按 step 分页 / 虚拟滚动」（未做）。
+
+**验收结果**：TEST §5 P01–P11（离线 `mockup/verify-perf.mjs` + 在线 `mockup/bench-live.mjs`）全部通过，实测值见表格与 TEST §5。
+
+**验收**：SPEC §15 F120–F127；TEST §5 P01–P09（自动化）+ V19–V22（人工）。
+
+## 5. 关键技术要点与风险
+
+1. **主题**：只用 `--dsw-alias-*` 主题 token（`Theme.listTokens`），不写死颜色；深浅色跟随宿主。
+2. **禁止**：不 `require` 任何 Harness Client 包（`@deepseek-ai/dsh-client-ui-primitives` 等）；不自写 DOM 到 `document.body`；不 `iframe`；不读其他插件 DOM。
+3. **locale**：UI 文案走 `ctx.locale`（`register`/`bind`），中文优先。
+4. **性能**：阶段化加载（首屏 `/runs` ≤ 64 KB）+ 按需 `/run`、`/event` + 会话级缓存（§4.7）；纯函数聚合便于测试与缓存。
+5. **只读**：插件不改会话事件、不追加 `SessionEvent`、不 `appendPluginRecord`。
+6. **风险 R1（数据桥）**：`sessionQuery` 无现成 Remote，采用 `webServer` 路由 + `connection.fetch`（§4.3，已证实模式）；精确 route/fetch 写法开工时读 `host-open-in-app`/`session-controller` 源码定型。
+7. **风险 R2（已解决）**：主对话区视图注册 = `conversation.view` 槽（§4.2，已读 `dsh-client-ui-trajectory` 源码确认）。
+8. **风险 R3（血缘跨会话）**：v1 范围「仅当前会话」，血缘树中后代/祖先是**其他会话**；点击跳转依赖 `uiWorkspace.openSession` / `sessions.scope`，若受限则 v1 只做只读展示 + 复制 sessionId，不跳转。
+9. **风险 R4（服务注入，已解决）**：`conversation.view` 槽由 `@deepseek-ai/dsh-client-ui-conversation` 声明，需在 client `inject` 声明该来源并保证该包已加载。
+
+## 6. 配置项（Config）
+
+| key | 默认 | 说明 |
+|---|---|---|
+| `highlight.toolDurationMs` | 5000 | 工具调用耗时超过该值高亮（ms） |
+| `highlight.toolTokenDelta` | 0 | 单步 token 增量超过该值高亮（0=关闭） |
+| `timeline.pageSize` | 200 | 时间线每页事件数 |
+| `bridge.mode` | `route` | 数据桥方案（route / remote），实现确定后固定 |
+
+## 7. 实施顺序（里程碑）
+
+1. **M0 待确认清零** ✅：数据桥与视图注册写法已读源码定稿（§4.2/§4.3）。
+2. **M1 骨架** ✅：bundle + patch + locale + icon，主对话区 `conversation.view`「Hades Lab」注册并验证 `active`。
+3. **M2 数据桥** ✅：`/api/trace-analyzer/*` 只读路由。
+4. **M3 执行树 + Token/耗时统计** ✅：run（一次指令，run0=系统提示词）→ step 树 + 10 单测。
+5. **M4 单视图「运行总览」** ✅：KPI 大卡片 + 可展开 run 表（按时间/按 Token 排序+FLIP + 点行就地展开 step→操作局部瀑布）。已去掉「血缘」tab（官方轨迹亦无此类目）。
+6. **M5 事件详情（readEvent/traceEvent）+ 搜索过滤 + 阈值 Config + 导出 + 实时跟随 + UX 评审**：待做。
+7. **M6 性能改造（阶段化加载）** ✅：`/summary` 全量快照 → `/runs` + `/run` + `/event` 三段式 + live 内存路径（`inspectSession`）+ Host 快照缓存 + 客户端缓存 + 删除客户端建树副本；首屏 payload 27.5 MB → ~25 KB，`/runs` 服务端 880–950 ms → 0.9–8.2 ms。验收见 TEST §5 P01–P10 / V19–V22。
+8. **M7 Step 信息增强 + Run/Step 共同选中态（F128）** ✅：step 行 index 与 run 对齐、耗时 + Token 常驻、单选选中态（Run/Step 共用 3px 强调轨 + 淡底）、选中不改行高（不破坏 FLIP）。**行标题改为「动词 + 对象」（F23.1）**：`读取 client.js:226` / `修改 DESIGN.md` / `搜 「…」` / `运行 · <命令描述>`，有模型文本则取首句、动作退为副标题，压缩/重试/失败/文件变更等无文本事件做状态标记（最多 2 个），原文仍作 tooltip；**详情面板补说明行（F23.2）**：压缩/重试/文件变更/命令/计划/清单/交付/审批 各占一行 muted 行。验收见 TEST U19/U20 + V23–V25 + V44–V47。
+9. **M8 分组化 + Step 内容直出（F129/F130）** ✅：展开 Run 与其 Step 合并为一个着色分组（F130）；Step 条数值改为条内右对齐（与 Turn 条共用 `MetricBar`）、另一维度条后常驻；新增 `/step` 四级路由，点开 Step 直接铺开 模型/计时/Token 分项/概述/工具参数/结果（无嵌套，原文为可选单层开关）；`/run` 瘦身为步索引（max 155 KB → 43 KB），`/step` p95 2 KB。验收见 TEST P04/P11 + V26–V29。
+10. **M9 角色标识（F131，对齐内置轨迹）** ✅：kind 集合、中文标签、配色与标签几何全部沿用轨迹 `kindTag`（`user` 用户 / `assistant` 助手 / `context` 上下文 / `system` 系统 / `tool` 工具；19px 高、10px、650 字重、`color-mix` 淡底）；**落位改为**：Run 行一枚（触发者）+ Step 明细行各一枚（用户指令 / 上下文 / 助手概述 / 工具块），**Step 行不再带标签**；同时去掉固定 56px 角色列，Run/Step 的 index 与 bar 重新严格同列。验收见 TEST U23 + V30。
+11. **M10 Step 展开容器 + 有序活动清单（F129）** ✅：`/step` 改为 `counts + operations[]`（按事件 seq 排序，工具结果折叠进 call 行）；客户端把 Step 行与其明细一起装进**括号容器**（accent 10% 蓝底 + 3px 蓝轨 + 1px 40% 环 + 圆角；明细缩进 74px、自身透明），全部改用纯蓝阶梯：Run 分组 3%（`border-left: 3px` 蓝轨 + 1px 25% 真边框 + `overflow: hidden`）、展开的 Run 行 8%（只有填色，被裁切）、Step 括号 16%、展开的 Step 行 26%（环 35/45/45/70），Run 块很淡、Step 块更深，靠明度区分两块，顶部构成概览（模型/模型调用 N/工具调用 N/上下文 N/计时/Token），下面逐行列出 `用户指令 → 模型调用 → 工具… → 上下文 → 系统`，行间分隔线用 `border-l2`（l1 在有底色的容器里不可见），每行带角色标签与「原文」开关；**高亮跟随展开**：展开的 Step 行保持 16% 蓝底 + 60% 内环、面板描边 45%；展开的 Run 行保持 8% 底 + 35% 环、分组底色 7%；收起即恢复，可同时展开多项各自高亮（旧版把高亮绑在「选中」上，且 3px 轨与分组轨重叠，几乎不可见）。Step 行的概括文案仍为旧规则，留待下一轮。验收见 TEST U21/U23 + V31/V32；P11 实测 p50 1.2 / p95 2.2 / max 7.5 KB。
+12. **M11 标签体系（F135 / F136 / F137）** ✅：把 step 行的「动词 + 对象」文案换成**标签式命名**——行首一枚动作 chip（`READ` / `EDIT` / `RUN` / `REPLY` / `FAIL`…）+ 对象文本，兜底词折叠（`运行命令→运行`、`tool · X→工具`），中文留在 tooltip（F135）；Turn 行（角色）与 Step 行（动作）**共用同一个 `RowTag` 组件**：19px 高 / 10px / 650 / `.035em` / `radius-xs` / `padding 0 5px`（对齐官方轨迹 `kindTag`），词表分层、配色同源（工具类=warn、回复=assistant、失败=error），标签一律英文大写（F136）；再把「一枚 chip」扩成**多动作 chip**（F137）：按调用顺序去重，同一动作折叠成 `EDIT ×6`、超过 3 种折叠成中性 `+N`，回复类行是 `REPLY` + 实际动作，原 `· 修改 ×6` / `+N 次调用` 文字后缀与 `suffix` 字段一并移除。验收：参考会话 **2275 steps → 2125 单 chip / 148 双 chip / 2 三 chip / 0 overflow**，`mockup/verify-chips.mjs` 断言 0 问题（chip 计数覆盖全部 `tool/call`、`tags[0] === tag`）；`stepTitle` 全量 11.5–13.7 ms（A/B 与无 chip 版差异在噪声内），`/runs` payload 字节不变（无 step 标题），P10 暖态 5.9–46 ms 通过。见 TEST V49–V51 + SPEC F135–F137。
+
+## 8. 待开工确认清单（第 0 步执行）
+
+- [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
+- [x] 数据桥写法（R1）：`webServer.register`（prefix `/api/trace-analyzer`）+ `connection.requestRejection` 围栏 + 客户端同源 `fetch`（读 `host-open-in-app` 源码定型）。
+- [x] client Body 读取 `sessionId`（slot `inject` 注入）与 `t`（locale 注入）；`inject = ['slots', 'locale']`。
+- [ ] 补全 `SessionEventMap` 完整事件类型清单（截断部分）。
+- [ ] 确认 `assistant/attempt` 与 `request/header` 的耗时计算口径。
+- [ ] 性能改造后确认：首屏 payload ≤ 64 KB（P01）、下行无 `"stream"`（P05）、展开 run 只发一次 `/run`（V20）。

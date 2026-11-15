@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Trace analysis",
+    "description": "A main conversation view tab that turns a session's trace log into a product-grade view: execution waterfall, token usage, latency analysis, anomaly highlighting, search, and export.",
+    "detail": "docs/DETAIL.md"
+  }
+}

@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-trace-analyzer
+      name: '@local/dsh-trace-analyzer'

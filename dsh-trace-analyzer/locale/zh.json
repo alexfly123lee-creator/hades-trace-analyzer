@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Trace 分析",
+    "description": "把会话 trace 日志变成产品级视图的主对话区视图环：执行瀑布、Token 用量、耗时分析、异常高亮、搜索与导出。",
+    "detail": "docs/DETAIL.md"
+  }
+}
