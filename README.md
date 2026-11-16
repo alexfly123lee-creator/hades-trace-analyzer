@@ -56,3 +56,8 @@ node --test dsh-trace-analyzer/test/aggregate.test.js   # 40 个单测
 由开发机 `mockup/` 下的校验脚本产出（该目录不入库）：`verify-perf.mjs`（P01–P11）、
 `verify-traj-align.mjs`（模型段 0 差异、工具段差额 = waitMs）、`verify-chips.mjs`（chip 覆盖全部 `tool/call`）、
 `bench-live.mjs`（live 端到端）、`check-served.mjs`（Host 是否已加载新代码）。
+
+## License
+
+[MIT](LICENSE) © 2026 Heisenberg
+
