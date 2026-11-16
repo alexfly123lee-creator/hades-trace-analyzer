@@ -388,6 +388,18 @@ window.__ModuleLoader__.load({
         h('div', { ref: listRef }, sorted.map((r) => {
           const tPct = (r.time / maxTime * 100).toFixed(1);
           const kPct = (r.token / maxToken * 100).toFixed(1);
+          // F142: brightest segment = the biggest step; the tip names the steps
+          // a segment covers (a long run buckets several steps into one segment).
+          const segments = Array.isArray(r.segments) && r.segments.length > 0 ? r.segments : [r.token];
+          const segMax = Math.max(1, ...segments);
+          const segEvery = r.segEvery ?? 1;
+          const segmentTip = (segIdx) => {
+            const from = segIdx * segEvery + 1;
+            const to = segEvery === 1 ? from : Math.min(r.stepCount ?? from, from + segEvery - 1);
+            const label2 = from === to ? `step ${from}` : `step ${from}–${to}`;
+            const share = r.token > 0 ? Math.round((segments[segIdx] / r.token) * 100) : 0;
+            return `${label2} · ${fmtK(segments[segIdx])} tok · ${share}% of run`;
+          };
           const runKey = 'run-' + r.idx;
           const open = expanded.has(runKey);
           const abnormal = r.hasError;
@@ -438,11 +450,21 @@ window.__ModuleLoader__.load({
                 valueText: fmtMs(r.time),
                 tip: fmtMs(r.time),
               }),
+              // F142: the Token column is a *distribution* — one segment per step
+              // (in time order), and the segments add up to the run's total. The
+              // track length still encodes the absolute value, so runs stay
+              // comparable across the table.
               h(MetricBar, {
                 width: TOKEN_W,
                 numWidth: TOKEN_NUM_W,
                 tone: T.token,
-                fill: h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: kPct + '%', transition: 'width .25s ease', background: T.token } }),
+                fill: h('div', {
+                  style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: kPct + '%', transition: 'width .25s ease', display: 'flex', gap: 1, overflow: 'hidden', borderRadius: 99 },
+                }, segments.map((seg, segIdx) => h('div', {
+                  key: segIdx,
+                  title: segmentTip(segIdx),
+                  style: { flex: `${Math.max(seg, 1)} 1 0`, height: '100%', background: T.token, opacity: 0.5 + 0.5 * (seg / segMax) },
+                }))),
                 valueText: fmtK(r.token),
                 tip: fmtK(r.token) + ' tok',
               }),

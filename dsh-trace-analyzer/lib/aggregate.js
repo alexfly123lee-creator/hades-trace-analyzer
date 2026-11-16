@@ -529,6 +529,9 @@ export function slimToolPairs(pairs) {
   }));
 }
 
+/** F142: at most this many token segments per run row in `/runs`. */
+const SEGMENT_MAX = 32;
+
 /**
  * Phase-1 projection: the run list + KPI for the panel's first paint.
  * Pure tree math — no raw events needed, so a Host can cache `tree/tokens/tools`
@@ -558,8 +561,11 @@ export function buildRunsPayloadFrom(tree, tokens, tools, opts = {}) {
     let hasError = false;
     let time = 0;
     const runTools = toolsByRun.get(idx) ?? [];
+    const stepTokens = [];
     for (const step of run.steps) {
-      token += sumStepTokens(step);
+      const stepToken = sumStepTokens(step);
+      stepTokens.push(stepToken);
+      token += stepToken;
       // Run duration = sum of its steps' execution time (model + tools, waiting
       // excluded) — the same unit each step row shows (F133).
       const seqs = new Set(step.events.map((leaf) => leaf.seq));
@@ -574,6 +580,17 @@ export function buildRunsPayloadFrom(tree, tokens, tools, opts = {}) {
       if (tool.error != null) hasError = true;
       if (typeof tool.durationMs === 'number' && tool.durationMs > slowMs) hasSlow = true;
     }
+    // F142: the run's Token bar is a *distribution*, not just a magnitude — one
+    // segment per step in time order, summing to exactly `token`. Long runs are
+    // bucketed (≤ SEGMENT_MAX segments) so the payload stays ~50 KB; expanding
+    // the run still gives the exact per-step numbers.
+    const segEvery = stepTokens.length <= SEGMENT_MAX ? 1 : Math.ceil(stepTokens.length / SEGMENT_MAX);
+    const segments = [];
+    for (let i = 0; i < stepTokens.length; i += segEvery) {
+      let sum = 0;
+      for (let j = i; j < Math.min(i + segEvery, stepTokens.length); j += 1) sum += stepTokens[j];
+      segments.push(sum);
+    }
     return {
       idx,
       prompt: run.prompt ?? null,
@@ -583,6 +600,10 @@ export function buildRunsPayloadFrom(tree, tokens, tools, opts = {}) {
       stepCount: run.steps.length,
       token,
       time,
+      // Step-ordered token shares that sum to `token`; `segEvery` is how many
+      // consecutive steps one segment covers (1 = one segment per step).
+      ...(segments.length > 1 ? { segments } : {}),
+      ...(segments.length > 1 && segEvery > 1 ? { segEvery } : {}),
       startTime: minTime === Infinity ? null : minTime,
       endTime: maxTime === -Infinity ? null : maxTime,
       hasError,

@@ -41,7 +41,7 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 | U12 | `judgeToolAnomaly` 正常 | `durationMs <= toolDurationMs` | 返回 `null` |
 | U13 | `normalizeLineage` | `traceSession` 结果 | 扁平化 roles/depth 正确，去重 |
 | U14 | 空输入 | `[]` | 各函数返回空结构，不抛错 |
-| U15 | `buildRunsPayload` 体积 | 真实/合成大会话 | 序列化 ≤ 64 KB；不含 `events` 字段 |
+| U15 | `buildRunsPayload` 体积 | 真实/合成大会话 | 序列化 ≤ 80 KB（F142 起含 run 级 token 分布）；不含 `events` 字段 |
 | U16 | `buildRunsPayload` 数字 | 与 `buildTraceTree+aggregateTokens+pairToolCalls` 比对 | runs/steps/events/tokens/errors/slow/abnormal/slowest 全相等 |
 | U17 | `buildRunDetail` 结构 | 指定 idx | steps 与 tree 一致；tools 配对含 durationMs/error；不含事件 `data` |
 | U18 | `buildRunDetail` 越界 | idx 超出范围 | 返回 `null`，不抛错 |
@@ -95,6 +95,7 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 | V53 | 可读性基线（F139） | 随便打开一个会话看整页 | 正文 13px、行高 1.6、行最小高 30px；Time 条 170px / Token 条 112px，表头标签仍与柱子左缘齐平；`▸ step 199`、`99.99s`、`126k`、`EDIT ×6` 都不溢出、不换行；标签 chip 20px 高、11px 字，与指标条基线对齐；整页没有 10px 文字 |
 | V54 | 实时跟随（F140） | 面板开着，去对话里发一条指令（或等 agent 自己继续跑），再切回面板；然后切到别的窗口 5 秒再回来 | 面板 ≤2 s 出现新的 run/step 行；流式中 step 时间持续增长，工具结果到达后该行自动补上耗时（不用收起重开）；表头常驻 `● 实时`，切走窗口后变 `⏸ 已暂停` 且 `/health.cache.unchangedHits` 停止增长，切回后立即补一次；刷新不丢展开态/排序/高亮；DevTools 里未变化的 tick 响应 ~40 B |
 | V55 | 更新像"长出来"而不是整页重刷（F141） | 面板开着不动 30 秒（空闲）；然后让新事件进来，盯住列表与打开着的 step 面板 | 空闲期间 React DevTools **无 commit**、Performance 无新的 paint；有新事件时只有新增行/变化的数值在变，其余行不重建、列表不整体位移；打开着的 step 面板**不闪「载入 step 内容…」**、不塌回空态，工具行原地从"无结果"变成"有耗时"；柱子宽度是过渡过去的（约 250 ms）而不是瞬移；切排序时仍有 FLIP 动画 |
+| V56 | Token 的时序分布（F142） | 展开 run 表，鼠标划过 Token 列的分段条；再展开一个多步 run 对照 | run 行的 Token 条按 step 时间顺序分段，**各段之和 = 该 run 的 token**；段悬停显示 step N · x.xk tok · y% of run（长 run 显示 step a–b）；逐 step 的段与展开后该步行的 token 数字一致；条的总长仍按全局最大 run 缩放，run 之间可比；超过 32 步的 run 每段合并若干步（tooltip 注明范围） |
 | V48 | step 耗时含工具、不含等人 | 找一个跑了几分钟工具的 step；再找一个等你回答/审批的 step | 前者行上显示 模型+工具 的合计（工具时间算进去）；后者行上只显示模型的几十秒，旁边有 `⏸ 13.1min` 等待标记；`run.time = Σ 各步`；`mockup/verify-traj-align.mjs` 校验模型段 0 差异、工具段差额 = waitMs（F133） |
 | V47 | 标题可回原文 | hover 任一 step 标题 | tooltip 显示原始长摘要（正文全段 / `tool · 名字 · 参数`），压缩不丢信息；展开后详情面板按事件顺序出现说明行 `[压缩]`/`[命令]`/`[审批]`（F23.2） |
 | V24 | Run/Step 共同选中 | 点一个 step，再点另一 run 的 step；再点同一 step；折叠该 run | 选中 step 与其 run 分组出现同色轨道/加深底色；选中转移且旧选中消失；再次点击取消并收起；折叠 run 后选中清除（F128） |
