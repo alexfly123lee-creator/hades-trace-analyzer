@@ -254,7 +254,17 @@
   - **反馈**：表头常驻徽标 `● 实时` / `⏸ 已暂停` / `⚠ 实时中断`，tooltip 说明"每 2 s 检查一次；未变化时服务端只回 ~40 B"。
   - **AC**：对话里发出指令后切到面板，≤ 2 s 出现新 run/step 行；流式过程中 step 时间持续增长、工具行在结果到达后自动补上耗时；页面隐藏后 2 s 内不再发请求（`/health.cache.unchangedHits` 停止增长）；idle 时每次 tick 的 Host 成本 ~1 ms（未变）/ 43 ms（变更 ≤ 1 次/2 s）；刷新不丢展开/排序；`check-served` 37/37（新增 `realtime.live` / `tickBusy.current` / `refreshToken` 三个标记）；单测 41/41（新增 `meta.seq` 用例）。
 
-## 19. 范围外（v1 不做）
+## 19. 实时刷新的增量呈现（F141）
+
+- **F141 更新要"长出来"，不能"刷一下"**：F140 的 tick 在**内容有变化**时会替换 payload；如果实现得糙，整张表会重新测量/重绘、柱子跳变、step 面板闪「载入…」，用户看到的就是"页面重新刷新"。F141 把这条路径改成**只动变化的部分**：
+  - **空转不写状态**：`unchanged` 的 tick 不再 `setState`（用函数式更新返回 `prev` 让 React bail out）——空闲时每 2 s 一次 tick **不产生任何 React 提交**；
+  - **FLIP 只在行序变化时做**：`DualBarChart` 记住上一次的行序（`data-run` 序列），行序未变直接跳过测量与动画；同时把 `getBoundingClientRect().top` 换成 `offsetTop`，滚动再也不会被误判成"所有行都移动了"；
+  - **step 面板 stale-while-revalidate**：`refreshToken` 变化时**保留旧内容**继续显示，新切片到达后原地替换；只有首次加载才出现「载入 step 内容…」，刷新时不会再闪空态；
+  - **柱子宽度过渡**：Time/Token 条的 `width`（以及 `TimeBar` 的 `left`）加 `transition .25s`，新值不再硬跳，缩放看起来是"长过去"的；
+  - **行按 `idx` 复用**：run 行 key = `idx`、step 行 key = 序号、面板活动行 key = `seq`，新事件只新增尾部行、只有数值变更的行重绘。
+  - **AC**：面板开着空闲 30 s，React DevTools 里**无 commit**、Performance 面板无 paint；新事件到达时只有新增/变化的行更新，其余行的 DOM 不重建；打开某个 step 观察，面板内容**不出现空态闪烁**，工具行在结果到达时原地长出耗时；切换排序时仍有 FLIP 动画；`check-served` 37/37；单测 41/41。
+
+## 20. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

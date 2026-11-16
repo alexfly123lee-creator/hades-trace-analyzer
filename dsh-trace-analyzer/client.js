@@ -57,6 +57,8 @@ window.__ModuleLoader__.load({
     // Last Body build cost (ms). Written during render, read one frame later by
     // the header caption, so the number is attributable without extra renders.
     const perf = { lastBuildMs: null };
+    // F141: live-appended rows fade in instead of popping in.
+    const ROW_ANIM_CSS = '@keyframes hadesRowIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}';
 
     // Short tag for the explanation-only rows a step panel gained in F23.2
     // (compaction / retry / file changes / slash commands / approvals …).
@@ -225,6 +227,8 @@ window.__ModuleLoader__.load({
       const listRef = useRef(null);
       const prevTops = useRef(new Map());
       const first = useRef(true);
+      const lastOrder = useRef(null);
+      const seenRuns = useRef(new Set());
       // Hover tint is the same hue as the expanded state, one notch lighter.
       const [hoverRun, setHoverRun] = useState(null);
       const [hoverSort, setHoverSort] = useState(null);
@@ -244,12 +248,21 @@ window.__ModuleLoader__.load({
         const list = listRef.current;
         if (!list) return;
         const els = Array.from(list.querySelectorAll('[data-run]'));
+        // F141: during a live tick the payload object is replaced every 2 s even
+        // when nothing moved. Measuring + animating 155 rows then reads as "the
+        // page just refreshed". Only a real order change earns the FLIP pass.
+        const order = els.map((el) => el.getAttribute('data-run')).join('|');
+        if (lastOrder.current === order) return;
+        lastOrder.current = order;
         if (!first.current) {
           els.forEach((el) => {
             const id = el.getAttribute('data-run');
             const prevTop = prevTops.current.get(id);
             if (prevTop == null) return;
-            const dy = prevTop - el.getBoundingClientRect().top;
+            // offsetTop (layout-relative) instead of getBoundingClientRect
+            // (viewport-relative): scrolling between two measurements must not
+            // read as "every row moved".
+            const dy = prevTop - el.offsetTop;
             if (Math.abs(dy) > 1) {
               el.style.transition = 'none';
               el.style.transform = 'translateY(' + dy + 'px)';
@@ -262,7 +275,7 @@ window.__ModuleLoader__.load({
           });
         }
         const next = new Map();
-        els.forEach((el) => next.set(el.getAttribute('data-run'), el.getBoundingClientRect().top));
+        els.forEach((el) => next.set(el.getAttribute('data-run'), el.offsetTop));
         prevTops.current = next;
         first.current = false;
       }, [sort, sorted]);
@@ -395,7 +408,15 @@ window.__ModuleLoader__.load({
             overflow: open ? 'hidden' : 'visible',
             background: 'transparent',
           };
-          return h('div', { key: r.idx, 'data-run': String(r.idx), style: groupStyle },
+          // F141: a row that appears after the first paint is a live addition —
+          // fade it in so "a new run arrived" reads as growth, not as a repaint.
+          const isNewRow = !first.current && !seenRuns.current.has(r.idx);
+          if (isNewRow) seenRuns.current.add(r.idx);
+          return h('div', {
+            key: r.idx,
+            'data-run': String(r.idx),
+            style: isNewRow ? { ...groupStyle, animation: 'hadesRowIn .22s ease-out' } : groupStyle,
+          },
             h('div', {
               onClick: () => onToggleRun(r.idx),
               onMouseEnter: () => setHoverRun(r.idx),
@@ -413,7 +434,7 @@ window.__ModuleLoader__.load({
                 width: TIME_W,
                 numWidth: TIME_NUM_W,
                 tone: T.brand,
-                fill: h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: tPct + '%', background: T.brand } }),
+                fill: h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: tPct + '%', transition: 'width .25s ease', background: T.brand } }),
                 valueText: fmtMs(r.time),
                 tip: fmtMs(r.time),
               }),
@@ -421,7 +442,7 @@ window.__ModuleLoader__.load({
                 width: TOKEN_W,
                 numWidth: TOKEN_NUM_W,
                 tone: T.token,
-                fill: h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: kPct + '%', background: T.token } }),
+                fill: h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: kPct + '%', transition: 'width .25s ease', background: T.token } }),
                 valueText: fmtK(r.token),
                 tip: fmtK(r.token) + ' tok',
               }),
@@ -440,7 +461,7 @@ window.__ModuleLoader__.load({
       const left = ((start - min) / range) * 100;
       if (marker) return h('div', { title: tip, style: { position: 'absolute', left: `calc(${left}% - 1px)`, top: 2, bottom: 2, width: 2, background: color, borderRadius: T.radiusXs, opacity: .9 } });
       const width = Math.max(((end - start) / range) * 100, 1.5);
-      return h('div', { title: tip, style: { position: 'absolute', left: left + '%', width: width + '%', top: 1, bottom: 1, boxSizing: 'border-box', background: color, borderRadius: 99, opacity: 1, border: dashed ? '1px dashed ' + color : undefined } });
+      return h('div', { title: tip, style: { position: 'absolute', left: left + '%', width: width + '%', transition: 'left .25s linear, width .25s linear', top: 1, bottom: 1, boxSizing: 'border-box', background: color, borderRadius: 99, opacity: 1, border: dashed ? '1px dashed ' + color : undefined } });
     }
 
     /**
@@ -620,20 +641,30 @@ window.__ModuleLoader__.load({
       const seenToken = useRef(refreshToken ?? 0);
 
       useEffect(() => {
-        if (seenToken.current !== (refreshToken ?? 0)) {
+        const stale = seenToken.current !== (refreshToken ?? 0);
+        if (stale) {
           seenToken.current = refreshToken ?? 0;
           cache.step.delete(key);
         }
         if (cache.step.has(key)) return undefined;
         let cancelled = false;
-        setState({ data: null, loading: true, error: null });
+        // F141: a live refresh must not blank the panel — keep the previous
+        // content on screen ("stale-while-revalidate") and swap it in place when
+        // the new slice arrives. Only a first load shows 载入 step 内容….
+        setState((prev) => (stale && prev.data != null
+          ? { data: prev.data, loading: false, error: null, refreshing: true }
+          : { data: null, loading: true, error: null, refreshing: false }));
         fetchPayload('step', { sessionId, idx: runIdx, step: stepIdx })
           .then(({ json }) => {
             cacheSet(cache.step, key, json, CACHE_MAX.step);
-            if (!cancelled) setState({ data: json, loading: false, error: null });
+            if (!cancelled) setState({ data: json, loading: false, error: null, refreshing: false });
           })
           .catch((err) => {
-            if (!cancelled) setState({ data: null, loading: false, error: String((err && err.message) || err) });
+            if (!cancelled) {
+              setState((prev) => (prev.data != null
+                ? { data: prev.data, loading: false, error: null, refreshing: false }
+                : { data: null, loading: false, error: String((err && err.message) || err), refreshing: false }));
+            }
           });
         return () => { cancelled = true; };
       }, [key, nonce, refreshToken, sessionId, runIdx, stepIdx]);
@@ -910,7 +941,10 @@ window.__ModuleLoader__.load({
           const since = seqRef.current;
           const { json } = await fetchPayload('runs', since == null ? { sessionId } : { sessionId, since });
           if (!json || json.unchanged === true) {
-            setRealtime({ live: true, paused: false, lastAt: Date.now() });
+            // F141: a quiet tick must not write state. Returning `prev` from the
+            // updater lets React bail out, so the 150+ row table is not rebuilt
+            // (and does not re-measure) every 2 s while the session is idle.
+            setRealtime((prev) => (prev.live && !prev.paused ? prev : { live: true, paused: false, lastAt: Date.now() }));
             return;
           }
           seqRef.current = json?.meta?.seq ?? null;
@@ -1069,8 +1103,8 @@ window.__ModuleLoader__.load({
             const stepTokenPct = sToken > 0 ? Math.max((sToken / maxStepToken) * 100, 0.5) : 0;
             const timeFill = (step.startTime != null && step.endTime != null)
               ? h(TimeBar, { start: step.startTime, end: step.endTime, min, max, color: T.brand, tip: `${timeText} · ${fmtClock(step.startTime)} → ${fmtClock(step.endTime)}` })
-              : h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: stepTimePct + '%', background: T.brand, borderRadius: 99 } });
-            const tokenFill = h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: stepTokenPct + '%', background: T.token, borderRadius: 99 } });
+              : h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: stepTimePct + '%', transition: 'width .25s ease', background: T.brand, borderRadius: 99 } });
+            const tokenFill = h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: stepTokenPct + '%', transition: 'width .25s ease', background: T.token, borderRadius: 99 } });
             return h(StepRow, {
               key: stepIdx,
               step,
@@ -1167,6 +1201,7 @@ window.__ModuleLoader__.load({
 
       perf.lastBuildMs = performance.now() - renderStart;
       return h('div', { style: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', boxSizing: 'border-box', fontSize: 13, lineHeight: 1.6, color: T.text, fontFamily: T.font } },
+        h('style', { key: 'hades-row-anim' }, ROW_ANIM_CSS),
         h('div', { style: { flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid ' + T.border, padding: '6px 12px', minHeight: 30 } },
           h('span', { style: { fontSize: 11, color: T.faint, fontVariantNumeric: 'tabular-nums', fontFamily: T.mono } }, caption() ?? ''),
           // F140: the panel says out loud whether it is following the log.
