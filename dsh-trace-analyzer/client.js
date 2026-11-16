@@ -36,16 +36,21 @@ window.__ModuleLoader__.load({
       groupRing: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 25%, transparent)',
       stepGroupRing: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 38%, transparent)',
       // Expanded Run row: fill only.
-      runSelBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 8%, var(--dsw-alias-bg-layer-1))',
-      // Hover: same hue as the expanded/selected state, one notch lighter.
-      runHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 6%, var(--dsw-alias-bg-layer-1))',
+      runSelBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 12%, var(--dsw-alias-bg-layer-1))',
+      // F148 hover: a 6% tint was too close to "nothing" on a light surface, so
+      // hover now reads as a real state — deeper tint, a 1px inset ring (no
+      // layout shift) and an accent caret. Selection keeps a stronger ring plus
+      // the left rail, so hover never outranks it.
+      runHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 9%, var(--dsw-alias-bg-layer-1))',
+      hoverRing: 'inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-trajectory-accent) 22%, transparent)',
+      hoverRingStrong: 'inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-trajectory-accent) 30%, transparent)',
       // Expanded Step row: strongest fill, container itself stays transparent.
       stepSelBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 22%, transparent)',
-      stepHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 6%, transparent)',
+      stepHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 10%, transparent)',
       // Column header = sort control. The hover tint covers the whole column and
       // a 1px underline carries the affordance (a 6% tint alone is invisible).
-      sortHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 8%, transparent)',
-      sortHoverLine: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 55%, transparent)',
+      sortHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 14%, transparent)',
+      sortHoverLine: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 80%, transparent)',
     };
 
     // Indent for the Step level: Step rows and their bracket sit one level in
@@ -152,11 +157,14 @@ window.__ModuleLoader__.load({
     }
 
     /** The ▸/▾ affordance as one glyph that rotates, so expanding never reflows. */
-    function Caret({ open }) {
+    function Caret({ open, tone, ms = 160 }) {
       return h('span', {
         style: {
           display: 'inline-block', width: 10, flex: '0 0 10px', textAlign: 'center',
-          transition: 'transform 160ms cubic-bezier(.2,.7,.3,1)',
+          // F148: the caret turns accent on hover — the cheapest "this row is
+          // clickable" cue, and it costs no layout.
+          color: tone ?? 'inherit',
+          transition: `transform ${ms}ms cubic-bezier(.2,.7,.3,1), color 120ms ease`,
           transform: open ? 'rotate(90deg)' : 'none',
         },
       }, '▸');
@@ -528,14 +536,18 @@ window.__ModuleLoader__.load({
               onMouseLeave: () => setHoverRun((prev) => (prev === r.idx ? null : prev)),
               style: {
                 display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', minWidth: 0,
+                borderRadius: T.radiusSm,
                 // No row separators: the outline look relies on the bracket + spacing.
                 // Fill only: the group's overflow clips it to the outer radius.
-                // Hover uses the same hue as the expanded state, one notch lighter.
+                // F148: hover = deeper tint + 1px inset ring (box-shadow, so the row
+                // cannot shift); an open row keeps its own fill and ring from the group.
                 background: runSelected ? T.runSelBg : (hoverRun === r.idx ? T.runHoverBg : 'transparent'),
+                boxShadow: hoverRun === r.idx && !runSelected ? T.hoverRing : 'none',
+                transition: 'background 120ms ease, box-shadow 120ms ease',
               },
             },
-              h('span', { style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : (runSelected ? T.text : T.muted), fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 } },
-                r.stepCount ? h(Caret, { key: 'caret', open }) : null,
+              h('span', { style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : (runSelected || hoverRun === r.idx ? T.text : T.muted), fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 } },
+                r.stepCount ? h(Caret, { key: 'caret', open, tone: hoverRun === r.idx ? T.brand : undefined }) : null,
                 `run ${r.idx}`),
               // F145: both columns are the same slice (left 0, width = share of
               // the session max); only `tone` differs.
@@ -704,7 +716,7 @@ window.__ModuleLoader__.load({
       const name = stepNameParts(title, chips[0]?.tag ?? null);
       const caption = h('span', {
         title: text,
-        style: { flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selected ? T.text : T.muted },
+        style: { flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selected || hover ? T.text : T.muted, transition: 'color 120ms ease' },
       },
         name.label ? h('b', { style: { fontWeight: 400, color: titleColor } }, name.label) : null,
         (marks ?? []).map((mark, i) => h('span', {
@@ -732,11 +744,15 @@ window.__ModuleLoader__.load({
         'aria-pressed': selected ? 'true' : 'false',
         style: {
           display: 'flex', alignItems: 'center', gap: 12, minHeight: 30, padding: '1px 0',
-          cursor: 'pointer', background,
+          cursor: 'pointer', background, borderRadius: T.radiusSm,
+          // F148: a hovered step gets a ring and a brighter caption; only the
+          // fill differs between "hover" and "open" (open is 22%).
+          boxShadow: hover && !selected ? T.hoverRingStrong : 'none',
+          transition: 'background 120ms ease, box-shadow 120ms ease',
         },
       },
-        h('span', { style: { flex: `0 0 ${idxWidth}px`, minWidth: 0, color: selected ? T.text : T.muted, fontSize: 12, userSelect: 'none', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 2 } },
-          h(Caret, { key: 'caret', open }),
+        h('span', { style: { flex: `0 0 ${idxWidth}px`, minWidth: 0, color: selected || hover ? T.text : T.muted, fontSize: 12, userSelect: 'none', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 2 } },
+          h(Caret, { key: 'caret', open, tone: hover ? T.brand : undefined }),
           `step ${step.step}`),
         timeMetric,
         tokenMetric,

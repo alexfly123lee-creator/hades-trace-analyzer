@@ -314,7 +314,17 @@
   - **代价与取舍**：两列指标 + 索引占掉约 630px，窗口 900px 时 prompt 列只剩 ~270px；因此**长 prompt 在窄窗口下仍然会被省略号截断**——这是"按宽度截断"的必然结果，拉宽窗口或 hover 可看全。若希望更多可见，可再选：① 允许折行到 2 行；② 点一下 prompt 弹出全文浮层。
   - **AC**：`99.99s` 这类行不再出现"第 80 个字后固定省略"的现象，同一 prompt 在 700 / 820 / 940px 宽的窗口里显示长度递增（mockup/run-prompt.png）；`client.js` 里 `truncate(` 与 `function truncate` 均已不存在；`check-served` 55/55（新增 `r.prompt || '…'` 标记 + 两条 `absent` 断言：`truncate(r.prompt`、`function truncate` 必须不存在）；单测 42/42 不变；payload 53.1 KB / P01 不变。
 
-## 25. 范围外（v1 不做）
+## 25. hover 反馈加强（F148）
+
+- **F148 hover 要看得出来**：行悬停原来是 `accent 6%` 的淡色（列头 8%），在浅色主题下几乎与背景同色，鼠标移上去没有任何"这一行可点"的反馈。本期把 hover 从"一点淡色"升级成一个小状态：
+  - **Run 行 hover**：底色 `accent 9%`（展开态提到 12%，hover 不会盖过它）+ `inset 0 0 0 1px accent 22%` 内描边 + 箭头 `▸` 变 accent + 索引文字由 muted 提到 primary；
+  - **Step 行 hover**：底色 `accent 10%`（展开态 22% 不变）+ `inset 0 0 0 1px accent 30%` 内描边 + 箭头变 accent + 标题由 muted 提到 primary；Step 行更密，环用 30% 才读得出来；
+  - **列头 hover**：底色 8% → **14%**，底部 1px 线 55% → **80%**；
+  - **实现要点**：描边一律用 `box-shadow: inset`（不占布局、不触发 FLIP 重排、不影响行高），行加 `border-radius: 8px` 让环有形状；`background` 与 `box-shadow` 都带 **120ms** 过渡，鼠标扫过是"渐亮"而不是"跳色"；箭头颜色用 `color` 过渡（120ms），旋转仍走 160ms，两个动画互不影响；
+  - **状态层级不变**：展开态（Run 12% + 分组环 + 左轨；Step 22%）始终强于 hover，hover 又强于常态；只在"未展开"的行上加 hover 环，展开行不再叠一层环。
+  - **AC**：浅色主题下鼠标扫过任意 run 行/step 行，能立刻看出底色变深 + 一圈细蓝边 + 箭头变蓝；同一行 hover 与展开底色的深浅次序正确（9% < 12%，10% < 22%）；快速扫过多行不出现布局跳动（行高/列位置不变）；`check-served` 58/58（新增 `hoverRing:`、`hoverRingStrong:`、`tone: hover ? T.brand` 三个标记）；单测 42/42 不变；对照图 `mockup/hover-strong.png`。
+
+## 26. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
