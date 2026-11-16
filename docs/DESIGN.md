@@ -129,8 +129,8 @@
 | 警告 | `--dsw-alias-state-warn-primary` | 琥珀 |
 | 失效 | `--dsw-alias-state-idle-primary` | 中性灰 |
 | 选中边框 | `--dsw-alias-border-selected` | DSH 原生「选中」边框（neutral-bluish-400） |
-| Run 行 hover 底（F148） | `color-mix(accent 9%, layer-1)` + `inset 0 0 0 1px accent 22%` | 未展开的 Run 行悬停：比展开态 12% 浅一档，另加 1px 内描边（box-shadow，不占布局）+ 箭头变蓝 + 行文字提亮 |
-| Step 行 hover 底（F148） | `color-mix(accent 10%, transparent)` + `inset 0 0 0 1px accent 30%` | 括号内 Step 行悬停：比展开态 22% 浅一档；Step 行更密，环用 30% 才读得出来 |
+| Run 行 hover 底（F148） | `color-mix(accent 9%, layer-1)` | 未展开的 Run 行悬停：比展开态 12% 浅一档；**只用底色，不加描边**（1px 内环方案已否）+ 箭头变蓝 + 索引文字提亮 |
+| Step 行 hover 底（F148） | `color-mix(accent 10%, transparent)` | 括号内 Step 行悬停：比展开态 22% 浅一档；只用底色 + 箭头变蓝 + 标题提亮 |
 | 括号轨 | `--dsw-alias-trajectory-accent`（3px） | Run / Step 范围的标识：左轨 + 1px 描边 + 圆角（括号样式不变），**容器不填底色** |
 | ~~分组边框~~ | 已移除 | 无 box 底色/整圈边框，只用括号标范围 |
 | Run 展开底（派生） | `color-mix(accent 12%, layer-1)` | 展开的 Run 行淡蓝填色，比 hover 的 9% 深一档（F148 起从 8% 提到 12%，保证 hover 不会盖过展开态） |
@@ -219,11 +219,11 @@
 - **分组即整体（F130）**：展开的 run 与它下面的全部 step 处于同一个中性分组容器（`--dsw-alias-card-fill` 底 + 3px `--dsw-alias-chart-system` 灰轨 + 圆角），颜色焦点让给内层 Step 括号；折叠后回到普通行。
 - **高亮跟随展开（F128）**：不单独维护"选中某一行"，**展开即高亮、收起即恢复**。
   - 展开的 Run 行：`color-mix(accent 12%, layer-1)` 淡蓝底（F148 起从 8% 提到 12%），**没有自己的环和圆角**——填色由分组的 `overflow: hidden` 按外圆角裁切，边界只有一条，不会出现双层线；
-  - 展开的 Step 行：`color-mix(accent 22%)` 底色（无裁剪、无容器底），hover 用同色相 10% + 30% 内环，比展开态浅一档；**不再叠 3px 左侧轨**——那条轨与 Run 分组自带的轨重叠在同一像素上，等于没有；
+  - 展开的 Step 行：`color-mix(accent 22%)` 底色（无裁剪、无容器底），hover 用同色相 10%（只换底色，无描边），比展开态浅一档；**不再叠 3px 左侧轨**——那条轨与 Run 分组自带的轨重叠在同一像素上，等于没有；
   - 可以同时展开多条 Run / 多条 Step，**每条展开的明细都各自保持高亮**；收起某一条即恢复普通行。
 - **选中不改变行高**：只用 `background` / `box-shadow: inset` / `border-radius`，绝不改 border 宽度或 padding，避免破坏 FLIP 动画。
 - **排序 + FLIP 动效**：列头就是排序控件——点 `Time` 列按耗时、点 `Token` 列按 token，**三态循环：默认 → 降序 → 升序 → 默认（run0→runN）**；`⇅` 常驻、只点亮当前方向，生效时出现「已按 Time ↓ 排序 ✕」胶囊（F132）。重排行用 FLIP 平滑滑动 —— 实现上先同步写 `translateY(Δ)` + 强制 reflow 让起点生效，再切 CSS transition 归零（不用 `el.animate`，避免重排闪烁）。切换排序保持当前 step 选中（身份按 `run.idx + stepIdx`，与排序位置无关）。
-- **hover（F148 加强）**：条上悬停显示精确起止/耗时/token；Run 行悬停 = `accent 9%` 底 + 1px 22% 内环 + 箭头变蓝 + 行文字提亮；Step 行悬停 = `accent 10%` 底 + 1px 30% 内环（同色相、比各自展开态浅一档）；两者都带 120ms 过渡，鼠标扫过时是"渐亮"而不是"跳色"；列头悬停是**整列** 14% 底 + 底部 1px 80% 线。原本 6% / 8% 的淡色在白底上几乎看不见，等于没有 hover 反馈；标签悬停仍显示完整 prompt / step 摘要。
+- **hover（F148 加强，只用底色）**：条上悬停显示精确起止/耗时/token；Run 行悬停 = `accent 9%` 底（展开态 12%）+ 箭头变蓝 + 索引文字提亮；Step 行悬停 = `accent 10%` 底（展开态 22%）+ 箭头变蓝 + 标题提亮；**不加任何描边**——1px `inset` 环那版在密集列表里显脏，已否掉；`background` / `color` 带 120ms 过渡，鼠标扫过是"渐亮"而不是"跳色"；列头悬停是**整列** 14% 底 + 底部 1px 80% 线。原本 6% / 8% 的淡色在白底上几乎看不见，等于没有 hover 反馈；标签悬停仍显示完整 prompt / step 摘要。其它候选档位见 `mockup/hover-options.html`（A–G 七版）。
 - **异常冒泡**：折叠态也能看到红/橙圆点。
 - **键盘可达**：step 行为 `role="button"` + `tabIndex=0`，Enter/Space 切换选中，`aria-expanded` / `aria-pressed` 标注状态。
 - **时间轴缩放**（后续）：滚轮缩放时间域、拖拽聚焦区间（对齐内置 Trajectory 的 timing overview）。

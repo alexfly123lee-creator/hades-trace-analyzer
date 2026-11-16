@@ -38,12 +38,10 @@ window.__ModuleLoader__.load({
       // Expanded Run row: fill only.
       runSelBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 12%, var(--dsw-alias-bg-layer-1))',
       // F148 hover: a 6% tint was too close to "nothing" on a light surface, so
-      // hover now reads as a real state — deeper tint, a 1px inset ring (no
-      // layout shift) and an accent caret. Selection keeps a stronger ring plus
-      // the left rail, so hover never outranks it.
+      // hover now reads as a real state — deeper tint (no outline; a 1px ring
+      // was tried and rejected as too heavy). Selection keeps a stronger fill
+      // plus the left rail, so hover never outranks it.
       runHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 9%, var(--dsw-alias-bg-layer-1))',
-      hoverRing: 'inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-trajectory-accent) 22%, transparent)',
-      hoverRingStrong: 'inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-trajectory-accent) 30%, transparent)',
       // Expanded Step row: strongest fill, container itself stays transparent.
       stepSelBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 22%, transparent)',
       stepHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 10%, transparent)',
@@ -536,14 +534,11 @@ window.__ModuleLoader__.load({
               onMouseLeave: () => setHoverRun((prev) => (prev === r.idx ? null : prev)),
               style: {
                 display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', minWidth: 0,
-                borderRadius: T.radiusSm,
                 // No row separators: the outline look relies on the bracket + spacing.
                 // Fill only: the group's overflow clips it to the outer radius.
-                // F148: hover = deeper tint + 1px inset ring (box-shadow, so the row
-                // cannot shift); an open row keeps its own fill and ring from the group.
+                // F148: hover is fill only — deeper tint, 120ms ease, no outline.
                 background: runSelected ? T.runSelBg : (hoverRun === r.idx ? T.runHoverBg : 'transparent'),
-                boxShadow: hoverRun === r.idx && !runSelected ? T.hoverRing : 'none',
-                transition: 'background 120ms ease, box-shadow 120ms ease',
+                transition: 'background 120ms ease',
               },
             },
               h('span', { style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : (runSelected || hoverRun === r.idx ? T.text : T.muted), fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 } },
@@ -744,11 +739,9 @@ window.__ModuleLoader__.load({
         'aria-pressed': selected ? 'true' : 'false',
         style: {
           display: 'flex', alignItems: 'center', gap: 12, minHeight: 30, padding: '1px 0',
-          cursor: 'pointer', background, borderRadius: T.radiusSm,
-          // F148: a hovered step gets a ring and a brighter caption; only the
-          // fill differs between "hover" and "open" (open is 22%).
-          boxShadow: hover && !selected ? T.hoverRingStrong : 'none',
-          transition: 'background 120ms ease, box-shadow 120ms ease',
+          cursor: 'pointer', background,
+          // F148: fill only (no outline) — hover is 10%, open is 22%.
+          transition: 'background 120ms ease',
         },
       },
         h('span', { style: { flex: `0 0 ${idxWidth}px`, minWidth: 0, color: selected || hover ? T.text : T.muted, fontSize: 12, userSelect: 'none', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 2 } },

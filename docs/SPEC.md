@@ -316,13 +316,13 @@
 
 ## 25. hover 反馈加强（F148）
 
-- **F148 hover 要看得出来**：行悬停原来是 `accent 6%` 的淡色（列头 8%），在浅色主题下几乎与背景同色，鼠标移上去没有任何"这一行可点"的反馈。本期把 hover 从"一点淡色"升级成一个小状态：
-  - **Run 行 hover**：底色 `accent 9%`（展开态提到 12%，hover 不会盖过它）+ `inset 0 0 0 1px accent 22%` 内描边 + 箭头 `▸` 变 accent + 索引文字由 muted 提到 primary；
-  - **Step 行 hover**：底色 `accent 10%`（展开态 22% 不变）+ `inset 0 0 0 1px accent 30%` 内描边 + 箭头变 accent + 标题由 muted 提到 primary；Step 行更密，环用 30% 才读得出来；
+- **F148 hover 要看得出来，但只用底色（不加描边）**：行悬停原来是 `accent 6%` 的淡色（列头 8%），在浅色主题下几乎与背景同色，鼠标移上去没有任何"这一行可点"的反馈。
+  - **Run 行 hover**：底色 6% → **9%**，展开态 8% → **12%**（保证 hover 不盖过展开）；箭头 `▸` 变 accent；索引文字 muted → primary；
+  - **Step 行 hover**：底色 6% → **10%**（展开态 22% 不变）；箭头变 accent；标题 muted → primary；
   - **列头 hover**：底色 8% → **14%**，底部 1px 线 55% → **80%**；
-  - **实现要点**：描边一律用 `box-shadow: inset`（不占布局、不触发 FLIP 重排、不影响行高），行加 `border-radius: 8px` 让环有形状；`background` 与 `box-shadow` 都带 **120ms** 过渡，鼠标扫过是"渐亮"而不是"跳色"；箭头颜色用 `color` 过渡（120ms），旋转仍走 160ms，两个动画互不影响；
-  - **状态层级不变**：展开态（Run 12% + 分组环 + 左轨；Step 22%）始终强于 hover，hover 又强于常态；只在"未展开"的行上加 hover 环，展开行不再叠一层环。
-  - **AC**：浅色主题下鼠标扫过任意 run 行/step 行，能立刻看出底色变深 + 一圈细蓝边 + 箭头变蓝；同一行 hover 与展开底色的深浅次序正确（9% < 12%，10% < 22%）；快速扫过多行不出现布局跳动（行高/列位置不变）；`check-served` 58/58（新增 `hoverRing:`、`hoverRingStrong:`、`tone: hover ? T.brand` 三个标记）；单测 42/42 不变；对照图 `mockup/hover-strong.png`。
+  - **不加描边**：1px `inset` 环试过一版（22% / 30%），被否掉了——行上多一圈细线在密集列表里显脏；现在 hover **只有底色 + 文字/箭头变化**，靠 120ms 过渡渐亮，鼠标扫过不会出现细线"闪一下"；
+  - **实验案例**：`mockup/hover-options.html` 存了 7 个候选（A 底色 9%／B 12%／C 16%／D 12%+箭头文字／E 12%+左侧 3px 轨／F 10%+轻微外阴影／G 12%+两根柱子提亮），截图见 `mockup/hover-options-1.png`、`hover-options-2.png`，供后续挑一档。
+  - **AC**：浅色主题下鼠标扫过任意 run 行/step 行，能看出底色变深、箭头变蓝、文字提亮，但**没有任何描边**；深浅次序正确（9% < 12%，10% < 22%）；快速扫过多行不出现布局跳动（只改 `background`/`color`）；`check-served` 57/57（新增 `tone: hover ? T.brand` 标记 + `hoverRing` 的 absent 断言：描边必须不存在）；单测 42/42 不变。
 
 ## 26. 范围外（v1 不做）
 
