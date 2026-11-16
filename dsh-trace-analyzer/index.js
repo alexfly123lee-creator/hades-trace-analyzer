@@ -22,7 +22,7 @@ export const inject = ['webServer', 'connection', 'sessionQuery'];
 const PREFIX = '/api/trace-analyzer';
 const SNAPSHOT_MAX = 4;
 /** Bumped whenever the Host half changes; the loopback health probe reports it. */
-const HOST_REV = 'm8.9';
+const HOST_REV = 'm8.10';
 const ROUTES = ['runs', 'run', 'step', 'event', 'events', 'session', 'lineage', 'event-trace'];
 
 export function apply(ctx) {

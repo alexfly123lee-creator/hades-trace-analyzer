@@ -388,18 +388,6 @@ window.__ModuleLoader__.load({
         h('div', { ref: listRef }, sorted.map((r) => {
           const tPct = (r.time / maxTime * 100).toFixed(1);
           const kPct = (r.token / maxToken * 100).toFixed(1);
-          // F142: brightest segment = the biggest step; the tip names the steps
-          // a segment covers (a long run buckets several steps into one segment).
-          const segments = Array.isArray(r.segments) && r.segments.length > 0 ? r.segments : [r.token];
-          const segMax = Math.max(1, ...segments);
-          const segEvery = r.segEvery ?? 1;
-          const segmentTip = (segIdx) => {
-            const from = segIdx * segEvery + 1;
-            const to = segEvery === 1 ? from : Math.min(r.stepCount ?? from, from + segEvery - 1);
-            const label2 = from === to ? `step ${from}` : `step ${from}–${to}`;
-            const share = r.token > 0 ? Math.round((segments[segIdx] / r.token) * 100) : 0;
-            return `${label2} · ${fmtK(segments[segIdx])} tok · ${share}% of run`;
-          };
           const runKey = 'run-' + r.idx;
           const open = expanded.has(runKey);
           const abnormal = r.hasError;
@@ -450,21 +438,14 @@ window.__ModuleLoader__.load({
                 valueText: fmtMs(r.time),
                 tip: fmtMs(r.time),
               }),
-              // F142: the Token column is a *distribution* — one segment per step
-              // (in time order), and the segments add up to the run's total. The
-              // track length still encodes the absolute value, so runs stay
-              // comparable across the table.
+              // F142 (corrected): the run row keeps the plain magnitude bar; the
+              // *distribution* lives on the step rows, where each step's track is
+              // the run's total and the steps fill it cumulatively in order.
               h(MetricBar, {
                 width: TOKEN_W,
                 numWidth: TOKEN_NUM_W,
                 tone: T.token,
-                fill: h('div', {
-                  style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: kPct + '%', transition: 'width .25s ease', display: 'flex', gap: 1, overflow: 'hidden', borderRadius: 99 },
-                }, segments.map((seg, segIdx) => h('div', {
-                  key: segIdx,
-                  title: segmentTip(segIdx),
-                  style: { flex: `${Math.max(seg, 1)} 1 0`, height: '100%', background: T.token, opacity: 0.5 + 0.5 * (seg / segMax) },
-                }))),
+                fill: h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: kPct + '%', transition: 'width .25s ease', background: T.token } }),
                 valueText: fmtK(r.token),
                 tip: fmtK(r.token) + ' tok',
               }),
@@ -1100,8 +1081,15 @@ window.__ModuleLoader__.load({
         }
         const min = detail.startTime ?? run.startTime ?? 0;
         const max = detail.endTime ?? run.endTime ?? 0;
-        const maxStepToken = Math.max(1, ...detail.steps.map((s) => s.token ?? 0));
         const maxStepTime = Math.max(1, ...detail.steps.map((s) => s.timeMs ?? 0));
+        // F143: a Step's token track is the RUN's total, and steps fill it from
+        // the left in order — step k occupies [cum(k-1), cum(k)] of that total.
+        // The faint fill shows how much of the run is already spent by the time
+        // this step starts; the solid slice is this step's own share.
+        const stepTokens = detail.steps.map((s) => s.token ?? 0);
+        const runTokenTotal = Math.max(1, stepTokens.reduce((a, b) => a + b, 0));
+        const cumTokens = [];
+        stepTokens.reduce((acc, t) => { const next = acc + t; cumTokens.push(next); return next; }, 0);
         // The bracket's 16px indent + 3px rail shifts the Step content right, so
         // its index cell is narrowed by that amount to keep both bar columns
         // aligned with the Run row above.
@@ -1122,11 +1110,19 @@ window.__ModuleLoader__.load({
             const timeText = step.timeMs != null ? fmtMs(step.timeMs) : '—';
             const tokenText = sToken > 0 ? fmtK(sToken) : '—';
             const stepTimePct = step.timeMs != null ? Math.max((step.timeMs / maxStepTime) * 100, 0.5) : 0;
-            const stepTokenPct = sToken > 0 ? Math.max((sToken / maxStepToken) * 100, 0.5) : 0;
+            const cumPct = (cumTokens[stepIdx] / runTokenTotal) * 100;
+            const beforePct = ((cumTokens[stepIdx] - sToken) / runTokenTotal) * 100;
+            const ownPct = Math.max(cumPct - beforePct, sToken > 0 ? 0.6 : 0);
+            const sharePct = Math.round((sToken / runTokenTotal) * 1000) / 10;
             const timeFill = (step.startTime != null && step.endTime != null)
               ? h(TimeBar, { start: step.startTime, end: step.endTime, min, max, color: T.brand, tip: `${timeText} · ${fmtClock(step.startTime)} → ${fmtClock(step.endTime)}` })
               : h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: stepTimePct + '%', transition: 'width .25s ease', background: T.brand, borderRadius: 99 } });
-            const tokenFill = h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: stepTokenPct + '%', transition: 'width .25s ease', background: T.token, borderRadius: 99 } });
+            const tokenFill = h('div', null,
+              // spent before this step
+              h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: cumPct + '%', transition: 'width .25s ease', background: T.token, opacity: 0.18 } }),
+              // this step's own slice
+              h('div', { style: { position: 'absolute', left: beforePct + '%', width: ownPct + '%', top: 0, bottom: 0, background: T.token, borderRadius: 2, transition: 'left .25s ease, width .25s ease' } }),
+            );
             return h(StepRow, {
               key: stepIdx,
               step,
@@ -1143,7 +1139,12 @@ window.__ModuleLoader__.load({
                   .concat(fmtWait(step.waitMs) != null ? ['等待 ' + fmtWait(step.waitMs)] : [])
                   .join(' · '),
               }),
-              tokenMetric: h(MetricBar, { width: TOKEN_W, numWidth: TOKEN_NUM_W, tone: T.token, fill: tokenFill, valueText: tokenText, tip: tokenText }),
+              tokenMetric: h(MetricBar, {
+                width: TOKEN_W, numWidth: TOKEN_NUM_W, tone: T.token, fill: tokenFill, valueText: tokenText,
+                // F143: the track is the run's total, so the tip says where this
+                // step sits inside it and how much of the run is spent already.
+                tip: `${tokenText} tok · ${sharePct}% of run · 累计 ${fmtK(cumTokens[stepIdx])} (${Math.round(cumPct)}%)`,
+              }),
               text: step.text ?? '—',
               title: step.title ?? step.text ?? '—',
               tag: step.tag ?? null,

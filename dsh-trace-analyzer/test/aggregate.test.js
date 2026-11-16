@@ -243,55 +243,37 @@ test('buildRunsPayloadFrom is re-projectable from a cached tree', () => {
 
 // ---- realtime (SPEC F140): the payload carries the log offset the client polls with ----
 
-// ---- token distribution per run (SPEC F142) ----
+// ---- token slices on the step rows (SPEC F142) ----
 
-test('a run row carries a step-ordered token distribution that sums to its total', () => {
-  // 40 steps in one real user turn, each burning a different amount of tokens.
+test('a run detail carries every step token, and the steps add up to the run total', () => {
   const events = [
     { type: 'user/message', seq: 1, time: 1, data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'go' }] } },
   ];
-  for (let step = 1; step <= 40; step += 1) {
+  for (let step = 1; step <= 5; step += 1) {
     const seq = step * 3 + 1;
     events.push({ type: 'step/start', seq, time: seq, data: { turn: 1, step } });
     events.push({
       type: 'assistant/message',
       seq: seq + 1,
       time: seq + 1,
-      data: { turn: 1, step, usage: { inputTokens: step * 100, outputTokens: step * 10, message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] } } },
+      data: { turn: 1, step, message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] }, usage: { inputTokens: step * 100, outputTokens: step * 10 } },
     });
     events.push({ type: 'step/end', seq: seq + 2, time: seq + 2, data: { turn: 1, step } });
   }
   const built = buildRunsPayload(events, { eventCount: events.length });
   const payload = buildRunsPayloadFrom(built.tree, built.tokens, built.tools, { eventCount: events.length });
-  // No turn/start in this fixture: the first real user message opens run 0 itself.
-  const run = payload.runs[0];
-  assert.equal(run.stepCount, 40);
-  assert.ok(Array.isArray(run.segments), 'segments missing');
-  assert.equal(run.segments.reduce((a, b) => a + b, 0), run.token, 'segments must add up to the run total');
-  assert.ok(run.segments.length <= 32, `segments ${run.segments.length} exceeds the cap`);
-  assert.equal(run.segEvery, Math.ceil(run.stepCount / run.segments.length));
-  // Amounts grow with the step number ⇒ the distribution keeps time order.
-  const ascending = [...run.segments].sort((a, b) => a - b);
-  assert.deepEqual(run.segments, ascending);
+  const detail = buildRunDetail(built.tree, built.tools, 0);
+  const stepTokens = detail.steps.map((step) => step.token);
+  // The step rows draw their tracks as the run total, so this invariant is what
+  // keeps the cumulative slices meaningful.
+  assert.deepEqual(stepTokens, [110, 220, 330, 440, 550]);
+  assert.equal(stepTokens.reduce((a, b) => a + b, 0), payload.runs[0].token);
+  // Cum-slices are monotone and end exactly at the total.
+  let acc = 0;
+  const cums = stepTokens.map((token) => { acc += token; return acc; });
+  assert.deepEqual(cums, [110, 330, 660, 1100, 1650]);
+  assert.equal(cums[cums.length - 1], payload.runs[0].token);
 });
-
-test('short runs keep one segment per step', () => {
-  const events = [
-    { type: 'user/message', seq: 1, time: 1, data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'go' }] } },
-    { type: 'step/start', seq: 2, time: 2, data: { turn: 1, step: 1 } },
-    { type: 'assistant/message', seq: 3, time: 3, data: { turn: 1, step: 1, usage: { inputTokens: 100, outputTokens: 0, message: { role: 'assistant', content: [{ type: 'text', text: 'a' }] } } } },
-    { type: 'step/end', seq: 4, time: 4, data: { turn: 1, step: 1 } },
-    { type: 'step/start', seq: 5, time: 5, data: { turn: 1, step: 2 } },
-    { type: 'assistant/message', seq: 6, time: 6, data: { turn: 1, step: 2, usage: { inputTokens: 300, outputTokens: 0, message: { role: 'assistant', content: [{ type: 'text', text: 'b' }] } } } },
-    { type: 'step/end', seq: 7, time: 7, data: { turn: 1, step: 2 } },
-  ];
-  const built = buildRunsPayload(events, { eventCount: events.length });
-  const payload = buildRunsPayloadFrom(built.tree, built.tokens, built.tools, { eventCount: events.length });
-  const run = payload.runs[0];
-  assert.deepEqual(run.segments, [100, 300]);
-  assert.equal(run.segEvery, undefined, 'segEvery is omitted when every segment is one step');
-});
-
 test('buildRunsPayloadFrom reports the log offset it was built at', () => {
   const { tree, tokens, tools } = buildRunsPayload(phaseEvents());
   const withSeq = buildRunsPayloadFrom(tree, tokens, tools, { eventCount: 11, sessionId: 's1', seq: 4242 });
