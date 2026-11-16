@@ -198,14 +198,47 @@ test('buildRunsPayload numbers match the full-snapshot baseline', () => {
   assert.equal(run1.token, 15); // assistant usage of run 1
   assert.equal(run1.hasError, true); // tool/result carries error
   assert.equal(run1.hasSlow, false);
-  // Window now comes from the step markers (step/start 2 .. step/end 21), so the\n  // model call before the assistant message is no longer cut off (F133).\n  assert.equal(run1.time, 19);
+  // F133: run time = Σ step(model + tool), waiting excluded. Step window is
+  // step/start 2 .. assistant/message 6 → model 4ms, tool 20−7 = 13ms → 17ms.
+  assert.equal(run1.time, 17);
   assert.equal(payload.kpi.abnormal, 1);
   assert.equal(payload.kpi.slowest.name, 'read');
   assert.equal(payload.kpi.slowest.durationMs, 13);
 });
 
-test('buildRunDetail returns the run step index without event or tool rows', () => {
-  const events = phaseEvents();
+// ---- F150: "slow" means work, never "the human took 10 minutes to answer" ----
+
+const waitEvents = () => [
+  { type: 'turn/start', seq: 1, time: 1, data: { turn: 1 } },
+  { type: 'step/start', seq: 2, time: 2, data: { turn: 1, step: 1 } },
+  { type: 'user/message', seq: 3, time: 3, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '问我' }] } },
+  { type: 'assistant/message', seq: 4, time: 5, data: { step: 1, usage: { inputTokens: 1, outputTokens: 1 } } },
+  { type: 'tool/call', seq: 5, time: 6, data: { step: 1, callId: 'a', name: 'ask_user_question' } },
+  { type: 'tool/result', seq: 6, time: 600006, data: { step: 1, message: { source: { callId: 'a' }, content: [{ type: 'text', text: 'ok' }] } } },
+  { type: 'tool/call', seq: 7, time: 600007, data: { step: 1, callId: 'b', name: 'pwsh' } },
+  { type: 'tool/result', seq: 8, time: 660007, data: { step: 1, message: { source: { callId: 'b' }, content: [{ type: 'text', text: 'ok' }] } } },
+  { type: 'step/end', seq: 9, time: 660008, data: { turn: 1, step: 1 } },
+];
+
+test('F150 kpi.slow / slowest ignore human-waiting tools', () => {
+  const events = waitEvents();
+  const { payload } = buildRunsPayload(events, { slowMs: 5000 });
+  // A 10-minute ask_user_question is a human pause: it must not be reported as
+  // the slowest *operation* (that misleads "where is the bottleneck?").
+  assert.equal(payload.kpi.slowest.name, 'pwsh');
+  assert.equal(payload.kpi.slowest.durationMs, 60000);
+  assert.equal(payload.kpi.slow, 1);
+  assert.equal(payload.runs[1].hasSlow, true);
+
+  // ...and the pause is still surfaced separately as waiting.
+  const tree = buildTraceTree(events);
+  const tools = slimToolPairs(pairToolCalls(events));
+  const detail = buildRunDetail(tree, tools, 1);
+  assert.equal(detail.steps[0].waitMs, 600000);
+  assert.equal(detail.steps[0].toolMs, 60000);
+});
+
+test('buildRunDetail returns the run step index without event or tool rows', () => {  const events = phaseEvents();
   const tree = buildTraceTree(events);
   const tools = slimToolPairs(pairToolCalls(events));
   const detail = buildRunDetail(tree, tools, 1, { serverMs: 1 });

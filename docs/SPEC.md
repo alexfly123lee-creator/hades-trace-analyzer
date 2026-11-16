@@ -333,7 +333,18 @@
   - **实现**：`LIGHT_TINT` / `DARK_TINT` 两个常量表（每项一个百分数），`tintOf(pct, base)` 生成 `color-mix(...)` 字符串，避免再手写颜色。
   - **AC**：深色主题下 hover 任意 run/step 行都能一眼看出底色变蓝（旧 9% 换成 22%：`#252b39` → `#283852`）；hover 仍明显浅于展开态（22 < 30，26 < 36）；浅色主题观感与 F148 完全一致（9 / 10）；切换浅色↔深色无需刷新，面板立即换色；`check-served` 60/60（新增 `data-ds-dark-theme`、`function applyThemePalette`、`DARK_TINT` 三个标记）；单测 42/42 不变；对照图 `mockup/hover-dark.png`。
 
-## 27. 范围外（v1 不做）
+## 27. 顶部透视卡（F150）
+
+- **F150 顶部从「8 张数字卡」换成「一行 KPI + 4 行热力矩阵」**：原来的 8 张卡只有总量，回答不了"哪个 turn 值得看""问题在哪"。现在一张卡同时给三层信息：
+  - **一行紧凑 KPI**：`175 run · 3125 step · 15452 事件 · 7.3M Token · 28 错误 · 37 慢操作 · 15 异常 run · 2.0min 最慢操作 pwsh`（数字 15px、标签 11px、异常项语义色、最慢操作带工具名）；
+  - **热力矩阵**：4 行 × 每个 run 一列（本会话 175 列，列宽自适应、gap 1px、行高 11px）。Time / Token / 步数 三行按 **会话内排名** 映射到 8%–88% 透明度（Token 中位 13.4k、最大 691k，52× 偏斜，线性映射无效）；异常行 `hasError` → 红、`hasSlow` → 橙、否则发丝灰；
+  - **十字线 + 读数**：悬停任意一列，四行同时点亮 1px 蓝色 band；KPI 行右侧同一行显示该 run 的摘要（`run 90 · 1.9min · 691.2k tok · 33 步 · 有错误 — <prompt 前 60 字>`），未悬停时显示操作提示（二者共用一行，卡片不跳高）；
+  - **点击定位**：点格子 → 该 run 被**打开**（不切换关闭）+ 滚动到它的行（在面板自己的滚动容器里 `scrollIntoView({ block: 'center' })`，两帧后再滚，等展开提交完成）；
+  - **图例**：低—高渐变 + 「蓝 = 耗时 · 紫 = Token · 绿 = 步数」+ 红/橙含义。
+  - **口径修正（同属 F150）**：`kpi.slowest` / `kpi.slow` / run 的 `hasSlow` 一律排除**人机等待**（`ask_user_question` / `exit_plan_mode` / `plugin_manager` 且 ≥5s）。本会话里 `ask_user_question 13.1min` 之前被报成"最慢操作"，指向一个不存在的性能问题；修正后最慢操作 = `pwsh 2.0min`，慢操作 53 → 37 条。等待本身仍按 F133 在 step 行显示为 `⏸`，只是不再计入慢操作。
+  - **AC**：浅色/深色下 175 列都清晰可分；悬停任一列四行同时点亮且读数与表内数据一致；点击格子会打开并滚动到该 run（已展开的 run 不会被收起）；`最慢操作` 不再出现 `ask_user_question`；`check-served` 63/63（新增 `function OverviewMatrix` / `locateRun` / `mx.hint`）；单测 **43/43**（新增 F150 用例：10min 的 ask_user_question 不算最慢，pwsh 60s 才算）；`verify-perf` 9/9（P06 基线同步改为排除等待）；对照图 `mockup/overview-card.png`。
+
+## 28. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

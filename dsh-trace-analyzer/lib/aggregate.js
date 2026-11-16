@@ -572,6 +572,8 @@ export function buildRunsPayloadFrom(tree, tokens, tools, opts = {}) {
     let hasSlow = false;
     for (const tool of runTools) {
       if (tool.error != null) hasError = true;
+      // F150: waiting for the human is not a slow operation (see the kpi note).
+      if (isHumanWaitTool(tool)) continue;
       if (typeof tool.durationMs === 'number' && tool.durationMs > slowMs) hasSlow = true;
     }
     // F142 (corrected): the *step* rows carry the distribution — each step's
@@ -593,9 +595,15 @@ export function buildRunsPayloadFrom(tree, tokens, tools, opts = {}) {
     };
   });
 
+  // F150: "slow" and "slowest" must mean *work*, not "the user took 13 minutes
+  // to answer". A waiting call (ask_user_question / approval) whose delta is a
+  // human pause would otherwise win `slowest` — in this session a 13.1min
+  // ask_user_question was reported as the slowest operation, which sends the
+  // reader looking for a bottleneck in the wrong place.
+  const workTools = tools.filter((tool) => !isHumanWaitTool(tool));
   const errorCount = tools.filter((tool) => tool.error != null).length;
-  const slowCount = tools.filter((tool) => typeof tool.durationMs === 'number' && tool.durationMs > slowMs).length;
-  const slowest = tools.reduce((acc, tool) => (
+  const slowCount = workTools.filter((tool) => typeof tool.durationMs === 'number' && tool.durationMs > slowMs).length;
+  const slowest = workTools.reduce((acc, tool) => (
     typeof tool.durationMs === 'number' && (acc == null || tool.durationMs > acc.durationMs) ? tool : acc
   ), null);
 
@@ -662,6 +670,10 @@ export function buildRunsPayload(events, opts = {}) {
 const HUMAN_WAIT_TOOLS = new Set(['ask_user_question', 'exit_plan_mode', 'plugin_manager']);
 /** A human cannot answer faster than this; below it the call is ordinary work. */
 const HUMAN_WAIT_MIN_MS = 5000;
+/** True when a tool's duration is a human pause, not execution time (F133/F150). */
+function isHumanWaitTool(tool) {
+  return HUMAN_WAIT_TOOLS.has(tool.name) && (tool.durationMs ?? 0) >= HUMAN_WAIT_MIN_MS;
+}
 export function stepModelMs(step) {
   const messages = step.events.filter((leaf) => leaf.type === 'assistant/message' && leaf.time != null);
   if (messages.length === 0) return null;
@@ -682,7 +694,7 @@ export function stepTimeParts(step, stepTools) {
   let waitMs = 0;
   for (const tool of stepTools) {
     const duration = tool.durationMs ?? 0;
-    if (HUMAN_WAIT_TOOLS.has(tool.name) && duration >= HUMAN_WAIT_MIN_MS) waitMs += duration;
+    if (isHumanWaitTool(tool)) waitMs += duration;
     else toolMs += duration;
   }
   const timeMs = modelMs == null && toolMs === 0 ? null : (modelMs ?? 0) + toolMs;

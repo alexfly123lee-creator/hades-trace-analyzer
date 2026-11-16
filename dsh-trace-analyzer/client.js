@@ -347,11 +347,141 @@ window.__ModuleLoader__.load({
       return h(RowTag, { text, color: role.color, background: role.background, title: zh });
     }
 
-    function StatCard({ num, lbl, sub, tone, title }) {
-      return h('div', { title, style: { border: '1px solid ' + T.border, borderRadius: T.radiusMd, padding: '10px 12px', background: T.surface, minWidth: 0 } },
-        h('div', { style: { fontSize: 32, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', color: tone ?? T.text, letterSpacing: '-.01em' } }, num),
-        h('div', { style: { fontSize: 12, color: T.muted, marginTop: 2 } }, lbl),
-        sub ? h('div', { style: { fontSize: 11, color: T.muted, marginTop: 1 } }, sub) : null,
+    /**
+     * F150 top overview: one compact KPI line + a heat matrix over every run.
+     *
+     * Why a matrix instead of eight number cards: totals alone cannot answer
+     * "which turn should I open?" or "where is the problem". Four rows × one
+     * column per run turns the whole session into a picture: a column that is
+     * dark in 耗时 / Token / 步数 at the same time is *slow, expensive AND
+     * long*; the 异常 row puts the red and amber flags exactly on the columns
+     * that need a look.
+     *
+     * Shading is rank-based, not linear: in this session token goes 13.4k
+     * (median) → 691k (max), a 52× skew, so a linear ramp would paint one dark
+     * cell and 173 invisible ones. Ranks make relative position readable.
+     *
+     * Hover = crosshair tooltip; click = locate (open + scroll to that run).
+     */
+    function OverviewMatrix({ rows, kpi, label, onLocate }) {
+      const [hover, setHover] = useState(null);
+      const n = rows.length;
+      const ranks = useMemo(() => {
+        const rank = (pick) => {
+          const order = rows.map((r, i) => [pick(r) ?? 0, i]).sort((a, b) => a[0] - b[0]);
+          const out = new Array(order.length);
+          order.forEach(([, i], pos) => { out[i] = order.length > 1 ? pos / (order.length - 1) : 1; });
+          return out;
+        };
+        return {
+          time: rank((r) => r.time),
+          token: rank((r) => r.token),
+          steps: rank((r) => r.stepCount),
+        };
+      }, [rows]);
+      // Rank → alpha. 8% floor keeps "smallest run" visible, 88% ceiling keeps
+      // the biggest from turning into a solid block.
+      const shade = (tone, rank) => `color-mix(in srgb, ${tone} ${Math.round(8 + 80 * rank)}%, var(--dsw-alias-bg-layer-1))`;
+      const rowsDef = [
+        { key: 'time', text: label('col.time', 'Time'), tone: T.brand, values: ranks.time },
+        { key: 'token', text: label('col.token', 'Token'), tone: T.token, values: ranks.token },
+        { key: 'steps', text: label('mx.steps', '步数'), tone: T.success, values: ranks.steps },
+      ];
+      const cellBase = { height: 11, borderRadius: 1, cursor: 'pointer' };
+      const hovered = hover == null ? null : rows[hover];
+      const summary = hovered
+        ? `run ${hovered.idx} · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} 步`
+          + (hovered.hasError ? ' · 有错误' : '') + (hovered.hasSlow ? ' · 有慢操作' : '')
+          + (hovered.prompt ? ' — ' + String(hovered.prompt).replace(/\s+/g, ' ').slice(0, 60) : '')
+        : '';
+      const kpiItems = [
+        [String(kpi.runs), label('stat.runs', 'run（指令）')],
+        [String(kpi.steps), label('stat.steps', 'step（迭代）')],
+        [String(kpi.events), label('stat.events', '事件')],
+        [fmtK(kpi.tokenTotal), label('stat.tokens', 'Token')],
+        [String(kpi.errors), label('stat.errors', '错误'), T.error],
+        [String(kpi.slow), label('stat.slow', '慢操作'), T.warn],
+        [String(kpi.abnormal), label('stat.abnormal', '异常 run'), T.warn],
+        [kpi.slowest ? fmtMs(kpi.slowest.durationMs) : '—', label('stat.slowest', '最慢操作'), T.warn, kpi.slowest?.name],
+      ];
+      return h('div', { style: { border: '1px solid ' + T.border, borderRadius: T.radiusMd, padding: '9px 12px 10px', background: T.surface, marginBottom: 12 } },
+        h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap', minHeight: 20 } },
+          kpiItems.map(([num, lbl, tone, sub], i) => h('span', { key: 'kpi-' + i, style: { display: 'inline-flex', alignItems: 'baseline', gap: 4, minWidth: 0 } },
+            h('b', { style: { fontSize: 15, fontWeight: 600, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums', color: tone ?? T.text, letterSpacing: '-.01em' } }, num),
+            h('span', { style: { fontSize: 11, color: T.muted, whiteSpace: 'nowrap' } }, lbl),
+            sub ? h('span', { style: { fontSize: 11, color: T.faint, fontFamily: T.mono } }, sub) : null,
+          )),
+          // Hint / crosshair readout share one line so the card never jumps.
+          h('span', {
+            style: {
+              marginLeft: 'auto', fontSize: 11, fontFamily: T.mono, color: hovered ? T.text : T.faint,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '46%',
+            },
+          }, hovered ? summary : label('mx.hint', '悬停看这个 run · 点击定位')),
+        ),
+        h('div', {
+          style: { position: 'relative', marginTop: 8 },
+          onMouseLeave: () => setHover(null),
+        },
+          // Crosshair: one absolutely positioned band over the hovered column,
+          // so all four rows light up together without re-rendering 174 cells.
+          hovered ? h('div', {
+            style: {
+              position: 'absolute', top: -2, bottom: -2, pointerEvents: 'none',
+              left: `calc(${(hover / n) * 100}% - 1px)`, width: `calc(${100 / n}% + 2px)`,
+              borderLeft: '1px solid ' + T.brand, borderRight: '1px solid ' + T.brand,
+              background: `color-mix(in srgb, ${T.brand} 14%, transparent)`, borderRadius: 1,
+            },
+          }) : null,
+          rowsDef.map((row) => h('div', { key: row.key, style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 } },
+            h('span', { style: { flex: '0 0 46px', textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted } }, row.text),
+            h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
+              rows.map((r, i) => h('div', {
+                key: r.idx,
+                'data-mx': row.key + '-' + r.idx,
+                onMouseEnter: () => setHover(i),
+                onClick: () => onLocate(r.idx),
+                title: `run ${r.idx}`,
+                style: { ...cellBase, background: shade(row.tone, row.values[i]) },
+              })),
+            ),
+          )),
+          // 异常 row: the flag lane. A column with an error is red, a slow run
+          // amber, everything else stays a hairline so the flags pop.
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            h('span', { style: { flex: '0 0 46px', textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted } }, label('mx.flags', '异常')),
+            h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
+              rows.map((r, i) => h('div', {
+                key: 'flag-' + r.idx,
+                onMouseEnter: () => setHover(i),
+                onClick: () => onLocate(r.idx),
+                title: `run ${r.idx}`,
+                style: {
+                  ...cellBase,
+                  background: r.hasError ? T.error : r.hasSlow ? T.warn : `color-mix(in srgb, ${T.muted} 12%, transparent)`,
+                  opacity: r.hasError || r.hasSlow ? 0.9 : 1,
+                },
+              })),
+            ),
+          ),
+        ),
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 7, fontSize: 11, fontFamily: T.mono, color: T.faint } },
+          h('span', null, label('mx.low', '低')),
+          h('span', {
+            style: {
+              flex: '0 0 90px', height: 6, borderRadius: 3,
+              background: `linear-gradient(90deg, color-mix(in srgb, ${T.brand} 8%, var(--dsw-alias-bg-layer-1)), color-mix(in srgb, ${T.brand} 88%, var(--dsw-alias-bg-layer-1)))`,
+            },
+          }),
+          h('span', null, label('mx.high', '高')),
+          h('span', { style: { width: 1, height: 10, background: T.border } }),
+          h('span', { style: { color: T.muted } }, label('mx.legend', '蓝 = 耗时 · 紫 = Token · 绿 = 步数')),
+          h('span', { style: { width: 1, height: 10, background: T.border } }),
+          h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 4 } },
+            h('i', { style: { width: 8, height: 8, borderRadius: 2, background: T.error } }), label('mx.error', '有错误'),
+            h('i', { style: { width: 8, height: 8, borderRadius: 2, background: T.warn, marginLeft: 4 } }), label('mx.slow', '有慢操作'),
+          ),
+        ),
       );
     }
 
@@ -1083,6 +1213,9 @@ window.__ModuleLoader__.load({
         return () => observer.disconnect();
       }, []);
       const [fullRuns, setFullRuns] = useState(() => new Set());
+      // F150: scroll container, so "locate this run" can bring the row into view
+      // without touching the document (another slot instance may be mounted).
+      const scrollRef = useRef(null);
       const [payload, setPayload] = useState(null);
       const [error, setError] = useState(null);
       const [loading, setLoading] = useState(false);
@@ -1252,6 +1385,22 @@ window.__ModuleLoader__.load({
         }).finally(() => {
           setDetailLoading((prev) => { const n = new Set(prev); n.delete(idx); return n; });
         });
+      };
+
+      /**
+       * F150: a click on the overview matrix locates a run — it opens the run
+       * (never toggles it closed, unlike a click on the row itself) and scrolls
+       * its row into view.
+       */
+      const locateRun = (idx) => {
+        if (!expanded.has('run-' + idx)) openRun(idx);
+        const scroll = () => {
+          const host = scrollRef.current;
+          const el = host ? host.querySelector('[data-run="' + idx + '"]') : null;
+          if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        };
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(scroll));
+        else scroll();
       };
 
       /** Toggle one Step's panel; its row highlight follows the open state. */
@@ -1427,16 +1576,12 @@ window.__ModuleLoader__.load({
         if (!payload) return null;
         if ((payload.counts?.events ?? 0) === 0) return h('div', { style: { color: T.muted } }, label('empty', '该会话暂无事件'));
         return h('div', null,
-          h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginBottom: 14 } },
-            h(StatCard, { num: String(kpi.runs), lbl: label('stat.runs', 'run（指令）') }),
-            h(StatCard, { num: String(kpi.steps), lbl: label('stat.steps', 'step（迭代）') }),
-            h(StatCard, { num: String(kpi.events), lbl: label('stat.events', '事件') }),
-            h(StatCard, { num: fmtK(kpi.tokenTotal), lbl: label('stat.tokens', 'Token') }),
-            h(StatCard, { num: String(kpi.errors), lbl: label('stat.errors', '错误'), tone: T.error }),
-            h(StatCard, { num: String(kpi.slow), lbl: label('stat.slow', '慢操作'), tone: T.warn }),
-            h(StatCard, { num: String(kpi.abnormal), lbl: label('stat.abnormal', '异常 run'), tone: T.warn }),
-            h(StatCard, { num: kpi.slowest ? fmtMs(kpi.slowest.durationMs) : '—', lbl: label('stat.slowest', '最慢操作'), sub: kpi.slowest?.name, tone: T.warn }),
-          ),
+          h(OverviewMatrix, {
+            rows: payload.runs ?? [],
+            kpi,
+            label,
+            onLocate: locateRun,
+          }),
           h(DualBarChart, {
             rows: payload.runs ?? [],
             sort,
@@ -1468,7 +1613,7 @@ window.__ModuleLoader__.load({
           ),
           h('button', { type: 'button', onClick: refresh, style: { font: 'inherit', color: T.text, background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm, padding: '2px 10px', cursor: 'pointer' } }, label('refresh', '刷新')),
         ),
-        h('div', { style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: 12 } },
+        h('div', { ref: scrollRef, style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: 12 } },
           renderContent(),
         ),
       );
@@ -1484,6 +1629,9 @@ window.__ModuleLoader__.load({
             'run': 'run ', 'step': 'step ', 'followup': '续跑', 'system': '系统提示词',
             'stat.runs': 'run（指令）', 'stat.steps': 'step（迭代）', 'stat.events': '事件', 'stat.tokens': 'Token',
             'stat.errors': '错误', 'stat.slow': '慢操作', 'stat.abnormal': '异常 run', 'stat.slowest': '最慢操作',
+            'mx.steps': '步数', 'mx.flags': '异常', 'mx.hint': '悬停看这个 run · 点击定位',
+            'mx.low': '低', 'mx.high': '高', 'mx.legend': '蓝 = 耗时 · 紫 = Token · 绿 = 步数',
+            'mx.error': '有错误', 'mx.slow': '有慢操作',
             'firstPaint': '首屏', 'server': '服务端', 'cacheHit': '缓存命中', 'render': '渲染', 'loadingDetail': '载入 step…',
             'realtime.live': '实时', 'realtime.paused': '已暂停', 'realtime.stalled': '实时中断',
             'realtime.tip': '每 2 秒检查一次日志偏移；没有新事件时服务端只回 ~40 B',
@@ -1508,6 +1656,9 @@ window.__ModuleLoader__.load({
             'run': 'run ', 'step': 'step ', 'followup': 'follow-up', 'system': 'system prompt',
             'stat.runs': 'runs', 'stat.steps': 'steps', 'stat.events': 'events', 'stat.tokens': 'Tokens',
             'stat.errors': 'errors', 'stat.slow': 'slow', 'stat.abnormal': 'abnormal runs', 'stat.slowest': 'slowest',
+            'mx.steps': 'steps', 'mx.flags': 'flags', 'mx.hint': 'hover a run · click to locate',
+            'mx.low': 'low', 'mx.high': 'high', 'mx.legend': 'blue = time · violet = tokens · green = steps',
+            'mx.error': 'has error', 'mx.slow': 'has slow op',
             'firstPaint': 'first paint', 'server': 'server', 'cacheHit': 'cache hit', 'render': 'render', 'loadingDetail': 'loading steps…',
             'realtime.live': 'live', 'realtime.paused': 'paused', 'realtime.stalled': 'not live',
             'realtime.tip': 'Checks the log offset every 2 s; an unchanged session answers in ~40 B',
