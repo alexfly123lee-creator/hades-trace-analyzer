@@ -272,7 +272,18 @@
   - 时间列不变（step 在 run 时间轴上的位置），所以同一行同时给出「时间位置」与「token 位置」；
   - **不用新增字段**：只用 /run 里已有的 per-step 	oken 在客户端累加（/runs 仍是 51.8 KB，P01 门槛维持 64 KB）。初版曾把分布画在 run 行并为此加了 segments 字段，已按反馈改掉。
   - **AC**：112px 轨道上，最后一步切片右边缘恰好 100%；每段宽度 ∝ 该步 token；Σ step.token = run.token（单测断言 5 步累计序列 [110,330,660,1100,1650] 与 run 总量相等）；展开 211 步的 run 仍只渲染 80 行（F138 分页）；样例见 mockup/step-token-preview.png。
-## 21. 范围外（v1 不做）
+## 21. 展开动效（F144）
+
+- **F144 点击展开有平滑动效（方案 A）**：展开/折叠不再瞬时切换，而是**高度 + 淡入**，一条统一曲线、**没有逐行 stagger**（最克制的一版，见 mockup/expand-motion-demo.html）。
+  - **展开 200ms / 折叠 140ms**：打开时 height 0 → 内容高度、opacity 0 → 1，曲线 cubic-bezier(.2,.7,.3,1)；折叠用更短的 140ms 和 cubic-bezier(.4,0,1,1)，收回要"跟手"。
+  - **实现**：Collapse 组件用 WAAPI——打开时量一次 scrollHeight 再 element.animate，动画结束把 height 落回 uto（避免内容再变化时被固定高度裁掉）；**关闭时保留最后一次内容 140ms** 完成收起后才卸载，所以折叠也有动画而不是"啪"地消失。
+  - **按需挂载**：关闭的 run/step 不渲染子树（CSS  fr→1fr 那套要求常驻 DOM，200 步的 run 会白挂几百个节点，故不用）。
+  - **长 run 降级**：run 的 step 数 > 60 时跳过高度动画，改为 **160ms 纯淡入**——7000px 的高度动画每帧都要重排，必然掉帧。
+  - **箭头**：▸ 用同一个字符**旋转 90°**（160ms），不再替换 ▸/▾，展开时索引列不会抖动。
+  - **只响应用户点击**：动画只在 open 变化时触发；F140 的实时刷新（efreshToken/payload 替换）不会重放动画。
+  - **无障碍**：prefers-reduced-motion: reduce 时直接切换，不做任何动画。
+  - **AC**：DevTools Performance 录一次展开，动画期间**无 >50ms 长任务**、每帧 ≤16.7ms；快速连点 10 次不出现动画叠加或高度错位；折叠后该 run 的子节点已从 DOM 移除；200 步的 run 是一整块淡入而非缓慢长高；系统开启"减少动态效果"后瞬时切换；check-served 44/44（新增 unction Collapse / prefers-reduced-motion 两个标记）；单测 42/42 不变。
+## 22. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

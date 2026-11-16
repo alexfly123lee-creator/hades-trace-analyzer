@@ -60,6 +60,86 @@ window.__ModuleLoader__.load({
     // F141: live-appended rows fade in instead of popping in.
     const ROW_ANIM_CSS = '@keyframes hadesRowIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}';
 
+    // F144 expand motion (plan A): height + fade, one uniform curve, no stagger.
+    // Collapse is deliberately shorter — closing should feel instant.
+    const EXPAND_MS = 200;
+    const COLLAPSE_MS = 140;
+    // A 200-step run is ~7k px tall; animating that height costs layout every
+    // frame, so big runs fade in instead of measuring/growing.
+    const BIG_RUN_STEPS = 60;
+    const motionReduced = () => typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /**
+     * Height + fade expander (F144).
+     *
+     * Children mount only while open (or collapsing), so closed runs still cost
+     * nothing in the DOM — the opposite of the CSS `0fr → 1fr` trick. The height
+     * is measured once per transition and handed to WAAPI, which keeps the
+     * animation off the layout path after the first frame.
+     */
+    function Collapse({ open, children, expandMs = EXPAND_MS, collapseMs = COLLAPSE_MS }) {
+      const ref = useRef(null);
+      const [visible, setVisible] = useState(open);
+      // Closing must animate the content that is going away, so keep the last
+      // open children around for the 140 ms of the collapse.
+      const lastChildren = useRef(children);
+      if (open) lastChildren.current = children;
+      useEffect(() => {
+        if (open) setVisible(true);
+      }, [open]);
+      useLayoutEffect(() => {
+        const el = ref.current;
+        if (el == null) return undefined;
+        if (motionReduced()) {
+          el.style.height = open ? 'auto' : '0px';
+          el.style.opacity = open ? '1' : '0';
+          if (!open) setVisible(false);
+          return undefined;
+        }
+        if (open) {
+          if (expandMs <= 0) {
+            // Big run: no height animation, just a quick fade over the new rows.
+            el.style.height = 'auto';
+            el.style.opacity = '1';
+            const fade = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'cubic-bezier(.2,.7,.3,1)' });
+            return () => fade.cancel();
+          }
+          const height = el.scrollHeight;
+          el.style.height = 'auto';
+          const anim = el.animate(
+            [{ height: '0px', opacity: 0 }, { height: height + 'px', opacity: 1 }],
+            { duration: expandMs, easing: 'cubic-bezier(.2,.7,.3,1)' },
+          );
+          anim.onfinish = () => { el.style.height = 'auto'; el.style.opacity = '1'; };
+          return () => anim.cancel();
+        }
+        if (!visible) return undefined;
+        const height = el.scrollHeight;
+        const anim = el.animate(
+          [{ height: height + 'px', opacity: 1 }, { height: '0px', opacity: 0 }],
+          { duration: collapseMs, easing: 'cubic-bezier(.4,0,1,1)' },
+        );
+        anim.onfinish = () => setVisible(false);
+        return () => anim.cancel();
+      }, [open, visible, expandMs, collapseMs]);
+      if (!visible) return null;
+      return h('div', { ref, style: { overflow: 'hidden', height: open ? 'auto' : 0, opacity: open ? 1 : 0 } },
+        open ? children : lastChildren.current);
+    }
+
+    /** The ▸/▾ affordance as one glyph that rotates, so expanding never reflows. */
+    function Caret({ open }) {
+      return h('span', {
+        style: {
+          display: 'inline-block', width: 10, flex: '0 0 10px', textAlign: 'center',
+          transition: 'transform 160ms cubic-bezier(.2,.7,.3,1)',
+          transform: open ? 'rotate(90deg)' : 'none',
+        },
+      }, '▸');
+    }
+
     // Short tag for the explanation-only rows a step panel gained in F23.2
     // (compaction / retry / file changes / slash commands / approvals …).
     const NOTE_TAG = { compact: '压缩', retry: '重试', fail: '失败', workspace: '变更', command: '命令', plan: '计划', todo: '清单', deliver: '交付', approval: '审批', note: '事件' };
@@ -429,7 +509,9 @@ window.__ModuleLoader__.load({
                 background: runSelected ? T.runSelBg : (hoverRun === r.idx ? T.runHoverBg : 'transparent'),
               },
             },
-              h('span', { style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : (runSelected ? T.text : T.muted), fontVariantNumeric: 'tabular-nums', userSelect: 'none' } }, `${r.stepCount ? (open ? '▾ ' : '▸ ') : ''}run ${r.idx}`),
+              h('span', { style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : (runSelected ? T.text : T.muted), fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 } },
+                r.stepCount ? h(Caret, { key: 'caret', open }) : null,
+                `run ${r.idx}`),
               h(MetricBar, {
                 width: TIME_W,
                 numWidth: TIME_NUM_W,
@@ -453,7 +535,10 @@ window.__ModuleLoader__.load({
               h('span', { title: r.isSystemPrompt ? sysLabel : (r.prompt ?? ''), style: { flex: '1 1 auto', minWidth: 0, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, r.isSystemPrompt ? sysLabel : (truncate(r.prompt, 80) || '…')),
               abnormal ? h('span', { style: { flex: '0 0 8px', width: 8, height: 8, borderRadius: '50%', background: T.error } }) : null,
             ),
-            open ? renderDetail(r) : null,
+            // F144: opening a run grows its bracket instead of snapping it in;
+            // a very long run (200+ steps, ~7k px) fades instead of animating
+            // height, which would relayout every frame.
+            h(Collapse, { open, expandMs: (r.stepCount ?? 0) > BIG_RUN_STEPS ? 0 : EXPAND_MS }, renderDetail(r)),
           );
         })),
       );
@@ -590,7 +675,9 @@ window.__ModuleLoader__.load({
           cursor: 'pointer', background,
         },
       },
-        h('span', { style: { flex: `0 0 ${idxWidth}px`, minWidth: 0, color: selected ? T.text : T.muted, fontSize: 12, userSelect: 'none', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' } }, `${open ? '▾' : '▸'} step ${step.step}`),
+        h('span', { style: { flex: `0 0 ${idxWidth}px`, minWidth: 0, color: selected ? T.text : T.muted, fontSize: 12, userSelect: 'none', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 2 } },
+          h(Caret, { key: 'caret', open }),
+          `step ${step.step}`),
         timeMetric,
         tokenMetric,
         chips.map((chip, i) => h(StepTag, {
@@ -622,7 +709,7 @@ window.__ModuleLoader__.load({
           // no separator either — spacing alone separates them.
           : { marginLeft: `${STEP_INDENT}px` },
       },
-      row, open ? content : null);
+      row, h(Collapse, { open }, content));
     }
 
     /**
