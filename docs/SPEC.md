@@ -304,7 +304,17 @@
   - **Token 轨变宽的红利**：F142 的累计切片在 150px 上比 112px 长约 34%，最后一步的右边缘仍然精确落在 100%。
   - **AC**：表头 `Time` / `Token` 两个按钮宽度相等（各 226px），标签左缘仍压在柱子左缘上；两列数字右边缘在同一条竖线上；`35.55s` / `99.99s` / `345k` / `1.2M` 在 70px 槽内不溢出；Run 行与 Step 行的两列左缘严格对齐；深浅色下轨道底色仍为 12% 同色相；`check-served` 52/52（新增 `const METRIC_W = 150`、`const METRIC_NUM_W = 70` 两个标记）；单测 42/42 不变；对照图 `mockup/bar-align.png`（两列等宽版）。
 
-## 24. 范围外（v1 不做）
+## 24. run 的 prompt 全文显示（F147）
+
+- **F147 run 行不再按字数截断，只在宽度处截断**：run 行的 prompt 一直是 `truncate(prompt, 80)` —— 无论窗口多宽，第 80 个字之后永远看不到（本会话 169 条真实 prompt 里有 25 条超过 80 字，最长 960 字）。
+  - **现在**：整段 prompt 原样进 DOM，单元格用 `overflow: hidden` + `text-overflow: ellipsis` + `white-space: nowrap` 在**真实可用宽度**处裁掉并补省略号；窗口拉宽立刻多显示，不需要任何重取。
+  - **删掉的字符预算**：`truncate()` 工具函数整个移除（原先只有两处调用：run 行 80 字、step 面板里的指令 400 字）；step 面板（`StepContent` 的「指令」块）同样改为全文，容器本来就是 `maxHeight 96 + overflow: auto`，超出时滚动而不是被砍。
+  - **空白**：`white-space: nowrap` 本来就会把换行折叠成空格，所以行内仍是单行；tooltip（`title`）保留原始全文（含换行）。
+  - **Payload 不变**：`/runs` 一直送的是完整 `prompt`（`textOf(user/message)` 无上限），所以这次是纯客户端改动，P01 仍是 53.1 KB。
+  - **代价与取舍**：两列指标 + 索引占掉约 630px，窗口 900px 时 prompt 列只剩 ~270px；因此**长 prompt 在窄窗口下仍然会被省略号截断**——这是"按宽度截断"的必然结果，拉宽窗口或 hover 可看全。若希望更多可见，可再选：① 允许折行到 2 行；② 点一下 prompt 弹出全文浮层。
+  - **AC**：`99.99s` 这类行不再出现"第 80 个字后固定省略"的现象，同一 prompt 在 700 / 820 / 940px 宽的窗口里显示长度递增（mockup/run-prompt.png）；`client.js` 里 `truncate(` 与 `function truncate` 均已不存在；`check-served` 55/55（新增 `r.prompt || '…'` 标记 + 两条 `absent` 断言：`truncate(r.prompt`、`function truncate` 必须不存在）；单测 42/42 不变；payload 53.1 KB / P01 不变。
+
+## 25. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

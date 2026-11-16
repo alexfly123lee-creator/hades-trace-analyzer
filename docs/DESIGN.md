@@ -66,7 +66,7 @@
 - 每 run 一行（表格化，行底 `--dsw-alias-border-l1` 淡分隔线，**不加粗**），列序从左到右：
   - **Turn index 64px**（最左：`run N` + 展开箭头 ▸/▾）。
   - **单条 180px**（固定宽，紧挨 index；随排序键只显示一个指标：按时间=时间蓝条 `--dsw-alias-trajectory-accent`、按 Token=Token 紫条 `--dsw-alias-chart-tools`；**数值右对齐显示在条内**，颜色 `--dsw-alias-label-primary`）。
-  - **Turn 内容（prompt）自适应撑满**（`flex:1` + ellipsis + hover 全文；run0 显示「系统提示词」）。
+  - **Turn 内容（prompt）自适应撑满**（`flex:1` + `min-width:0` + ellipsis + hover 全文；**F147：全文进 DOM，只在真实宽度处由 CSS 截断**，不再有 80 字上限；run0 显示「系统提示词」）。
   - 状态点 8px（错误/慢）。
 - **展开即一组（F130，无分隔线）**：组内不画任何分隔线（Run 行与 Step 之间、Step 之间、明细行之间都是留白），纯靠括号 + 空白间隔表达结构，更接近"极简大纲"。Run 行 + 它的全部 Step 共用一个分组容器——**括号描边保留、底色去掉**：Run 分组 = 1px `accent 25%` 描边 + 3px 蓝轨 + `radius-md` 圆角；Step 括号 = 同样的描边/蓝轨/圆角，整体缩进一级；两者**都不填充底色**，只有展开的行有填色（Run 8% / Step 22%）；Run 块"很淡"、Step 块"更深"，两块靠明度差区分。折叠时恢复普通行。**整体性是「展开」给的，不依赖选中**。
 - **点行 → 就地展开**该 run 的 step 列表；**层级靠缩进**：Step 行（连同它的括号）整体内缩 **12px**，`run N` 在 0；Step 行的 index 列相应收窄到 49px（12 + 3px 轨），使**时间列与 Token 列和 Run 行严格同列**；明细再在括号内缩进 74px。

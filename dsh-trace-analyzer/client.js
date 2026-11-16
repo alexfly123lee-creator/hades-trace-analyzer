@@ -241,10 +241,6 @@ window.__ModuleLoader__.load({
       if (n < 1024) return n + ' B';
       return (n / 1024).toFixed(0) + ' KB';
     }
-    function truncate(s, n) {
-      const x = String(s ?? '').replace(/\s+/g, ' ').trim();
-      return x.length > n ? x.slice(0, n) + '…' : x;
-    }
 
     // Role tags (SPEC F131) mirror the built-in Trajectory's `kindTag` exactly:
     // same kind vocabulary, same labels, same colors and tag geometry.
@@ -563,7 +559,11 @@ window.__ModuleLoader__.load({
                 tip: fmtK(r.token) + ' tok',
               }),
               h(RoleTag, { actor: r.actor, label }),
-              h('span', { title: r.isSystemPrompt ? sysLabel : (r.prompt ?? ''), style: { flex: '1 1 auto', minWidth: 0, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, r.isSystemPrompt ? sysLabel : (truncate(r.prompt, 80) || '…')),
+              // F147: the whole prompt goes into the cell; the column clips it
+              // with CSS (`text-overflow: ellipsis`) instead of a character
+              // budget, so the cut always happens at the real width — and
+              // widening the window immediately reveals more of it.
+              h('span', { title: r.isSystemPrompt ? sysLabel : (r.prompt ?? ''), style: { flex: '1 1 auto', minWidth: 0, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, r.isSystemPrompt ? sysLabel : (r.prompt || '…')),
               abnormal ? h('span', { style: { flex: '0 0 8px', width: 8, height: 8, borderRadius: '50%', background: T.error } }) : null,
             ),
             // F144: opening a run grows its bracket instead of snapping it in;
@@ -905,7 +905,8 @@ window.__ModuleLoader__.load({
           h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
             h(RoleTag, { actor: 'user', label }),
             h('span', { style: { fontSize: 11, color: T.muted } }, label('step.instruction', '指令'))),
-          h('div', { title: runPrompt, style: { marginTop: 2, fontSize: 12, lineHeight: 1.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto' } }, truncate(runPrompt, 400)),
+          // F147: full instruction text; the block scrolls, it is not cut.
+          h('div', { title: runPrompt, style: { marginTop: 2, fontSize: 12, lineHeight: 1.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto' } }, runPrompt),
         ));
       }
 
