@@ -245,7 +245,16 @@
   - **不变量**：表头标签左缘仍与柱子左缘齐平；Run 与 Step 的时间/Token 两列严格同宽；标签与指标条基线对齐；不改字重（正文仍 400，标签仍 650）。
   - **AC**：`▸ step 199`、`99.99s`、`126k`、`EDIT ×6` 均不溢出、不换行；表头与柱子对齐关系不变；`check-served` 34/34（另外对已服务 bundle 断言 `RUN_IDX_W=78` / `TIME_W=170` / `TOKEN_W=112` / 正文 13px / 无 10px / chip `20px + 0 6px` / `lineHeight 1.6` 共 8 项，0 失败）；40 个单测不变（渲染层改动不触碰聚合）；深浅色主题下正文与次要文字 ≥ 4.5:1。
 
-## 18. 范围外（v1 不做）
+## 18. 实时刷新（F140）
+
+- **F140 run/step 随对话实时更新**：面板打开期间，新事件落盘后 2 s 内自动出现在表上，不需要点「刷新」。触发机制见 `docs/DESIGN-realtime.md`（R1/R2/R3 三阶段），本期交付 **R1：可见时轮询 + `since` 短路**。
+  - **Host**：`/runs` 接受 `since`（客户端已持有的日志偏移）。探测到 `snapshot.seq === since` 时返回 `{ ok, unchanged: true, seq, serverMs }`（**~40 B**，不序列化 payload）；否则照旧返回完整 payload，并在 `meta.seq` 里带上本次构建的偏移；`/health.cache` 增加 `unchangedHits` 计数器。
+  - **Client**：仅在 `document.visibilityState === 'visible'` 时每 **2 s** 触发一次 tick；发送 `?since=<meta.seq>`；命中 `unchanged` **不 setState、不重渲染**；页面隐藏即暂停（徽标显示「已暂停」），切回可见立刻补一次（400 ms）。
+  - **刷新语义**：run 表整体替换但**保留展开态、排序键与高亮**；已展开的 run 重新取 `/run`（新 step 出现在末尾）；已打开的 step 通过 `refreshToken` 重新取 `/step`，正在跑的工具行从"无结果"变为"有结果 + 耗时"，无需收起再展开。
+  - **反馈**：表头常驻徽标 `● 实时` / `⏸ 已暂停` / `⚠ 实时中断`，tooltip 说明"每 2 s 检查一次；未变化时服务端只回 ~40 B"。
+  - **AC**：对话里发出指令后切到面板，≤ 2 s 出现新 run/step 行；流式过程中 step 时间持续增长、工具行在结果到达后自动补上耗时；页面隐藏后 2 s 内不再发请求（`/health.cache.unchangedHits` 停止增长）；idle 时每次 tick 的 Host 成本 ~1 ms（未变）/ 43 ms（变更 ≤ 1 次/2 s）；刷新不丢展开/排序；`check-served` 37/37（新增 `realtime.live` / `tickBusy.current` / `refreshToken` 三个标记）；单测 41/41（新增 `meta.seq` 用例）。
+
+## 19. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

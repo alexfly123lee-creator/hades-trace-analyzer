@@ -603,6 +603,9 @@ export function buildRunsPayloadFrom(tree, tokens, tools, opts = {}) {
       slowMs,
       serverMs: opts.serverMs ?? null,
       generatedAt: opts.generatedAt ?? null,
+      // R1 realtime (SPEC F140): the log offset this payload was built at, so the
+      // client can ask `?since=<seq>` and the Host can answer `unchanged` in 40 B.
+      seq: opts.seq ?? null,
     },
     counts: {
       events: opts.eventCount ?? tree.reduce((acc, run) => acc + countLeaves(run), 0),

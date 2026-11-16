@@ -241,6 +241,18 @@ test('buildRunsPayloadFrom is re-projectable from a cached tree', () => {
   assert.equal(payload.kpi.abnormal, 1);
 });
 
+// ---- realtime (SPEC F140): the payload carries the log offset the client polls with ----
+
+test('buildRunsPayloadFrom reports the log offset it was built at', () => {
+  const { tree, tokens, tools } = buildRunsPayload(phaseEvents());
+  const withSeq = buildRunsPayloadFrom(tree, tokens, tools, { eventCount: 11, sessionId: 's1', seq: 4242 });
+  assert.equal(withSeq.meta.seq, 4242);
+  // Without an offset the field is present but null, so the client never polls
+  // with a bogus `since` (it would otherwise hit the `unchanged` shortcut).
+  const withoutSeq = buildRunsPayloadFrom(tree, tokens, tools, { eventCount: 11, sessionId: 's1' });
+  assert.equal(withoutSeq.meta.seq, null);
+});
+
 // ---- step captions + selected-step UI data (SPEC F128) ----
 
 const captionEvents = () => [

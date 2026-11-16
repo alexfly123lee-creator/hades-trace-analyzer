@@ -93,6 +93,7 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 | V51 | 多动作 step 的 chip 行 | 找一步干了两种事的（先读代码再跑命令、先 inspect 再读取），以及「改了 6 个文件」的一步 | 前者行上并排两枚 chip（`INSPECT ×2 READ`、`EDIT RUN`）；后者只一枚 `EDIT ×6`，不再出现 `+5 次调用` 文字后缀；回复类行是 `REPLY` + 它调用的动作 chip；chip 一律英文大写、中文在 tooltip；chip 行不参与标题省略、不改变行高与 Time/Token 列位置；`node mockup/verify-chips.mjs <session>` 报告 0 问题（F137） |
 | V52 | 性能加固与自证（F138） | 打开一个 200+ 步的 run；反复切会话；观察表头 | 该 run 默认只渲染 80 行，末尾出现「显示全部 N 步（还有 M 步）」；切走瞬间在途 /runs 被 abort（DevTools Network 显示 canceled）；表头在构建 ≥8 ms 时出现「渲染 x ms」；/health 返回 cache.events / lastBuild.ms 且 sessions ≤ 4；闲置时进程 CPU ≈0（无轮询） |
 | V53 | 可读性基线（F139） | 随便打开一个会话看整页 | 正文 13px、行高 1.6、行最小高 30px；Time 条 170px / Token 条 112px，表头标签仍与柱子左缘齐平；`▸ step 199`、`99.99s`、`126k`、`EDIT ×6` 都不溢出、不换行；标签 chip 20px 高、11px 字，与指标条基线对齐；整页没有 10px 文字 |
+| V54 | 实时跟随（F140） | 面板开着，去对话里发一条指令（或等 agent 自己继续跑），再切回面板；然后切到别的窗口 5 秒再回来 | 面板 ≤2 s 出现新的 run/step 行；流式中 step 时间持续增长，工具结果到达后该行自动补上耗时（不用收起重开）；表头常驻 `● 实时`，切走窗口后变 `⏸ 已暂停` 且 `/health.cache.unchangedHits` 停止增长，切回后立即补一次；刷新不丢展开态/排序/高亮；DevTools 里未变化的 tick 响应 ~40 B |
 | V48 | step 耗时含工具、不含等人 | 找一个跑了几分钟工具的 step；再找一个等你回答/审批的 step | 前者行上显示 模型+工具 的合计（工具时间算进去）；后者行上只显示模型的几十秒，旁边有 `⏸ 13.1min` 等待标记；`run.time = Σ 各步`；`mockup/verify-traj-align.mjs` 校验模型段 0 差异、工具段差额 = waitMs（F133） |
 | V47 | 标题可回原文 | hover 任一 step 标题 | tooltip 显示原始长摘要（正文全段 / `tool · 名字 · 参数`），压缩不丢信息；展开后详情面板按事件顺序出现说明行 `[压缩]`/`[命令]`/`[审批]`（F23.2） |
 | V24 | Run/Step 共同选中 | 点一个 step，再点另一 run 的 step；再点同一 step；折叠该 run | 选中 step 与其 run 分组出现同色轨道/加深底色；选中转移且旧选中消失；再次点击取消并收起；折叠 run 后选中清除（F128） |

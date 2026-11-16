@@ -607,15 +607,23 @@ window.__ModuleLoader__.load({
      * context/system injection — each tagged with its role. Raw JSON stays an
      * optional per-row link.
      */
-    function StepContent({ sessionId, runIdx, stepIdx, runPrompt, runActor, t }) {
+    function StepContent({ sessionId, runIdx, stepIdx, runPrompt, runActor, t, refreshToken }) {
       const key = sessionId + '::' + runIdx + '::' + stepIdx;
       const [nonce, setNonce] = useState(0);
       const [state, setState] = useState(() => (cache.step.has(key)
         ? { data: cache.step.get(key), loading: false, error: null }
         : { data: null, loading: true, error: null }));
       const [rawOpen, setRawOpen] = useState(() => new Set());
+      // F140: the parent bumps this token when the session log grew, so an open
+      // panel shows a running tool call turning into "finished + duration"
+      // without the user closing and reopening the step.
+      const seenToken = useRef(refreshToken ?? 0);
 
       useEffect(() => {
+        if (seenToken.current !== (refreshToken ?? 0)) {
+          seenToken.current = refreshToken ?? 0;
+          cache.step.delete(key);
+        }
         if (cache.step.has(key)) return undefined;
         let cancelled = false;
         setState({ data: null, loading: true, error: null });
@@ -628,7 +636,7 @@ window.__ModuleLoader__.load({
             if (!cancelled) setState({ data: null, loading: false, error: String((err && err.message) || err) });
           });
         return () => { cancelled = true; };
-      }, [key, nonce, sessionId, runIdx, stepIdx]);
+      }, [key, nonce, refreshToken, sessionId, runIdx, stepIdx]);
 
       const label = (k, fb) => (t ? t(k) : fb);
       // The Step bracket (StepRow wrapper) already supplies the tint + rail, so
@@ -841,11 +849,21 @@ window.__ModuleLoader__.load({
       const [details, setDetails] = useState(() => new Map());
       const [detailLoading, setDetailLoading] = useState(() => new Set());
       const [detailErrors, setDetailErrors] = useState(() => new Map());
+      // F140 realtime: `seq` is the log offset the current payload was built at,
+      // `live` mirrors the tick health, `lastAt` feeds the header badge.
+      const seqRef = useRef(null);
+      const tickBusy = useRef(false);
+      const expandedRef = useRef(expanded);
+      expandedRef.current = expanded;
+      const [realtime, setRealtime] = useState({ live: true, paused: false, lastAt: null });
+      // step key -> counter; bumping it makes an open StepContent refetch.
+      const [stepTokens, setStepTokens] = useState(() => ({}));
 
       const load = useCallback((force) => {
         if (!sessionId) { setPayload(null); setError(null); setLoading(false); setLoadInfo(null); return undefined; }
         if (!force && cache.runs.has(sessionId)) {
           const hit = cache.runs.get(sessionId);
+          seqRef.current = hit.payload?.meta?.seq ?? null;
           setPayload(hit.payload); setLoadInfo({ ...hit.info, cached: true }); setError(null); setLoading(false);
           return undefined;
         }
@@ -865,6 +883,7 @@ window.__ModuleLoader__.load({
             cached: false,
           };
           cacheSet(cache.runs, sessionId, { payload: json, info }, CACHE_MAX.runs);
+          seqRef.current = json?.meta?.seq ?? null;
           setPayload(json); setLoadInfo(info); setLoading(false);
         }).catch((err) => {
           if (cancelled) return;
@@ -875,6 +894,95 @@ window.__ModuleLoader__.load({
       }, [sessionId]);
 
       useEffect(() => load(false), [load]);
+
+      /**
+       * F140: one cheap poll. Sends the offset we already hold, so an unchanged
+       * session costs the Host ~1 ms and ~40 B, and nothing re-renders. When the
+       * log did grow: replace the run table, refresh the expanded run's step
+       * index, and bump every open Step panel so a running tool call turns into
+       * "finished + duration" in place.
+       */
+      const tick = useCallback(async () => {
+        if (!sessionId || tickBusy.current) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+        tickBusy.current = true;
+        try {
+          const since = seqRef.current;
+          const { json } = await fetchPayload('runs', since == null ? { sessionId } : { sessionId, since });
+          if (!json || json.unchanged === true) {
+            setRealtime({ live: true, paused: false, lastAt: Date.now() });
+            return;
+          }
+          seqRef.current = json?.meta?.seq ?? null;
+          cacheSet(cache.runs, sessionId, {
+            payload: json,
+            info: { ms: 0, bytes: 0, serverMs: json?.meta?.serverMs ?? null, cached: true },
+          }, CACHE_MAX.runs);
+          setPayload(json);
+          const openKeys = [...expandedRef.current];
+          for (const key of openKeys) {
+            if (!key.startsWith('run-')) continue;
+            const idx = Number(key.slice(4));
+            if (!Number.isInteger(idx)) continue;
+            try {
+              const { json: detail } = await fetchPayload('run', { sessionId, idx });
+              cacheSet(cache.run, sessionId + '::' + idx, detail, CACHE_MAX.run);
+              setDetails((prev) => new Map(prev).set(idx, detail));
+            } catch { /* keep the previous detail for this run */ }
+          }
+          const openSteps = openKeys.filter((key) => !key.startsWith('run-'));
+          if (openSteps.length > 0) {
+            setStepTokens((prev) => {
+              const next = { ...prev };
+              for (const key of openSteps) next[key] = (next[key] ?? 0) + 1;
+              return next;
+            });
+          }
+          setRealtime({ live: true, paused: false, lastAt: Date.now() });
+        } catch {
+          // A failed tick is not an error state: keep the last good table and
+          // just mark the badge as not-live.
+          setRealtime((prev) => ({ ...prev, live: false }));
+        } finally {
+          tickBusy.current = false;
+        }
+      }, [sessionId]);
+
+      useEffect(() => {
+        if (!sessionId) return undefined;
+        const EVERY = 2000;
+        let timer = null;
+        let cancelled = false;
+        const schedule = (delay) => {
+          if (cancelled) return;
+          if (timer != null) clearTimeout(timer);
+          timer = setTimeout(() => {
+            timer = null;
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+              setRealtime((prev) => ({ ...prev, paused: true }));
+              schedule(EVERY);
+              return;
+            }
+            tick().finally(() => schedule(EVERY));
+          }, delay);
+        };
+        const onVisibility = () => {
+          if (typeof document === 'undefined') return;
+          if (document.visibilityState === 'visible') {
+            setRealtime((prev) => ({ ...prev, paused: false }));
+            schedule(400); // come back: catch up right away, then resume the rhythm
+          } else {
+            setRealtime((prev) => ({ ...prev, paused: true }));
+          }
+        };
+        schedule(EVERY);
+        if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+          cancelled = true;
+          if (timer != null) clearTimeout(timer);
+          if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
+        };
+      }, [sessionId, tick]);
 
       const refresh = () => { if (sessionId) clearSessionCache(sessionId); load(true); };
 
@@ -995,6 +1103,7 @@ window.__ModuleLoader__.load({
                   runPrompt: run.prompt,
                   runActor: run.actor,
                   t,
+                  refreshToken: stepTokens[skey] ?? 0,
                 })
                 : null,
             });
@@ -1060,7 +1169,17 @@ window.__ModuleLoader__.load({
       return h('div', { style: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', boxSizing: 'border-box', fontSize: 13, lineHeight: 1.6, color: T.text, fontFamily: T.font } },
         h('div', { style: { flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid ' + T.border, padding: '6px 12px', minHeight: 30 } },
           h('span', { style: { fontSize: 11, color: T.faint, fontVariantNumeric: 'tabular-nums', fontFamily: T.mono } }, caption() ?? ''),
-          h('button', { type: 'button', onClick: refresh, style: { marginLeft: 'auto', font: 'inherit', color: T.text, background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm, padding: '2px 10px', cursor: 'pointer' } }, label('refresh', '刷新')),
+          // F140: the panel says out loud whether it is following the log.
+          h('span', {
+            title: realtime.paused
+              ? label('realtime.tipPaused', '页面不可见时暂停轮询；切回来会立刻补一次')
+              : label('realtime.tip', '每 2 秒检查一次日志偏移；没有新事件时服务端只回 ~40 B'),
+            style: { display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto', fontSize: 11, fontFamily: T.mono, color: realtime.live && !realtime.paused ? T.muted : T.warn },
+          },
+            h('span', { style: { width: 6, height: 6, borderRadius: 3, background: realtime.paused ? T.faint : (realtime.live ? T.success : T.warn) } }),
+            realtime.paused ? label('realtime.paused', '已暂停') : (realtime.live ? label('realtime.live', '实时') : label('realtime.stalled', '实时中断')),
+          ),
+          h('button', { type: 'button', onClick: refresh, style: { font: 'inherit', color: T.text, background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm, padding: '2px 10px', cursor: 'pointer' } }, label('refresh', '刷新')),
         ),
         h('div', { style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: 12 } },
           renderContent(),
@@ -1079,6 +1198,9 @@ window.__ModuleLoader__.load({
             'stat.runs': 'run（指令）', 'stat.steps': 'step（迭代）', 'stat.events': '事件', 'stat.tokens': 'Token',
             'stat.errors': '错误', 'stat.slow': '慢操作', 'stat.abnormal': '异常 run', 'stat.slowest': '最慢操作',
             'firstPaint': '首屏', 'server': '服务端', 'cacheHit': '缓存命中', 'render': '渲染', 'loadingDetail': '载入 step…',
+            'realtime.live': '实时', 'realtime.paused': '已暂停', 'realtime.stalled': '实时中断',
+            'realtime.tip': '每 2 秒检查一次日志偏移；没有新事件时服务端只回 ~40 B',
+            'realtime.tipPaused': '页面不可见时暂停轮询；切回来会立刻补一次',
             'step.model': '模型', 'step.timing': '计时', 'step.tokens': 'Token', 'step.summary': '概述',
             'step.args': '参数', 'step.result': '结果', 'step.original': '原文', 'step.loading': '载入 step 内容…',
             'step.retry': '重试', 'step.empty': '该 step 无内容', 'step.instruction': '指令',
@@ -1100,6 +1222,9 @@ window.__ModuleLoader__.load({
             'stat.runs': 'runs', 'stat.steps': 'steps', 'stat.events': 'events', 'stat.tokens': 'Tokens',
             'stat.errors': 'errors', 'stat.slow': 'slow', 'stat.abnormal': 'abnormal runs', 'stat.slowest': 'slowest',
             'firstPaint': 'first paint', 'server': 'server', 'cacheHit': 'cache hit', 'render': 'render', 'loadingDetail': 'loading steps…',
+            'realtime.live': 'live', 'realtime.paused': 'paused', 'realtime.stalled': 'not live',
+            'realtime.tip': 'Checks the log offset every 2 s; an unchanged session answers in ~40 B',
+            'realtime.tipPaused': 'Polling pauses while the page is hidden and catches up at once',
             'step.model': 'model', 'step.timing': 'elapsed', 'step.tokens': 'tokens', 'step.summary': 'summary',
             'step.args': 'args', 'step.result': 'result', 'step.original': 'raw', 'step.loading': 'loading step…',
             'step.retry': 'Retry', 'step.empty': 'Empty step', 'step.instruction': 'instruction',

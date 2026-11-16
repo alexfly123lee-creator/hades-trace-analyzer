@@ -22,7 +22,7 @@ export const inject = ['webServer', 'connection', 'sessionQuery'];
 const PREFIX = '/api/trace-analyzer';
 const SNAPSHOT_MAX = 4;
 /** Bumped whenever the Host half changes; the loopback health probe reports it. */
-const HOST_REV = 'm8.7';
+const HOST_REV = 'm8.8';
 const ROUTES = ['runs', 'run', 'step', 'event', 'events', 'session', 'lineage', 'event-trace'];
 
 export function apply(ctx) {
@@ -32,6 +32,8 @@ export function apply(ctx) {
   const snapshots = new Map();
   /** Last cold rebuild: { ms, events, at } — reported by the loopback probe. */
   let lastBuild = null;
+  /** F140: how many polls were answered with a 40 B unchanged reply. */
+  let unchangedHits = 0;
 
   /**
    * Snapshot cache footprint. The cache holds ONE entry per session (the latest
@@ -44,6 +46,7 @@ export function apply(ctx) {
     max: SNAPSHOT_MAX,
     events: [...snapshots.values()].reduce((sum, entry) => sum + (entry.eventCount ?? 0), 0),
     seqs: [...snapshots.values()].map((entry) => entry.eventCount ?? 0),
+    unchangedHits,
     lastBuild,
   });
 
@@ -305,10 +308,20 @@ export function apply(ctx) {
         switch (op) {
           case 'runs': {
             const snapshot = await snapshotFor(sessionId);
+            // R1 realtime (SPEC F140): a polling client sends the offset it
+            // already has. Unchanged ⇒ answer in ~40 B instead of 50 KB, and the
+            // client skips parsing + re-rendering entirely.
+            const since = Number(url.searchParams.get('since'));
+            if (Number.isInteger(since) && since >= 0 && snapshot.seq === since) {
+              unchangedHits += 1;
+              sendJson(res, 200, { ok: true, unchanged: true, seq: snapshot.seq, serverMs: elapsed(started) });
+              return;
+            }
             sendJson(res, 200, buildRunsPayloadFrom(snapshot.tree, snapshot.tokens, snapshot.tools, {
               header: snapshot.header,
               eventCount: snapshot.eventCount,
               sessionId,
+              seq: snapshot.seq,
               serverMs: elapsed(started),
               generatedAt: Date.now(),
             }));
