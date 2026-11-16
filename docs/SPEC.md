@@ -274,8 +274,8 @@
   - **AC**：112px 轨道上，最后一步切片右边缘恰好 100%；每段宽度 ∝ 该步 token；Σ step.token = run.token（单测断言 5 步累计序列 [110,330,660,1100,1650] 与 run 总量相等）；展开 211 步的 run 仍只渲染 80 行（F138 分页）；样例见 mockup/step-token-preview.png。
 ## 21. 展开动效（F144）
 
-- **F144 点击展开有平滑动效（方案 A）**：展开/折叠不再瞬时切换，而是**高度 + 淡入**，一条统一曲线、**没有逐行 stagger**（最克制的一版，见 mockup/expand-motion-demo.html）。
-  - **展开 200ms / 折叠 140ms**：打开时 height 0 → 内容高度、opacity 0 → 1，曲线 cubic-bezier(.2,.7,.3,1)；折叠用更短的 140ms 和 cubic-bezier(.4,0,1,1)，收回要"跟手"。
+- **F144 点击展开有平滑动效（方案 C）**：展开/折叠不再瞬时切换，而是**高度 + 淡入**，一条统一曲线、**没有逐行 stagger**（最克制的一版，见 mockup/expand-motion-demo.html）。
+  - **展开 220ms / 折叠 140ms**：打开时 height 0 → 内容高度、opacity 0 → 1，曲线 cubic-bezier(.2,.7,.3,1)；折叠用更短的 140ms 和 cubic-bezier(.4,0,1,1)，收回要"跟手"。
   - **实现**：Collapse 组件用 WAAPI——打开时量一次 scrollHeight 再 element.animate，动画结束把 height 落回 uto（避免内容再变化时被固定高度裁掉）；**关闭时保留最后一次内容 140ms** 完成收起后才卸载，所以折叠也有动画而不是"啪"地消失。
   - **按需挂载**：关闭的 run/step 不渲染子树（CSS  fr→1fr 那套要求常驻 DOM，200 步的 run 会白挂几百个节点，故不用）。
   - **长 run 降级**：run 的 step 数 > 60 时跳过高度动画，改为 **160ms 纯淡入**——7000px 的高度动画每帧都要重排，必然掉帧。

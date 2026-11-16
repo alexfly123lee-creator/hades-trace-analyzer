@@ -60,9 +60,10 @@ window.__ModuleLoader__.load({
     // F141: live-appended rows fade in instead of popping in.
     const ROW_ANIM_CSS = '@keyframes hadesRowIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}';
 
-    // F144 expand motion (plan A): height + fade, one uniform curve, no stagger.
-    // Collapse is deliberately shorter — closing should feel instant.
-    const EXPAND_MS = 200;
+    // F144 expand motion (plan C): height + fade, one uniform curve, no stagger;
+    // opening takes 220ms so the content is readable while it grows, closing 140ms
+    // so the list snaps back instead of lingering.
+    const EXPAND_MS = 220;
     const COLLAPSE_MS = 140;
     // A 200-step run is ~7k px tall; animating that height costs layout every
     // frame, so big runs fade in instead of measuring/growing.
