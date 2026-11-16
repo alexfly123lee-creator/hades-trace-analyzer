@@ -324,7 +324,16 @@
   - **实验案例**：`mockup/hover-options.html` 存了 7 个候选（A 底色 9%／B 12%／C 16%／D 12%+箭头文字／E 12%+左侧 3px 轨／F 10%+轻微外阴影／G 12%+两根柱子提亮），截图见 `mockup/hover-options-1.png`、`hover-options-2.png`，供后续挑一档。
   - **AC**：浅色主题下鼠标扫过任意 run 行/step 行，能看出底色变深、箭头变蓝、文字提亮，但**没有任何描边**；深浅次序正确（9% < 12%，10% < 22%）；快速扫过多行不出现布局跳动（只改 `background`/`color`）；`check-served` 57/57（新增 `tone: hover ? T.brand` 标记 + `hoverRing` 的 absent 断言：描边必须不存在）；单测 42/42 不变。
 
-## 26. 范围外（v1 不做）
+## 26. 深色模式的 hover 与选中（F149）
+
+- **F149 深色主题要单独给一套透明度**：F148 的 hover 用 `color-mix(accent 9%, layer-1)` —— 在白底上是清楚的淡蓝，但混进深色 `layer-1`（`#232324`）后得到 `#252b39`，与背景几乎分不出来；Step 的 10% 混页面底同理（`#19202d`）。
+  - **深色一套值**：hover Run **22%**、hover Step **26%**；展开态同步提一档——Run **30%**、Step **36%**，保证 hover 仍比展开浅；列头 hover **26%**、底部线 90%；
+  - **浅色完全不变**：仍是 9 / 10 / 12 / 22 / 14 / 80，本次只切换深色；
+  - **检测方式**：平台把深色标记为 `body[data-ds-dark-theme]`（见 `DARK_ATTRIBUTE`），面板可能在 shadow root 内，`body[...]` 后代选择器匹配不到，所以用 **JS 读属性**而不是 CSS：`darkThemeActive()` + `applyThemePalette()` 在渲染时把调色板写回共享的 `T`，并用 `MutationObserver` 监听 `body[data-ds-dark-theme]` / `html[data-ds-theme-source]`，用户切换主题时立刻重渲染，不需要刷新；
+  - **实现**：`LIGHT_TINT` / `DARK_TINT` 两个常量表（每项一个百分数），`tintOf(pct, base)` 生成 `color-mix(...)` 字符串，避免再手写颜色。
+  - **AC**：深色主题下 hover 任意 run/step 行都能一眼看出底色变蓝（旧 9% 换成 22%：`#252b39` → `#283852`）；hover 仍明显浅于展开态（22 < 30，26 < 36）；浅色主题观感与 F148 完全一致（9 / 10）；切换浅色↔深色无需刷新，面板立即换色；`check-served` 60/60（新增 `data-ds-dark-theme`、`function applyThemePalette`、`DARK_TINT` 三个标记）；单测 42/42 不变；对照图 `mockup/hover-dark.png`。
+
+## 27. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

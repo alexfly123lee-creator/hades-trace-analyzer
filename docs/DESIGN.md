@@ -129,8 +129,9 @@
 | 警告 | `--dsw-alias-state-warn-primary` | 琥珀 |
 | 失效 | `--dsw-alias-state-idle-primary` | 中性灰 |
 | 选中边框 | `--dsw-alias-border-selected` | DSH 原生「选中」边框（neutral-bluish-400） |
-| Run 行 hover 底（F148） | `color-mix(accent 9%, layer-1)` | 未展开的 Run 行悬停：比展开态 12% 浅一档；**只用底色，不加描边**（1px 内环方案已否）+ 箭头变蓝 + 索引文字提亮 |
-| Step 行 hover 底（F148） | `color-mix(accent 10%, transparent)` | 括号内 Step 行悬停：比展开态 22% 浅一档；只用底色 + 箭头变蓝 + 标题提亮 |
+| Run 行 hover 底（F148/F149） | 浅 `<accent 9%>` / 深 `<accent 22%>`（混 `layer-1`） | 未展开的 Run 行悬停；只用底色、不加描边；深色单独一套值（22%），展开态深色 30% |
+| Step 行 hover 底（F148/F149） | 浅 `<accent 10%>` / 深 `<accent 26%>` | 括号内 Step 行悬停；深色单独一套值，展开态深色 36% |
+| 主题切换（F149） | `body[data-ds-dark-theme]` → `DARK_TINT` | 调色板在渲染时解析 + `MutationObserver` 跟随，切主题即时生效 |
 | 括号轨 | `--dsw-alias-trajectory-accent`（3px） | Run / Step 范围的标识：左轨 + 1px 描边 + 圆角（括号样式不变），**容器不填底色** |
 | ~~分组边框~~ | 已移除 | 无 box 底色/整圈边框，只用括号标范围 |
 | Run 展开底（派生） | `color-mix(accent 12%, layer-1)` | 展开的 Run 行淡蓝填色，比 hover 的 9% 深一档（F148 起从 8% 提到 12%，保证 hover 不会盖过展开态） |

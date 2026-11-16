@@ -51,6 +51,44 @@ window.__ModuleLoader__.load({
       sortHoverLine: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 80%, transparent)',
     };
 
+    // ---------------------------------------------------------------------
+    // F149: hover and selection tints are theme-dependent.
+    // The same 9% accent over a white surface is a readable tint; over the dark
+    // layer-1 (#232324) it is ~#252b39 — i.e. invisible. Dark therefore needs
+    // its own alphas (~2.4×). The platform marks dark mode with
+    // `body[data-ds-dark-theme]`, so the palette is resolved in JS and swapped
+    // in place: the panel may live inside a shadow root, where a `body[...]`
+    // descendant selector would never match.
+    // ---------------------------------------------------------------------
+    const TINT_BASE = {
+      run: 'var(--dsw-alias-bg-layer-1)',
+      step: 'transparent',
+    };
+    const LIGHT_TINT = { runHover: 9, runSel: 12, stepHover: 10, stepSel: 22, sortHover: 14, sortLine: 80 };
+    const DARK_TINT = { runHover: 22, runSel: 30, stepHover: 26, stepSel: 36, sortHover: 26, sortLine: 90 };
+    const tintOf = (pct, base) => `color-mix(in srgb, var(--dsw-alias-trajectory-accent) ${pct}%, ${base})`;
+
+    function darkThemeActive() {
+      const body = typeof document === 'undefined' ? null : document.body;
+      return Boolean(body && body.hasAttribute('data-ds-dark-theme'));
+    }
+
+    /** Point the shared palette at the current theme; returns true when it moved. */
+    let paletteDark = null;
+    function applyThemePalette() {
+      const dark = darkThemeActive();
+      if (paletteDark === dark) return false;
+      paletteDark = dark;
+      const p = dark ? DARK_TINT : LIGHT_TINT;
+      T.runHoverBg = tintOf(p.runHover, TINT_BASE.run);
+      T.runSelBg = tintOf(p.runSel, TINT_BASE.run);
+      T.stepHoverBg = tintOf(p.stepHover, TINT_BASE.step);
+      T.stepSelBg = tintOf(p.stepSel, TINT_BASE.step);
+      T.sortHoverBg = tintOf(p.sortHover, TINT_BASE.step);
+      T.sortHoverLine = tintOf(p.sortLine, TINT_BASE.step);
+      return true;
+    }
+
     // Indent for the Step level: Step rows and their bracket sit one level in
     // from the Run group, so nesting reads by position, not only by color.
     const STEP_INDENT = 12;
@@ -1030,6 +1068,20 @@ window.__ModuleLoader__.load({
 
     function Body({ sessionId, t }) {
       const renderStart = performance.now();
+      // F149: keep the hover/selection palette in sync with the live theme. This
+      // runs during render (cheap attribute read) and the observer below forces a
+      // re-render when the user flips light/dark.
+      applyThemePalette();
+      const [, setThemeTick] = useState(0);
+      useEffect(() => {
+        if (typeof document === 'undefined' || typeof MutationObserver !== 'function') return undefined;
+        const observer = new MutationObserver(() => {
+          if (applyThemePalette()) setThemeTick((n) => n + 1);
+        });
+        observer.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme', 'style'] });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-ds-theme-source', 'style'] });
+        return () => observer.disconnect();
+      }, []);
       const [fullRuns, setFullRuns] = useState(() => new Set());
       const [payload, setPayload] = useState(null);
       const [error, setError] = useState(null);
