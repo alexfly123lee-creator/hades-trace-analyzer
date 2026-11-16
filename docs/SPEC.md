@@ -276,15 +276,26 @@
 
 - **F144 点击展开有平滑动效（方案 C，再收一档）**：展开/折叠不再瞬时切换，而是**高度 + 淡入**，一条统一曲线、**没有逐行 stagger**（最克制的一版，见 mockup/expand-motion-demo.html）。
   - **展开 160ms / 折叠 120ms**：打开时 height 0 → 内容高度、opacity 0 → 1，曲线 cubic-bezier(.2,.7,.3,1)；折叠用更短的 140ms 和 cubic-bezier(.4,0,1,1)，收回要"跟手"。
-  - **实现**：Collapse 组件用 WAAPI——打开时量一次 scrollHeight 再 element.animate，动画结束把 height 落回 uto（避免内容再变化时被固定高度裁掉）；**关闭时保留最后一次内容 140ms** 完成收起后才卸载，所以折叠也有动画而不是"啪"地消失。
+  - **实现**：Collapse 组件用 WAAPI——打开时量一次 scrollHeight 再 element.animate，动画结束把 height 落回 auto（避免内容再变化时被固定高度裁掉）；**关闭时保留最后一次内容 140ms** 完成收起后才卸载，所以折叠也有动画而不是"啪"地消失。
   - **首次展开不排队**：只有内容已在缓存里（`/run`/`/step` 已到）才做高度动画；首次展开是**立刻出现 + 内容到达后 120ms 跟随长高**（`FOLLOW_MS`），避免先动画一个「载入…」占位符、内容到了再长一次的“双段拖沓”。
-  - **按需挂载**：关闭的 run/step 不渲染子树（CSS  fr→1fr 那套要求常驻 DOM，200 步的 run 会白挂几百个节点，故不用）。
+  - **按需挂载**：关闭的 run/step 不渲染子树（CSS 0fr→1fr 那套要求常驻 DOM，200 步的 run 会白挂几百个节点，故不用）。
   - **长 run 降级**：run 的 step 数 > 60 时跳过高度动画，改为 **160ms 纯淡入**——7000px 的高度动画每帧都要重排，必然掉帧。
   - **箭头**：▸ 用同一个字符**旋转 90°**（160ms），不再替换 ▸/▾，展开时索引列不会抖动。
   - **只响应用户点击**：动画只在 open 变化时触发；F140 的实时刷新（efreshToken/payload 替换）不会重放动画。
   - **无障碍**：prefers-reduced-motion: reduce 时直接切换，不做任何动画。
-  - **AC**：DevTools Performance 录一次展开，动画期间**无 >50ms 长任务**、每帧 ≤16.7ms；快速连点 10 次不出现动画叠加或高度错位；折叠后该 run 的子节点已从 DOM 移除；200 步的 run 是一整块淡入而非缓慢长高；系统开启"减少动态效果"后瞬时切换；check-served 44/44（新增 unction Collapse / prefers-reduced-motion 两个标记）；单测 42/42 不变。
-## 22. 范围外（v1 不做）
+  - **AC**：DevTools Performance 录一次展开，动画期间**无 >50ms 长任务**、每帧 ≤16.7ms；快速连点 10 次不出现动画叠加或高度错位；折叠后该 run 的子节点已从 DOM 移除；200 步的 run 是一整块淡入而非缓慢长高；系统开启"减少动态效果"后瞬时切换；check-served 44/44（新增 function Collapse / prefers-reduced-motion 两个标记）；单测 42/42 不变。
+## 22. 时间条与 Token 条的统一（F145）
+
+- **F145 两根指标的 bar 只差颜色**：Time 列与 Token 列曾经有三种画法——Run 行是 8px 满高填充、Step 的 Time 是 `top/bottom:1px` 的 6px 内缩胶囊（圆角 99）、Step 的 Token 是满高切片 + 18% 底衬（圆角 2）。同一行里两根条一个"浮"一个"沉"，读起来像两个不同控件。现在**所有列、所有层级都由同一对 helper 绘制**，结构完全一致，只剩色相不同（Time = `--dsw-alias-trajectory-accent` 蓝 `#3b82f6`；Token = `--dsw-alias-chart-tools` 紫 `#a78bfa`）。
+  - **`SpentFill`（底衬）**：`0 → 本行之前已消费` 的淡色区，`opacity = SPENT_ALPHA`（0.18）。
+  - **`SliceFill`（本行份额）**：满轨道高（8px）、`borderRadius = SLICE_RADIUS`（2px）、solid 色；位置与宽度交给调用方。
+  - **Step 的 Time**：位置 = 本步起点在 run 时间轴上的百分比（gantt 语义不变），宽度 = 本步时长占比；底衬 = 本步开始前已流逝的时间。**Step 的 Token**：位置 = 累计(k−1)，宽度 = 本步份额（F142 语义不变）；底衬 = 本步之前已花掉的 token。两列因此是同一张"已用 + 本步"的图，只是量纲与色相不同。
+  - **Run 行**：两列都是 `left: 0` 的纯 `SliceFill`（前面没有"已用"，不加底衬），本来就是同一种画法，行为不变。
+  - **不再有局部内联条**：原先散在三处的 `h('div', { position: 'absolute', … })` 全部收敛到两个 helper，`TimeBar` 组件删除；`SLICE_RADIUS` / `SPENT_ALPHA` / 过渡曲线只有一处定义，防止再次分叉。
+  - **过渡**：`left .25s ease, width .25s ease` 统一（实时刷新与排序时两根条同步生长，不再一条 linear 一条 ease）。
+  - **AC**：同一行里 Step 的 Time 与 Token 的**高度、圆角、底衬透明度一致**（8px / 2px / 18%），只有色彩不同；Run 行两列也一致；`client.js` 里不再存在内联的绝对定位条（只剩两个 helper 内部）；`check-served` 49/49（新增 `function SliceFill`、`function SpentFill`、`SLICE_RADIUS = 2`、`SPENT_ALPHA = 0.18` 四个标记）；单测 42/42 不变；对照图 `mockup/bar-align.png`。
+
+## 23. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

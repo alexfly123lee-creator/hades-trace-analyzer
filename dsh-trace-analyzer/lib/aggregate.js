@@ -424,7 +424,7 @@ export function buildTraceTree(events) {
       tailStep = null;
       continue;
     }
-    // The next user message is queued as an gent/inbox/spliced event; it is
+    // The next user message is queued as an agent/inbox/spliced event; it is
     // never part of the current step (it used to stretch the last step's time by
     // the user's thinking time). The real user/message opens the next run.
     if (event.type === 'agent/inbox/spliced') continue;

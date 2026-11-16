@@ -170,6 +170,20 @@
 不变量照旧：表头标签与柱子左缘齐平、Run/Step 两列严格同宽、标签与指标条基线对齐；
 字号只用 11 / 12 / 13 / 32 四档，不再出现 10px。
 
+### 5.2.1 指标条只有一种画法（F145）
+
+| 属性 | 值 | 说明 |
+|---|---|---|
+| 轨道高 | `8px`（`borderRadius: 99`，`overflow: hidden`） | 所有列、所有层级共用 |
+| 底衬 `SpentFill` | `opacity: 0.18`，`0 → 本行之前已消费` | Time = 本步开始前已流逝；Token = 本步之前已花掉 |
+| 本行份额 `SliceFill` | 满轨道高，`borderRadius: 2px`，solid 色 | 位置/宽度由调用方给（Run 恒为 `left: 0`） |
+| 轨道底色 | `color-mix(in srgb, <tone> 12%, transparent)` | 未消费部分 |
+| 色相 | Time `--dsw-alias-trajectory-accent`（`#3b82f6`）／Token `--dsw-alias-chart-tools`（`#a78bfa`） | **唯一的差别** |
+| 过渡 | `left .25s ease, width .25s ease` | 两根条同步生长 |
+
+- 反例（已删除）：Step 的 Time 曾用 `top/bottom: 1px` + `radius 99` 的 6px 内缩胶囊，看起来"浮"在轨道里，与 Token 的满高切片不是同一个控件。
+- 任何新的指标列都必须用这两个 helper，不允许再写内联的绝对定位条。
+
 ### 5.3 圆角（`--dsw-radius-*`）
 
 | Token | 值 |

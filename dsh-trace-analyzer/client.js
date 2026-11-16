@@ -539,11 +539,13 @@ window.__ModuleLoader__.load({
               h('span', { style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : (runSelected ? T.text : T.muted), fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 } },
                 r.stepCount ? h(Caret, { key: 'caret', open }) : null,
                 `run ${r.idx}`),
+              // F145: both columns are the same slice (left 0, width = share of
+              // the session max); only `tone` differs.
               h(MetricBar, {
                 width: TIME_W,
                 numWidth: TIME_NUM_W,
                 tone: T.brand,
-                fill: h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: tPct + '%', transition: 'width .25s ease', background: T.brand } }),
+                fill: h(SliceFill, { tone: T.brand, left: 0, width: Number(tPct), tip: fmtMs(r.time) }),
                 valueText: fmtMs(r.time),
                 tip: fmtMs(r.time),
               }),
@@ -554,7 +556,7 @@ window.__ModuleLoader__.load({
                 width: TOKEN_W,
                 numWidth: TOKEN_NUM_W,
                 tone: T.token,
-                fill: h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: kPct + '%', transition: 'width .25s ease', background: T.token } }),
+                fill: h(SliceFill, { tone: T.token, left: 0, width: Number(kPct), tip: fmtK(r.token) + ' tok' }),
                 valueText: fmtK(r.token),
                 tip: fmtK(r.token) + ' tok',
               }),
@@ -571,12 +573,41 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function TimeBar({ start, end, min, max, color, dashed, marker, tip }) {
-      const range = (max - min) || 1;
-      const left = ((start - min) / range) * 100;
-      if (marker) return h('div', { title: tip, style: { position: 'absolute', left: `calc(${left}% - 1px)`, top: 2, bottom: 2, width: 2, background: color, borderRadius: T.radiusXs, opacity: .9 } });
-      const width = Math.max(((end - start) / range) * 100, 1.5);
-      return h('div', { title: tip, style: { position: 'absolute', left: left + '%', width: width + '%', transition: 'left .25s linear, width .25s linear', top: 1, bottom: 1, boxSizing: 'border-box', background: color, borderRadius: 99, opacity: 1, border: dashed ? '1px dashed ' + color : undefined } });
+    // ---------------------------------------------------------------------
+    // F145: Time and Token are ONE instrument in two hues.
+    // Every fill in every column is painted by the two helpers below, so the
+    // height (full track), the rounding (SLICE_RADIUS) and the faint "already
+    // consumed before this row" underlay can never drift apart again. The bar
+    // had grown three different looks — full-height run fill, a 6px inset pill
+    // for Step time, a full-height slice for Step token — which read as three
+    // different widgets instead of one metric pair. Colour is the only
+    // difference left.
+    // ---------------------------------------------------------------------
+    const SLICE_RADIUS = 2;
+    const SPENT_ALPHA = 0.18;
+
+    /** Track area consumed *before* this row's own segment (faint underlay). */
+    function SpentFill({ tone, pct }) {
+      if (!(pct > 0.05)) return null;
+      return h('div', {
+        style: {
+          position: 'absolute', left: 0, top: 0, bottom: 0, width: pct + '%',
+          background: tone, opacity: SPENT_ALPHA, transition: 'width .25s ease',
+        },
+      });
+    }
+
+    /** This row's own segment: full track height, one rounding, solid tone. */
+    function SliceFill({ tone, left = 0, width, tip }) {
+      if (!(width > 0)) return null;
+      return h('div', {
+        title: tip,
+        style: {
+          position: 'absolute', left: left + '%', width: width + '%', top: 0, bottom: 0,
+          boxSizing: 'border-box', background: tone, borderRadius: SLICE_RADIUS,
+          transition: 'left .25s ease, width .25s ease',
+        },
+      });
     }
 
     /**
@@ -1228,14 +1259,31 @@ window.__ModuleLoader__.load({
             const beforePct = ((cumTokens[stepIdx] - sToken) / runTokenTotal) * 100;
             const ownPct = Math.max(cumPct - beforePct, sToken > 0 ? 0.6 : 0);
             const sharePct = Math.round((sToken / runTokenTotal) * 1000) / 10;
-            const timeFill = (step.startTime != null && step.endTime != null)
-              ? h(TimeBar, { start: step.startTime, end: step.endTime, min, max, color: T.brand, tip: `${timeText} · ${fmtClock(step.startTime)} → ${fmtClock(step.endTime)}` })
-              : h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: stepTimePct + '%', transition: 'width .25s ease', background: T.brand, borderRadius: 99 } });
+            // F145: Time and Token use the same two fills — a faint "consumed
+            // before this step" underlay plus this step's own solid slice — so
+            // the columns differ in colour only. Time keeps its gantt meaning
+            // (start/end on the run timeline); token keeps its cumulative
+            // meaning (token k sits at [cum(k-1), cum(k)] of the run total).
+            const timeRange = (max - min) || 1;
+            const timeLeftPct = Math.min(100, Math.max(0, step.startTime != null ? ((step.startTime - min) / timeRange) * 100 : 0));
+            const timeWidthPct = Math.max(0, Math.min(100 - timeLeftPct,
+              (step.startTime != null && step.endTime != null)
+                ? Math.max(((step.endTime - step.startTime) / timeRange) * 100, 1.5)
+                : stepTimePct));
+            const timeFill = h('div', null,
+              h(SpentFill, { tone: T.brand, pct: timeLeftPct }),
+              h(SliceFill, {
+                tone: T.brand, left: timeLeftPct, width: timeWidthPct,
+                tip: (step.startTime != null && step.endTime != null)
+                  ? `${timeText} · ${fmtClock(step.startTime)} → ${fmtClock(step.endTime)}`
+                  : timeText,
+              }),
+            );
             const tokenFill = h('div', null,
-              // spent before this step
-              h('div', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: cumPct + '%', transition: 'width .25s ease', background: T.token, opacity: 0.18 } }),
+              // spent before this step (same underlay as the time column)
+              h(SpentFill, { tone: T.token, pct: beforePct }),
               // this step's own slice
-              h('div', { style: { position: 'absolute', left: beforePct + '%', width: ownPct + '%', top: 0, bottom: 0, background: T.token, borderRadius: 2, transition: 'left .25s ease, width .25s ease' } }),
+              h(SliceFill, { tone: T.token, left: beforePct, width: ownPct, tip: `${tokenText} tok · ${sharePct}% of run · 累计 ${fmtK(cumTokens[stepIdx])} (${Math.round(cumPct)}%)` }),
             );
             return h(StepRow, {
               key: stepIdx,
