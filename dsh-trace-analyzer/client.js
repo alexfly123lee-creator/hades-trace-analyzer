@@ -317,13 +317,15 @@ window.__ModuleLoader__.load({
 
     // Fixed column widths: the same two tracks are shown on every row (Run and
     // Step), so time and tokens are compared side by side instead of toggling.
-    // F139: tracks grew with the type (170 / 112) so `19.10s` and `126k` keep
-    // their breathing room, and the index cell grew so `▸ step 199` fits.
+    // F139 grew the tracks with the type; F146 makes the two columns *equal* —
+    // a narrower Token column made the pair read as a primary metric plus an
+    // appendix, and a 112px track squeezed the cumulative slices of F142.
+    // Both columns: 150 track + 6 gap + 70 number = 226px.
+    const METRIC_W = 150;
+    const METRIC_NUM_W = 70;
+    // Kept as named aliases so call sites stay readable (and a future split
+    // stays a one-line change).
     const RUN_IDX_W = 78;
-    const TIME_W = 170;
-    const TIME_NUM_W = 70;
-    const TOKEN_W = 112;
-    const TOKEN_NUM_W = 50;
 
     function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, label }) {
       const listRef = useRef(null);
@@ -481,10 +483,10 @@ window.__ModuleLoader__.load({
           // Cells mirror the row cells exactly (bar slot + number slot) so the
           // bar-aligned labels land on the same x as the track below; the label
           // itself only covers the track.
-          h('div', { key: 'h-time', style: { flex: `0 0 ${TIME_W + 6 + TIME_NUM_W}px`, display: 'flex', alignItems: 'center', minWidth: 0 } },
-            sortCol('time', label('col.time', 'Time'), T.brand, TIME_W)),
-          h('div', { key: 'h-token', style: { flex: `0 0 ${TOKEN_W + 6 + TOKEN_NUM_W}px`, display: 'flex', alignItems: 'center', minWidth: 0 } },
-            sortCol('token', label('col.token', 'Token'), T.token, TOKEN_W)),
+          h('div', { key: 'h-time', style: { flex: `0 0 ${METRIC_W + 6 + METRIC_NUM_W}px`, display: 'flex', alignItems: 'center', minWidth: 0 } },
+            sortCol('time', label('col.time', 'Time'), T.brand, METRIC_W)),
+          h('div', { key: 'h-token', style: { flex: `0 0 ${METRIC_W + 6 + METRIC_NUM_W}px`, display: 'flex', alignItems: 'center', minWidth: 0 } },
+            sortCol('token', label('col.token', 'Token'), T.token, METRIC_W)),
           sort ? sortClear() : null,
         ),
         h('div', { ref: listRef }, sorted.map((r) => {
@@ -542,8 +544,8 @@ window.__ModuleLoader__.load({
               // F145: both columns are the same slice (left 0, width = share of
               // the session max); only `tone` differs.
               h(MetricBar, {
-                width: TIME_W,
-                numWidth: TIME_NUM_W,
+                width: METRIC_W,
+                numWidth: METRIC_NUM_W,
                 tone: T.brand,
                 fill: h(SliceFill, { tone: T.brand, left: 0, width: Number(tPct), tip: fmtMs(r.time) }),
                 valueText: fmtMs(r.time),
@@ -553,8 +555,8 @@ window.__ModuleLoader__.load({
               // *distribution* lives on the step rows, where each step's track is
               // the run's total and the steps fill it cumulatively in order.
               h(MetricBar, {
-                width: TOKEN_W,
-                numWidth: TOKEN_NUM_W,
+                width: METRIC_W,
+                numWidth: METRIC_NUM_W,
                 tone: T.token,
                 fill: h(SliceFill, { tone: T.token, left: 0, width: Number(kPct), tip: fmtK(r.token) + ' tok' }),
                 valueText: fmtK(r.token),
@@ -619,7 +621,7 @@ window.__ModuleLoader__.load({
      * right of the bar. The bar's *track* length never changes (so numbers stay
      * put), only the colored portion inside it reflects the value.
      */
-    function MetricBar({ tone, fill, valueText, tip, width = 170, numWidth = 50 }) {
+    function MetricBar({ tone, fill, valueText, tip, width = METRIC_W, numWidth = METRIC_NUM_W }) {
       return h('div', {
         title: tip,
         style: { flex: `0 0 ${width + numWidth + 6}px`, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 },
@@ -1293,7 +1295,7 @@ window.__ModuleLoader__.load({
               onSelect: () => selectStep(run.idx, stepIdx),
               idxWidth: stepIdxWidth,
               timeMetric: h(MetricBar, {
-                width: TIME_W, numWidth: TIME_NUM_W, tone: T.brand, fill: timeFill, valueText: timeText,
+                width: METRIC_W, numWidth: METRIC_NUM_W, tone: T.brand, fill: timeFill, valueText: timeText,
                 // Split tooltip: execution = model + tools, waiting shown separately (F133).
                 tip: [timeText]
                   .concat(step.modelMs != null ? ['模型 ' + fmtMs(step.modelMs)] : [])
@@ -1302,7 +1304,7 @@ window.__ModuleLoader__.load({
                   .join(' · '),
               }),
               tokenMetric: h(MetricBar, {
-                width: TOKEN_W, numWidth: TOKEN_NUM_W, tone: T.token, fill: tokenFill, valueText: tokenText,
+                width: METRIC_W, numWidth: METRIC_NUM_W, tone: T.token, fill: tokenFill, valueText: tokenText,
                 // F143: the track is the run's total, so the tip says where this
                 // step sits inside it and how much of the run is spent already.
                 tip: `${tokenText} tok · ${sharePct}% of run · 累计 ${fmtK(cumTokens[stepIdx])} (${Math.round(cumPct)}%)`,
