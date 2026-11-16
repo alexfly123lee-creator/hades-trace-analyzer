@@ -58,8 +58,8 @@
 
 **两个模块，不是一个卡**：
 
-1. **KPI 模块**（滚走）：`Run 数 / Step 数 / 事件数 / Token 总量` + `错误 / 慢操作 / 异常 Run / 最慢操作` 压成一行（15px 数字 + 11px 标签 + mono 上下文）。
-2. **矩阵卡**（**F152：`transform` 钉住**，不是 `position: sticky`）：卡片装在同尺寸占位 `div` 里，滚动时按占位盒的视口坐标算 `translateY(max(0, min(pinTop − wrapTop, maxT)))` 写到卡片的 `transform` 上，布局空间无关、不依赖谁在滚、到列表底部停住；不透明底 + 浅投影 + `z-index: 3`。4 行 × 每个 run 一列。
+1. **KPI 模块**（F153 起与矩阵一起吸顶）：`Run 数 / Step 数 / 事件数 / Token 总量` + `错误 / 慢操作 / 异常 Run / 最慢操作` 压成一行（15px 数字 + 11px 标签 + mono 上下文）。
+2. **KPI + 矩阵整块**（**F152/F153：`transform` 钉住**，不是 `position: sticky`）：两块装在同尺寸占位 `div` 里，滚动时按占位盒的视口坐标算 `translateY(max(0, min(pinTop − wrapTop, maxT)))` 写到块的 `transform` 上，布局空间无关、不依赖谁在滚、到列表底部停住；占位盒铺 `surface` 底色，避免两块之间 8px 的缝透出后面的行。矩阵 4 行 × 每个 run 一列。
 
 | 行 | 含义 | 颜色 | 计算 |
 |---|---|---|---|

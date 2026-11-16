@@ -333,9 +333,9 @@ window.__ModuleLoader__.load({
 
     // ---------------------------------------------------------------------
     // F151 top overview — two modules instead of one card:
-    //   KpiSummary      the numbers, its own module (scrolls away)
-    //   OverviewMatrix  the picture, sticky: it stays pinned at the top while
-    //                   the run list scrolls underneath it
+    //   KpiSummary     the numbers — its own bordered module
+    //   OverviewBoard  numbers + picture in ONE pinned block (F153): both stay
+    //                  at the panel top while the run list scrolls underneath
     // ---------------------------------------------------------------------
     function KpiSummary({ kpi, label }) {
       const items = [
@@ -377,19 +377,24 @@ window.__ModuleLoader__.load({
      * in this session — a 52× skew — so a linear ramp would paint one dark cell
      * and 173 invisible ones.
      *
-     * Sticky (F151/F152): the card stays at the top so the picture never leaves
-     * the screen while reading a run far down the list.
+     * F150..F153 heat matrix: four rows × one column per run, rendered together
+     * with the KPI summary inside a single pinned block (F153: the user wants the
+     * numbers pinned too, not just the picture).
      *
-     * Why this is a JS pin and not `position: sticky`: the panel's scroll owner is
+     * Shading is rank-based, not linear: token goes 13.4k (median) → 691k (max)
+     * in this session — a 52× skew — so a linear ramp would paint one dark cell
+     * and 173 invisible ones.
+     *
+     * Why the pin is JS and not `position: sticky`: the panel's scroll owner is
      * not knowable up-front (in the shipped GUI the *conversation page* scrolls,
      * not our box) and any ancestor with `overflow: hidden` silently turns into a
      * non-scrolling sticky container — the card then scrolls away with the page,
-     * which is exactly what happened. Translating the card inside a same-size
+     * which is exactly what happened. Translating the block inside a same-size
      * placeholder is layout-space independent: it does not care which ancestor
      * scrolls, it never shifts the list, and it cannot create a fixed-position
      * containing-block surprise.
      */
-    function OverviewMatrix({ rows, label, onLocate }) {
+    function OverviewBoard({ kpi, rows, label, onLocate }) {
       const [hover, setHover] = useState(null);
       const wrapRef = useRef(null);
       const cardRef = useRef(null);
@@ -482,13 +487,25 @@ window.__ModuleLoader__.load({
         key: 'lg-' + text,
         style: { display: 'inline-flex', alignItems: 'center', gap: 4, color: T.muted },
       }, h('i', { style: { width: 9, height: 9, borderRadius: 2, background: tone, display: 'inline-block' } }), text);
-      return h('div', { ref: wrapRef, style: { marginBottom: 12 } },
+      return h('div', {
+        ref: wrapRef,
+        // F153: the placeholder paints the surface colour so the 8px seam between
+        // the KPI card and the matrix card does not reveal the rows behind it
+        // while the block is pinned.
+        style: { marginBottom: 12, background: T.surface },
+      },
         h('div', {
           ref: cardRef,
+          'data-hades-board': '1',
           style: {
-            // F152: pinned by the transform effect above, not by `position:
-            // sticky` — see the comment at the top of this component.
+            // F152/F153: pinned by the transform effect above, not by
+            // `position: sticky` — see the comment at the top of this component.
             zIndex: 3, willChange: 'transform',
+          },
+        },
+        h(KpiSummary, { kpi, label }),
+        h('div', {
+          style: {
             border: '1px solid ' + T.border, borderRadius: T.radiusMd,
             padding: '8px 12px 7px', background: T.surface,
             boxShadow: `0 10px 18px -14px color-mix(in srgb, ${T.text} 55%, transparent)`,
@@ -558,6 +575,7 @@ window.__ModuleLoader__.load({
               color: hovered ? T.text : T.faint,
             },
           }, hovered ? summary : label('mx.hint', '悬停看这个 Run · 点击定位')),
+        ),
         ),
         ),
       );
@@ -1492,7 +1510,11 @@ window.__ModuleLoader__.load({
           const maxScroll = scroller
             ? Math.max(0, scroller.scrollHeight - scroller.clientHeight)
             : (win ? Math.max(0, document.documentElement.scrollHeight - win.innerHeight) : 0);
-          const anchor = viewH * 0.32; // keep clear of the sticky card
+          // F153: the pinned block is taller now, so the landing point has to sit
+          // below it — otherwise the located row would be hidden behind it.
+          const board = host.querySelector('[data-hades-board]');
+          const boardH = board ? board.offsetHeight : 0;
+          const anchor = Math.min(viewH * 0.6, Math.max(viewH * 0.32, boardH + 24));
           const target = Math.max(0, Math.min(maxScroll, current + (el.getBoundingClientRect().top - origin) - anchor));
           const delta = target - current;
           if (Math.abs(delta) < 2) return;
@@ -1697,10 +1719,10 @@ window.__ModuleLoader__.load({
         if (!payload) return null;
         if ((payload.counts?.events ?? 0) === 0) return h('div', { style: { color: T.muted } }, label('empty', '该会话暂无事件'));
         return h('div', null,
-          // F151: numbers and picture are two modules — the summary scrolls away,
-          // the matrix sticks.
-          h(KpiSummary, { kpi, label }),
-          h(OverviewMatrix, {
+          // F153: numbers + picture are one pinned block — both stay at the panel
+          // top while the run list scrolls under them.
+          h(OverviewBoard, {
+            kpi,
             rows: payload.runs ?? [],
             label,
             onLocate: locateRun,

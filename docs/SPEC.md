@@ -366,7 +366,15 @@
   5. **红/黄降饱和**：异常行的红/橙不再是纯色实心，改为 `color-mix(… 58%, transparent)`，3px 小格不再刺眼；图例色块仍用纯色以便对照。
   - **AC**：滚动对话页时矩阵卡始终贴在可视区顶部（实测 `top=0`），滚到列表末尾时停在底部不越界；悬停十字线是**两条 1px 直线 + 一层 14% 淡底**，任何列宽下都不出现梯形/楔形；4 行标签颜色一致；图例是色块 + 文字；红/橙为半透明；`check-served` 72/72（新增 `band-fill`、`bandLayer('band-l'`、`data-hades-scroll`、`translateY(${t}px)`，并把 `position: 'sticky'` 改为 absent 断言）；单测 43/43。
 
-## 30. 范围外（v1 不做）
+## 30. 数字摘要与矩阵一起吸顶（F153）
+
+- **F153 顶部整块吸顶**：F152 只钉住了矩阵卡，KPI 数字仍会滚走。现在**数字摘要 + 热力矩阵作为一个整体**放进同一个被钉住的块里（`OverviewBoard`）：滚动时两块一起停在面板顶部，run 列表从它们下面穿过。
+  - **结构**：`占位 div`（`background: surface`，用于遮住两块之间 8px 的缝）→ `被钉的块`（`data-hades-board`，`will-change: transform`）→ `KpiSummary` 卡片 + 矩阵卡片；钉住的算法与 F152 相同（`translateY(max(0, min(pinTop − wrapTop, maxT)))`），只是**测量的是整块高度**。
+  - **点击定位的落点同步**：可滚动区域的顶部被这块挡住了，所以 `locateRun` 的落点改由 `boardH + 24` 与 `viewH*0.32` 取较大值（上限 `viewH*0.6`），定位到的 Run 不会被吸顶块盖住。
+  - **实测**（CDP，同一份病态 DOM：`panel{overflow:hidden}` + 页面滚 520px）：不钉时整块 `top=-445 / bottom=-318`；钉住后 `top=0 / bottom=127`、`translateY(445.4px)`，且 KPI 卡在块内 `top=0`（即数字与矩阵一起挂在顶部）。
+  - **AC**：页面滚动时**数字与矩阵都不动**（两者 top 恒为 0，直到列表底）；两块之间的缝隙不透出下面的行；点格子定位后的行完整可见（不被吸顶块压住）；`check-served` 73/73（新增 `function OverviewBoard`、`data-hades-board`）；单测 43/43。
+
+## 31. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
