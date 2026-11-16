@@ -77,11 +77,11 @@
   - 无文本无工具但有压缩/重试时用该事件当标签（`[压缩] 12.5k tok`、`[失败] RATE_LIMIT`）。标签配色只承载语义：失败=error、重试/压缩=warn、交付/回复=品牌色、其余中性。**状态标记最多 2 个**；原始长摘要保留在 `text` 里做 tooltip。
 - **Step 说明行（F23.2）**：压缩 / 重试 / 失败 / 文件变更 / 斜杠命令 / 计划 / 清单 / 交付 / 审批 在详情面板里各占一行 muted 说明行（左侧 19px 标签 + mono 说明），按事件顺序插在原位；`job/*`、`session-log-deepseek/*`、`request/header` 等纯传输/包装事件不渲染。
 - **列头排序控件（F132，可点击暗示）**：列头不是纯文字，而是**整列热区**的按钮（条槽 + 数字槽，220px / 152px；高度 = 表头整行）。三档视觉状态：**未排序** = `⇅` 两枚箭头各 35%，标签 `label-secondary`；**悬停/聚焦** = 整列 8% accent 底 + 底部 1px 55% 线（把热区画出来），双箭头提到 55%；**排序生效** = 只点亮当前方向（100%，另一枚 22%），标签转列主色。点击循环 **默认 → 降序 → 升序 → 默认**；生效时列右侧出现状态胶囊「已按 Time ↓ 排序 ✕」。图标占固定 7px 槽位、悬停底色不改布局，排序时文字不位移。
-- **表头对齐（对齐柱子，不对齐数字）**：表头 `Time` / `Token` 是**柱子列**上的按钮——热区只有条槽（150 / 100px），文字左边缘与柱子左边缘重合，方向箭头跟在文字右侧（固定 7px 槽）；数字列不设表头。表头单元格宽度仍与行一致（220 / 152px），列位置不漂移。
-- **行标签统一（F136）**：Turn 行与 Step 行共用**同一个标签组件**（19px 高 / 10px / 650 / `padding 0 5px` / 1px 透明边框 / radius-xs），位置也相同（指标条之后、正文之前，独立 flex 子项、gap 10）。Turn 放**角色**（`USER` / `SYSTEM`），Step 放**动作**（`READ` / `EDIT` / `RUN` / `REPLY` / `FAIL` / `DELIVER` / `COMPACT` / `SYSTEM` / `CONTEXT`）；**标签一律英文大写**（中文放 tooltip），与 `run` / `step` / `Time` / `Token` 一致；动作标签的颜色映射到角色调色板：工具类动作=warn（同「工具」）、回复=assistant、系统提示词=system、仅注入=success、失败=error、重试/压缩=warn。**两级只换词表，不换外观**；Step 行可以并排多枚同一几何的动作 chip（F137），不引入第二套尺寸。
+- **表头对齐（对齐柱子，不对齐数字）**：表头 `Time` / `Token` 是**柱子列**上的按钮——热区只有条槽（170 / 112px），文字左边缘与柱子左边缘重合，方向箭头跟在文字右侧（固定 7px 槽）；数字列不设表头。表头单元格宽度仍与行一致（246 / 168px），列位置不漂移。
+- **行标签统一（F136）**：Turn 行与 Step 行共用**同一个标签组件**（20px 高 / 11px / 650 / `padding 0 6px` / 1px 透明边框 / radius-xs），位置也相同（指标条之后、正文之前，独立 flex 子项、gap 10）。Turn 放**角色**（`USER` / `SYSTEM`），Step 放**动作**（`READ` / `EDIT` / `RUN` / `REPLY` / `FAIL` / `DELIVER` / `COMPACT` / `SYSTEM` / `CONTEXT`）；**标签一律英文大写**（中文放 tooltip），与 `run` / `step` / `Time` / `Token` 一致；动作标签的颜色映射到角色调色板：工具类动作=warn（同「工具」）、回复=assistant、系统提示词=system、仅注入=success、失败=error、重试/压缩=warn。**两级只换词表，不换外观**；Step 行可以并排多枚同一几何的动作 chip（F137），不引入第二套尺寸。
 - **角色标签（F131，与内置「轨迹」逐项对齐）**：kind 集合、中文标签、配色与标签几何全部照抄轨迹的 `kindTag`（`TrajectoryTable.module.css`）。
   - **落位**：Run 行在指标条之后放一枚（触发者：run0=系统、其余=用户）；**Step 行不放**；点开 Step 后，每条明细行各放一枚（用户指令 / 上下文 / 助手概述 / 每个工具块）。
-  - **标签几何**：高 19px、`padding: 0 5px`、1px 透明边框、`--dsw-radius-xs`、`font-size 10px / line-height 16px`、`font-weight 650`、`letter-spacing .035em`、无圆点（与轨迹一致）。
+  - **标签几何**：高 20px、`padding: 0 6px`、1px 透明边框、`--dsw-radius-xs`、`font-size 10px / line-height 16px`、`font-weight 650`、`letter-spacing .035em`、无圆点（与轨迹一致）。
 
 | kind | 中文 / 英文 | 前景 | 背景 |
 |---|---|---|---|
@@ -150,7 +150,25 @@
 
 - 文本：`var(--dsw-font-family)`（系统栈：-apple-system / BlinkMacSystemFont / Segoe UI / PingFang SC / Hiragino Sans GB / Microsoft YaHei / Helvetica / Arial）。
 - 代码/等宽：`var(--ds-font-family-code)`（SF Mono / JetBrains Mono / Fira Code / Consolas / Menlo / Courier / PingFang SC / Microsoft YaHei）。
-- **字重：正文一律 400（不加粗）**。本插件的表格/列表内**禁止**使用 `fontWeight` 600 / 650 / 700；**唯一例外**是角色标签（F131）——它照抄平台轨迹的 `kindTag`，固定 `font-weight: 650` / 10px / 19px 高，属于「对齐平台既有控件」而非自造加粗。
+- **字重：正文一律 400（不加粗）**。本插件的表格/列表内**禁止**使用 `fontWeight` 600 / 650 / 700；**唯一例外**是角色标签（F131）——它照抄平台轨迹的 `kindTag`，固定 `font-weight: 650` / 11px / 20px 高，属于「对齐平台既有控件」而非自造加粗。
+
+#### 可读性基线（F139）
+
+整页在 2026-11 放大了一档（原 10/11/12px 的字号读起来偏小）：
+
+| 元素 | 旧 | 新 |
+|---|---|---|
+| 正文 / 行高 | 12px / 1.45 | **13px / 1.6** |
+| 次要文字（行标题、面板行） | 11px | **12px** |
+| 极次要（标签、元信息、数字） | 10px | **11px** |
+| KPI 大数字 | 28px | **32px** |
+| 行最小高 / 行内 gap | 26px / 10px | **30px / 12px** |
+| 行索引列 | 64px | **78px**（`▸ step 199` 不溢出） |
+| Time 条 / Token 条（含数字槽） | 150 / 100（64 / 46） | **170 / 112（70 / 50）** |
+| 标签 chip | 19px 高 / 10px | **20px 高 / 11px**（line-height 17、padding 0 6px） |
+
+不变量照旧：表头标签与柱子左缘齐平、Run/Step 两列严格同宽、标签与指标条基线对齐；
+字号只用 11 / 12 / 13 / 32 四档，不再出现 10px。
 
 ### 5.3 圆角（`--dsw-radius-*`）
 

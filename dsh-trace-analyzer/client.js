@@ -183,10 +183,10 @@ window.__ModuleLoader__.load({
         title: title ?? text,
         style: {
           display: 'inline-flex', alignItems: 'center', flex: '0 0 auto',
-          height: 19, padding: '0 5px', boxSizing: 'border-box',
+          height: 20, padding: '0 6px', boxSizing: 'border-box',
           border: '1px solid transparent', borderRadius: 'var(--dsw-radius-xs)',
           color, background,
-          fontSize: 10, lineHeight: '16px', fontWeight: 650, letterSpacing: '0.035em',
+          fontSize: 11, lineHeight: '17px', fontWeight: 650, letterSpacing: '0.035em',
           userSelect: 'none', whiteSpace: 'nowrap',
         },
       }, text);
@@ -205,18 +205,21 @@ window.__ModuleLoader__.load({
 
     function StatCard({ num, lbl, sub, tone, title }) {
       return h('div', { title, style: { border: '1px solid ' + T.border, borderRadius: T.radiusMd, padding: '10px 12px', background: T.surface, minWidth: 0 } },
-        h('div', { style: { fontSize: 28, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', color: tone ?? T.text, letterSpacing: '-.01em' } }, num),
-        h('div', { style: { fontSize: 11, color: T.muted, marginTop: 2 } }, lbl),
-        sub ? h('div', { style: { fontSize: 10, color: T.muted, marginTop: 1 } }, sub) : null,
+        h('div', { style: { fontSize: 32, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', color: tone ?? T.text, letterSpacing: '-.01em' } }, num),
+        h('div', { style: { fontSize: 12, color: T.muted, marginTop: 2 } }, lbl),
+        sub ? h('div', { style: { fontSize: 11, color: T.muted, marginTop: 1 } }, sub) : null,
       );
     }
 
     // Fixed column widths: the same two tracks are shown on every row (Run and
     // Step), so time and tokens are compared side by side instead of toggling.
-    const TIME_W = 150;
-    const TIME_NUM_W = 64;
-    const TOKEN_W = 100;
-    const TOKEN_NUM_W = 46;
+    // F139: tracks grew with the type (170 / 112) so `19.10s` and `126k` keep
+    // their breathing room, and the index cell grew so `▸ step 199` fits.
+    const RUN_IDX_W = 78;
+    const TIME_W = 170;
+    const TIME_NUM_W = 70;
+    const TOKEN_W = 112;
+    const TOKEN_NUM_W = 50;
 
     function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, label }) {
       const listRef = useRef(null);
@@ -265,8 +268,9 @@ window.__ModuleLoader__.load({
       }, [sort, sorted]);
 
       // Column header *is* the sort control (SPEC F132). The whole column — bar
-      // slot + number slot — is one hit area, so the click target is 220px/152px
-      // wide instead of the 64px/46px label. A standing ⇅ pair says "sortable"
+      // slot + number slot — is one hit area, so the click target is the whole
+      // 246px / 168px column instead of just the label text. A standing ⇅ pair
+      // says "sortable"
       // even while idle; only the active direction lights up. The label is the
       // last flex child, so its right edge lands exactly on the numbers' right
       // edge (header and data share one baseline).
@@ -315,7 +319,7 @@ window.__ModuleLoader__.load({
             border: 'none', borderBottom: '1px solid ' + (hovered ? T.sortHoverLine : 'transparent'),
             padding: '1px 0', borderRadius: '3px 3px 0 0', cursor: 'pointer',
             color: active ? tone : T.muted,
-            font: 'inherit', fontSize: 10, lineHeight: 1, fontFamily: T.mono, letterSpacing: '.04em',
+            font: 'inherit', fontSize: 11, lineHeight: 1, fontFamily: T.mono, letterSpacing: '.04em',
             userSelect: 'none', minWidth: 0, whiteSpace: 'nowrap',
           },
         }, text, chevron(dir, hovered));
@@ -333,7 +337,7 @@ window.__ModuleLoader__.load({
             flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 4, height: 17,
             padding: '0 4px 0 6px', boxSizing: 'border-box', whiteSpace: 'nowrap',
             border: '1px solid ' + T.border, borderRadius: T.radiusXs, background: T.surface,
-            fontSize: 10, lineHeight: '1', fontFamily: T.mono, letterSpacing: '.04em', color: T.muted,
+            fontSize: 11, lineHeight: '1', fontFamily: T.mono, letterSpacing: '.04em', color: T.muted,
           },
         },
           label('sort.by', '已按'),
@@ -353,12 +357,12 @@ window.__ModuleLoader__.load({
         // visible, clicking a column sorts by it (desc → asc → off).
         h('div', {
           style: {
-            display: 'flex', alignItems: 'center', gap: 10,
+            display: 'flex', alignItems: 'center', gap: 12,
             // 3px = the group's left border, so header and rows share x offsets.
             padding: '0 0 3px 3px', borderBottom: '1px solid ' + T.border, marginBottom: 6,
           },
         },
-          h('span', { style: { flex: '0 0 64px' } }),
+          h('span', { style: { flex: `0 0 ${RUN_IDX_W}px` } }),
           // Cells mirror the row cells exactly (bar slot + number slot) so the
           // bar-aligned labels land on the same x as the track below; the label
           // itself only covers the track.
@@ -397,14 +401,14 @@ window.__ModuleLoader__.load({
               onMouseEnter: () => setHoverRun(r.idx),
               onMouseLeave: () => setHoverRun((prev) => (prev === r.idx ? null : prev)),
               style: {
-                display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', minWidth: 0,
+                display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', minWidth: 0,
                 // No row separators: the outline look relies on the bracket + spacing.
                 // Fill only: the group's overflow clips it to the outer radius.
                 // Hover uses the same hue as the expanded state, one notch lighter.
                 background: runSelected ? T.runSelBg : (hoverRun === r.idx ? T.runHoverBg : 'transparent'),
               },
             },
-              h('span', { style: { flex: '0 0 64px', minWidth: 0, color: abnormal ? T.error : (runSelected ? T.text : T.muted), fontVariantNumeric: 'tabular-nums', userSelect: 'none' } }, `${r.stepCount ? (open ? '▾ ' : '▸ ') : ''}run ${r.idx}`),
+              h('span', { style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : (runSelected ? T.text : T.muted), fontVariantNumeric: 'tabular-nums', userSelect: 'none' } }, `${r.stepCount ? (open ? '▾ ' : '▸ ') : ''}run ${r.idx}`),
               h(MetricBar, {
                 width: TIME_W,
                 numWidth: TIME_NUM_W,
@@ -448,7 +452,7 @@ window.__ModuleLoader__.load({
      * right of the bar. The bar's *track* length never changes (so numbers stay
      * put), only the colored portion inside it reflects the value.
      */
-    function MetricBar({ tone, fill, valueText, tip, width = 150, numWidth = 54 }) {
+    function MetricBar({ tone, fill, valueText, tip, width = 170, numWidth = 50 }) {
       return h('div', {
         title: tip,
         style: { flex: `0 0 ${width + numWidth + 6}px`, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 },
@@ -461,7 +465,7 @@ window.__ModuleLoader__.load({
         }, fill),
         h('span', {
           style: {
-            flex: `0 0 ${numWidth}px`, textAlign: 'right', fontSize: 10, lineHeight: '1',
+            flex: `0 0 ${numWidth}px`, textAlign: 'right', fontSize: 11, lineHeight: '1',
             fontVariantNumeric: 'tabular-nums', fontFamily: T.mono, color: T.text,
           },
         }, valueText),
@@ -538,11 +542,11 @@ window.__ModuleLoader__.load({
           key: 'mark-' + i,
           style: {
             color: mark.tone === 'error' ? T.error : mark.tone === 'warn' ? T.warn : T.muted,
-            fontFamily: T.mono, fontSize: 10,
+            fontFamily: T.mono, fontSize: 11,
           },
         }, ' · ' + mark.text)),
         // Waiting for the human is shown, but never added to the step's time.
-        fmtWait(waitMs) != null ? h('span', { style: { color: T.faint, fontFamily: T.mono, fontSize: 10 } }, ' · ⏸ ' + fmtWait(waitMs)) : null,
+        fmtWait(waitMs) != null ? h('span', { style: { color: T.faint, fontFamily: T.mono, fontSize: 11 } }, ' · ⏸ ' + fmtWait(waitMs)) : null,
       );
       const row = h('div', {
         onClick: onSelect,
@@ -558,11 +562,11 @@ window.__ModuleLoader__.load({
         'aria-expanded': open ? 'true' : 'false',
         'aria-pressed': selected ? 'true' : 'false',
         style: {
-          display: 'flex', alignItems: 'center', gap: 10, minHeight: 26, padding: '1px 0',
+          display: 'flex', alignItems: 'center', gap: 12, minHeight: 30, padding: '1px 0',
           cursor: 'pointer', background,
         },
       },
-        h('span', { style: { flex: `0 0 ${idxWidth}px`, minWidth: 0, color: selected ? T.text : T.muted, fontSize: 11, userSelect: 'none', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' } }, `${open ? '▾' : '▸'} step ${step.step}`),
+        h('span', { style: { flex: `0 0 ${idxWidth}px`, minWidth: 0, color: selected ? T.text : T.muted, fontSize: 12, userSelect: 'none', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' } }, `${open ? '▾' : '▸'} step ${step.step}`),
         timeMetric,
         tokenMetric,
         chips.map((chip, i) => h(StepTag, {
@@ -634,14 +638,14 @@ window.__ModuleLoader__.load({
         padding: '2px 10px 4px 12px',
       };
 
-      if (state.loading) return h('div', { style: { ...cardStyle, fontSize: 11, color: T.muted } }, label('step.loading', '载入 step 内容…'));
+      if (state.loading) return h('div', { style: { ...cardStyle, fontSize: 12, color: T.muted } }, label('step.loading', '载入 step 内容…'));
       if (state.error != null) {
-        return h('div', { style: { ...cardStyle, fontSize: 11, color: T.error } },
+        return h('div', { style: { ...cardStyle, fontSize: 12, color: T.error } },
           state.error,
           h('button', {
             type: 'button',
             onClick: () => { cache.step.delete(key); setNonce((value) => value + 1); },
-            style: { marginLeft: 8, font: 'inherit', fontSize: 10, color: T.text, background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm, padding: '1px 8px', cursor: 'pointer' },
+            style: { marginLeft: 8, font: 'inherit', fontSize: 11, color: T.text, background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm, padding: '1px 8px', cursor: 'pointer' },
           }, label('step.retry', '重试')),
         );
       }
@@ -677,15 +681,15 @@ window.__ModuleLoader__.load({
         return h('div', { key: rowKey },
           h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 } },
             h(RoleTag, { actor, label }),
-            h('span', { style: { fontSize: 11, fontFamily: T.mono, color: errorText != null ? T.error : T.text, flex: '0 0 auto' } }, title),
-            meta != null ? h('span', { style: { fontSize: 10, fontFamily: T.mono, color: T.muted, flex: '0 0 auto' } }, meta) : null,
-            errorText != null ? h('span', { style: { fontSize: 10, color: T.error, flex: '0 0 auto' } }, errorText) : null,
+            h('span', { style: { fontSize: 12, fontFamily: T.mono, color: errorText != null ? T.error : T.text, flex: '0 0 auto' } }, title),
+            meta != null ? h('span', { style: { fontSize: 11, fontFamily: T.mono, color: T.muted, flex: '0 0 auto' } }, meta) : null,
+            errorText != null ? h('span', { style: { fontSize: 11, color: T.error, flex: '0 0 auto' } }, errorText) : null,
             h('span', { style: { flex: '1 1 auto' } }),
             rawKey !== ''
               ? h('button', {
                 type: 'button',
                 onClick: () => toggleRaw(rawKey),
-                style: { font: 'inherit', fontSize: 10, color: T.muted, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 },
+                style: { font: 'inherit', fontSize: 11, color: T.muted, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 },
               }, label('step.original', '原文'))
               : null,
           ),
@@ -695,7 +699,7 @@ window.__ModuleLoader__.load({
       };
 
       const children = [
-        h('div', { key: 'head', style: { display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 10, fontFamily: T.mono, color: T.muted } },
+        h('div', { key: 'head', style: { display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 11, fontFamily: T.mono, color: T.muted } },
           headerParts.map((part) => h('span', { key: part }, part))),
       ];
 
@@ -711,8 +715,8 @@ window.__ModuleLoader__.load({
         children.push(h('div', { key: 'instruction', style: { marginTop: 8 } },
           h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
             h(RoleTag, { actor: 'user', label }),
-            h('span', { style: { fontSize: 10, color: T.muted } }, label('step.instruction', '指令'))),
-          h('div', { title: runPrompt, style: { marginTop: 2, fontSize: 11, lineHeight: 1.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto' } }, truncate(runPrompt, 400)),
+            h('span', { style: { fontSize: 11, color: T.muted } }, label('step.instruction', '指令'))),
+          h('div', { title: runPrompt, style: { marginTop: 2, fontSize: 12, lineHeight: 1.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto' } }, truncate(runPrompt, 400)),
         ));
       }
 
@@ -727,7 +731,7 @@ window.__ModuleLoader__.load({
             null,
             [op.seq],
             op.text
-              ? h('div', { title: op.text, style: { marginTop: 2, fontSize: 11, lineHeight: 1.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 132, overflow: 'auto' } }, op.text)
+              ? h('div', { title: op.text, style: { marginTop: 2, fontSize: 12, lineHeight: 1.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 132, overflow: 'auto' } }, op.text)
               : null,
           ));
           continue;
@@ -745,13 +749,13 @@ window.__ModuleLoader__.load({
             [op.callSeq, op.resultSeq],
             h('div', null,
               op.args
-                ? h('div', { style: { marginTop: 2, fontSize: 11, minWidth: 0 } },
-                  h('span', { style: { fontSize: 10, color: T.muted, marginRight: 6 } }, label('step.args', '参数')),
+                ? h('div', { style: { marginTop: 2, fontSize: 12, minWidth: 0 } },
+                  h('span', { style: { fontSize: 11, color: T.muted, marginRight: 6 } }, label('step.args', '参数')),
                   h('span', { title: op.args, style: { fontFamily: T.mono, whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }, op.args))
                 : null,
               op.result
-                ? h('div', { style: { marginTop: 2, fontSize: 11, minWidth: 0, color: failed ? T.error : T.text } },
-                  h('span', { style: { fontSize: 10, color: T.muted, marginRight: 6 } }, label('step.result', '结果')),
+                ? h('div', { style: { marginTop: 2, fontSize: 12, minWidth: 0, color: failed ? T.error : T.text } },
+                  h('span', { style: { fontSize: 11, color: T.muted, marginRight: 6 } }, label('step.result', '结果')),
                   h('span', { title: op.result, style: { fontFamily: T.mono, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto', display: 'block' } }, op.result))
                 : null,
             ),
@@ -771,7 +775,7 @@ window.__ModuleLoader__.load({
             style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 },
           },
             h(RowTag, { text: NOTE_TAG_EN[op.noteKind] ?? 'EVENT', color: palette.color, background: palette.background, title: zh }),
-            h('span', { title: op.text, style: { fontSize: 11, fontFamily: T.mono, color: tone, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, op.text),
+            h('span', { title: op.text, style: { fontSize: 12, fontFamily: T.mono, color: tone, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, op.text),
           ));
           continue;
         }
@@ -783,13 +787,13 @@ window.__ModuleLoader__.load({
             null,
             null,
             [op.seq],
-            h('div', { title: op.text, style: { marginTop: 2, fontSize: 11, lineHeight: 1.5, color: op.kind === 'system' ? T.text : T.muted, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto' } }, op.text),
+            h('div', { title: op.text, style: { marginTop: 2, fontSize: 12, lineHeight: 1.5, color: op.kind === 'system' ? T.text : T.muted, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto' } }, op.text),
           ));
         }
       }
 
       if (children.length === 1 && !hasInstruction) {
-        children.push(h('div', { key: 'empty', style: { marginTop: 6, fontSize: 11, color: T.muted } }, label('step.empty', '该 step 无内容')));
+        children.push(h('div', { key: 'empty', style: { marginTop: 6, fontSize: 12, color: T.muted } }, label('step.empty', '该 step 无内容')));
       }
 
       return h('div', { style: cardStyle }, children);
@@ -818,11 +822,11 @@ window.__ModuleLoader__.load({
         return () => { cancelled = true; };
       }, [key]);
 
-      if (state.loading) return h('div', { style: { padding: '4px 0', fontSize: 11, color: T.muted } }, '载入原文…');
-      if (state.error != null) return h('div', { style: { padding: '4px 0', fontSize: 11, color: T.error } }, state.error);
+      if (state.loading) return h('div', { style: { padding: '4px 0', fontSize: 12, color: T.muted } }, '载入原文…');
+      if (state.error != null) return h('div', { style: { padding: '4px 0', fontSize: 12, color: T.error } }, state.error);
       let text;
       try { text = JSON.stringify(state.value, null, 2); } catch { text = String(state.value); }
-      return h('pre', { style: { margin: '4px 0 0 0', padding: '6px 10px', fontSize: 11, lineHeight: 1.4, fontFamily: T.mono, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflow: 'auto', background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm } }, text);
+      return h('pre', { style: { margin: '4px 0 0 0', padding: '6px 10px', fontSize: 12, lineHeight: 1.4, fontFamily: T.mono, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflow: 'auto', background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm } }, text);
     }
 
     function Body({ sessionId, t }) {
@@ -927,8 +931,8 @@ window.__ModuleLoader__.load({
       const renderDetail = (run) => {
         const detail = details.get(run.idx);
         if (!detail) {
-          if (detailErrors.has(run.idx)) return h('div', { style: { padding: '4px 0 6px 74px', fontSize: 11, color: T.error } }, detailErrors.get(run.idx));
-          return h('div', { style: { padding: '4px 0 6px 74px', fontSize: 11, color: T.muted } }, detailLoading.has(run.idx) ? label('loadingDetail', '载入 step…') : '');
+          if (detailErrors.has(run.idx)) return h('div', { style: { padding: '4px 0 6px 74px', fontSize: 12, color: T.error } }, detailErrors.get(run.idx));
+          return h('div', { style: { padding: '4px 0 6px 74px', fontSize: 12, color: T.muted } }, detailLoading.has(run.idx) ? label('loadingDetail', '载入 step…') : '');
         }
         const min = detail.startTime ?? run.startTime ?? 0;
         const max = detail.endTime ?? run.endTime ?? 0;
@@ -937,7 +941,7 @@ window.__ModuleLoader__.load({
         // The bracket's 16px indent + 3px rail shifts the Step content right, so
         // its index cell is narrowed by that amount to keep both bar columns
         // aligned with the Run row above.
-        const stepIdxWidth = 64 - (STEP_INDENT + 3);
+        const stepIdxWidth = RUN_IDX_W - (STEP_INDENT + 3);
         // F138: one run can hold 200+ steps (this session has a 211-step run).
         // Mounting all of them at once is the only place where our own panel can
         // jank while scrolling, so long runs open in pages of STEP_PAGE.
@@ -996,12 +1000,12 @@ window.__ModuleLoader__.load({
             });
           }),
           hidden > 0
-            ? h('div', { key: 'more', style: { padding: '2px 0 4px 64px' } },
+            ? h('div', { key: 'more', style: { padding: '2px 0 4px ' + RUN_IDX_W + 'px' } },
               h('button', {
                 type: 'button',
                 onClick: () => setFullRuns((prev) => new Set(prev).add(run.idx)),
                 style: {
-                  font: 'inherit', fontSize: 10, fontFamily: T.mono, color: T.muted,
+                  font: 'inherit', fontSize: 11, fontFamily: T.mono, color: T.muted,
                   background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm,
                   padding: '2px 8px', cursor: 'pointer',
                 },
@@ -1053,9 +1057,9 @@ window.__ModuleLoader__.load({
       };
 
       perf.lastBuildMs = performance.now() - renderStart;
-      return h('div', { style: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', boxSizing: 'border-box', fontSize: 12, lineHeight: 1.45, color: T.text, fontFamily: T.font } },
-        h('div', { style: { flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid ' + T.border, padding: '6px 12px', minHeight: 30 } },
-          h('span', { style: { fontSize: 10, color: T.faint, fontVariantNumeric: 'tabular-nums', fontFamily: T.mono } }, caption() ?? ''),
+      return h('div', { style: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', boxSizing: 'border-box', fontSize: 13, lineHeight: 1.6, color: T.text, fontFamily: T.font } },
+        h('div', { style: { flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid ' + T.border, padding: '6px 12px', minHeight: 30 } },
+          h('span', { style: { fontSize: 11, color: T.faint, fontVariantNumeric: 'tabular-nums', fontFamily: T.mono } }, caption() ?? ''),
           h('button', { type: 'button', onClick: refresh, style: { marginLeft: 'auto', font: 'inherit', color: T.text, background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm, padding: '2px 10px', cursor: 'pointer' } }, label('refresh', '刷新')),
         ),
         h('div', { style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: 12 } },

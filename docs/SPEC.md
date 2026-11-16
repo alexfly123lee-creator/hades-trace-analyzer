@@ -63,7 +63,7 @@
   - AC：单一视图，KPI + run 表直接呈现，无需切 tab。
 - **F21 KPI 卡片**：顶部大数字卡片（run/step/事件/Token/错误/慢/异常 run/最慢操作），全宽自适应换列，异常类用语义色高亮。
   - AC：关键指标一眼可见；`最慢操作` 带上下文（工具名）。
-- **F22 run 表**：每 run 一行，列序为「Turn index（最左）→ 150px 时间条 → 54px 时间数值 → 100px Token 条 → 46px Token 数值（轨道定长；数值在固定宽度格右对齐；时间统一用秒（`0.58s` / `19.10s` / `94.6s`）、数字与单位无空格，Token 只写 `18.3k` 不带 tok；表头标签为 `Time` / `Token`，**左边缘与柱子左边缘齐平**（标签只压在柱子列上，数字列不设表头））→ Turn 内容 prompt（自适应撑满）→ 状态点」，支持**按 Time / 按 Token 排序**（FLIP 动效）；表头两列是**整列热区**的排序控件（F132），`⇅` 常驻、三态循环「降序 → 升序 → 取消」，取消后回到自然顺序（run0→runN）。
+- **F22 run 表**：每 run 一行，列序为「Turn index（最左）→ 170px 时间条 → 70px 时间数值 → 112px Token 条 → 50px Token 数值（轨道定长；数值在固定宽度格右对齐；时间统一用秒（`0.58s` / `19.10s` / `94.6s`）、数字与单位无空格，Token 只写 `18.3k` 不带 tok；表头标签为 `Time` / `Token`，**左边缘与柱子左边缘齐平**（标签只压在柱子列上，数字列不设表头））→ Turn 内容 prompt（自适应撑满）→ 状态点」，支持**按 Time / 按 Token 排序**（FLIP 动效）；表头两列是**整列热区**的排序控件（F132），`⇅` 常驻、三态循环「降序 → 升序 → 取消」，取消后回到自然顺序（run0→runN）。
   - AC：切换排序即时重排并带过渡动画；表头任何位置（条槽 + 数字槽）都能点；再点同列先反向、再取消回自然序；Turn index 在左、内容可读、数值清晰右对齐在条内。
 - **F23 就地展开**：点 run 行 → 就地展开该 run 的 step 列表；step 行（连同括号）**整体内缩 16px**，与 run 行错开一级（层级靠缩进）；**Step 条上的数值与 Turn 条完全一致地排布在条内右侧**（共用同一组件），另一维度（Token 或耗时）作为条后 muted 小字常驻；条形态仍随排序键切换（按时间=甘特、按 Token=占比条）。
   - AC：点行就地展开/折叠；`step N` 与 `run N` 对齐；step 条内数值的位置/字号/颜色与 turn 条一致；两个维度都可见。
@@ -195,10 +195,10 @@
   - **落位**：Run 行在指标条后一枚（触发者：run0=`system`、其余=`user`）；**Step 行不放**；Step 展开容器的每行各一枚——`[用户] 指令`（run 由用户发起且是该 run 第 1 个 step）、`[助手] 模型调用`、`[工具] tool · 名称 · 耗时`、`[上下文] 注入`、`[系统] 系统提示词`；容器头的构成概览不带角色标签。
   - 映射：`assistant/message` 与 `request/*` → `assistant`；`tool/call`·`tool/result` → `tool`；`developer/message` 与非 `source.kind==='user'` 的 `user/message` → `context`；`system/message` → `system`；真实 `user/message` → `user`。
   - AC：Run 行角色与轨迹同款（标签文字/配色/19px 高/10px/650 字重一致）；Step 行**不出现**角色标签；Step 明细行按上表各带标签，颜色与轨迹一致；空 step 仍显示空态；深浅色主题下均可辨识（带文字，不只靠颜色）。
-- **F132 列头排序控件（可点击暗示）**：表头 `Time` / `Token` 不是纯文字标签，而是**柱子列上的排序按钮**——热区 = **条槽**（150px / 100px），标签左边缘与柱子左边缘齐平、箭头跟在标签右侧；表头单元格宽度仍与行一致（220 / 152px）以保证列位置不漂移；`⇅` 双箭头**常驻**（未排序两枚各 35%），排序生效**只点亮当前方向**（↓ 或 ↑ 100%、另一枚 22%）且标签转列主色（Time=`trajectory-accent`、Token=`chart-tools`）；三态循环 **默认（run0→runN）→ 降序 → 升序 → 默认**；hover / 键盘聚焦时整列出现 8% accent 底 + 底部 1px 55% 线，把可点区域画出来；排序生效时列右侧出现状态胶囊「已按 Time ↓ 排序 ✕」，✕ 一键清除（不必猜「再点一次是反向还是取消」）；`aria-sort` 取 `descending` / `ascending` / `none`，title 说明下一击行为。
+- **F132 列头排序控件（可点击暗示）**：表头 `Time` / `Token` 不是纯文字标签，而是**柱子列上的排序按钮**——热区 = **条槽**（170px / 112px），标签左边缘与柱子左边缘齐平、箭头跟在标签右侧；表头单元格宽度仍与行一致（246 / 168px）以保证列位置不漂移；`⇅` 双箭头**常驻**（未排序两枚各 35%），排序生效**只点亮当前方向**（↓ 或 ↑ 100%、另一枚 22%）且标签转列主色（Time=`trajectory-accent`、Token=`chart-tools`）；三态循环 **默认（run0→runN）→ 降序 → 升序 → 默认**；hover / 键盘聚焦时整列出现 8% accent 底 + 底部 1px 55% 线，把可点区域画出来；排序生效时列右侧出现状态胶囊「已按 Time ↓ 排序 ✕」，✕ 一键清除（不必猜「再点一次是反向还是取消」）；`aria-sort` 取 `descending` / `ascending` / `none`，title 说明下一击行为。
   - AC：不点任何东西也能看出「可排序」（常驻双箭头，不再依赖激活后才出现的 ↓）；点列内任意位置命中同一控件；图标占固定槽位、排序不引起列宽/行高/文字位置变化；标签左边缘与下方柱子左边缘齐平；深浅主题下 35% / 8% / 55% 三档均可辨识。
 - **F136 行标签统一（Turn 角色 / Step 动作）**：两级用**同一个标签组件、同一套几何、同一个位置**，只换词表：
-  - **几何（共用）**：高 19px、`padding: 0 5px`、`font-size 10px / line-height 16px / weight 650 / letter-spacing .035em`、1px 透明边框、`radius-xs`、`white-space: nowrap`（与官方轨迹 `kindTag` 一致）；
+  - **几何（共用）**：高 20px、`padding: 0 6px`、`font-size 11px / line-height 17px / weight 650 / letter-spacing .035em`、1px 透明边框、`radius-xs`、`white-space: nowrap`（与官方轨迹 `kindTag` 一致）；
   - **位置（共用）**：指标条之后、正文之前，作为行的一个独立 flex 子项（行内 gap 10），不参与正文的省略号截断；
   - **词表（分层，统一英文）**：Turn 行 = 角色 `USER` / `SYSTEM`；Step 行 = 动作 `READ` / `EDIT` / `RUN` / `REPLY` / `FAIL` / `DELIVER` / `COMPACT` / `SYSTEM` / `CONTEXT` / `TOOL` …（与 `run` / `step` / `Time` / `Token` 同一语言）；**中文原文保留在标签 tooltip 里**；
   - **配色（共用一套 token）**：角色用 `ROLE` 五色（business / assistant / success / label-secondary / warn）；动作**映射到同一套颜色** —— 工具类动作 = `warn`（与 `工具` 角色同色）、`回复` = assistant、`系统提示词` = system、`仅注入上下文` = success、`失败` = error、`重试`/`压缩` = warn。
@@ -222,7 +222,7 @@
 - **F137 Step 行多动作标签**：一枚 chip 装不下一个 step 的全部工作。一个 step 里出现**不同**动作时，按**调用顺序**每个动作各给一枚 chip（最多 3 枚）；同一动作重复则折叠成计数（`EDIT ×6`），不会因为「改了 6 个文件」而多占 5 格；超过 3 种不同动作时，多出来的折叠成一枚中性 `+N` chip。行标题（对象文本）仍取**第一次调用**的对象，不因 chip 变多而跳字。
   - **词表与 F135 同源**：每枚 chip 的名字 = 该次调用按 `leadTag()` 算出的词（`读取` / `修改` / `运行` / `搜` / `找` / `看图` / `写` / `交付` / `插件` / `技能` / `清单` / `提问` / `查` / `提交计划` / `取运行环境` / `工具` …），因此不会出现 `取运行环境` 与 `取环境` 两枚 chip 指同一个动作；客户端只用 `STEP_TAG_EN` 一张表把词映射成 `READ` / `EDIT` / … 。
   - **回复类 step**：`REPLY` 打头，其后是这一步实际调用的动作 chip（`REPLY` + `EDIT ×6`）。原先写成文字后缀的 `· 修改 ×6` / `· +2 次调用` **取消**——调用次数已由 chip 的 `×n` 承载，`suffix` 字段从行数据里移除。
-  - **几何不变**：每枚 chip 与 F136 同款（19px / 10px / 650 / `.035em` / radius-xs），行内 gap 10，chip 行不参与标题的省略号截断；多枚 chip 不改变行高、不改变 Time/Token 列位置。
+  - **几何不变**：每枚 chip 与 F136 同款（20px / 11px / 650 / `.035em` / radius-xs），行内 gap 10，chip 行不参与标题的省略号截断；多枚 chip 不改变行高、不改变 Time/Token 列位置。
   - **配色只承载语义**：`REPLY` = assistant、`FAIL` = error、其余动作 = 工具色；`+N` 用中性 faint 色（不与真动作抢注意力）。
   - **数据契约**：`/run` 的 step 项新增 `tags: [{ tag, count, overflow? }]`（`tag` 字段保留 = 首枚，向后兼容），`suffix` 移除。
   - **AC**：参考会话 2275 步 → 2125 步仍是 1 枚 chip（与 F135 完全一致）、148 步 2 枚、2 步 3 枚（`REPLY INSPECT FETCH`）、0 步 overflow；`查 listService` 显示 `INSPECT ×2 READ`；`修改 6 个文件` 显示 `EDIT ×6`；每步「chip 上的 `×n` 之和」覆盖该步全部 `tool/call`（`mockup/verify-chips.mjs` 断言 0 问题，并校验 `tags[0] === tag`）；chip 一律英文大写、中文在 tooltip；多 chip 行在三档缩进（run / step / 面板）下都不换行。
@@ -235,7 +235,17 @@
   - **Host 缓存遥测**：`/health` 增加 `cache: { sessions, max, events, seqs, lastBuild: { ms, events, at } }` 与 `uptimeMs`；快照缓存上限 **8 → 4 个会话**（单会话始终只保留最新一条，键 = `sessionId`，按 `seq` 校验命中），按实测 5.9 MB/条，上限从 ~47 MB 降到 ~24 MB。
   - **AC**：`check-served` 34/34 标记通过（含 `cacheSet` / `STEP_PAGE` / `perf.lastBuildMs` / `AbortController`）；`verify-perf` **9/9**（P02 改为「暖态中位 ≤ 50 ms」= 42.5 ms，冷首建 56.2 ms 单列报告）；`/health` 实测 `cache.events=17955`、`lastBuild.ms=42.8`；211 步的 run 默认 80 行 + 按钮，点开后可继续展开；切会话/卸载后不再有在途 `/runs`；闲置 8 s 全部 DSH 进程 CPU 合计 **0.6%**（无轮询）。
 
-## 17. 范围外（v1 不做）
+## 17. 可读性基线（F139）
+
+- **F139 整页字号 / 行宽 / 行距放大一档**：面板此前的最小字号 10px、正文 12px、行高 1.45、行最小高 26px，长时间看 trace 偏吃力。一次性放大并放宽：
+  - **字号**：正文 12 → **13**、次要 11 → **12**、极次要 10 → **11**、KPI 大数字 28 → **32**；不再保留 10px 档；
+  - **行距 / 行高**：正文 `line-height` 1.45 → **1.6**、行最小高 26 → **30**、行内 `gap` 10 → **12**；
+  - **行宽（列宽）**：Time 条 150 → **170**、Token 条 100 → **112**、数字槽 64/46 → **70/50**（排序热区随之 220/152 → **246/168**）；行索引列 64 → **78**（12px 下 `▸ step 199` 约 62px，不能溢出到柱子）；
+  - **标签 chip**：19px 高 / 10px → **20px 高 / 11px**（`line-height` 16 → 17、`padding` 0 5px → 0 6px），几何仍与官方 `kindTag` 同族；
+  - **不变量**：表头标签左缘仍与柱子左缘齐平；Run 与 Step 的时间/Token 两列严格同宽；标签与指标条基线对齐；不改字重（正文仍 400，标签仍 650）。
+  - **AC**：`▸ step 199`、`99.99s`、`126k`、`EDIT ×6` 均不溢出、不换行；表头与柱子对齐关系不变；`check-served` 34/34（另外对已服务 bundle 断言 `RUN_IDX_W=78` / `TIME_W=170` / `TOKEN_W=112` / 正文 13px / 无 10px / chip `20px + 0 6px` / `lineHeight 1.6` 共 8 项，0 失败）；40 个单测不变（渲染层改动不触碰聚合）；深浅色主题下正文与次要文字 ≥ 4.5:1。
+
+## 18. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
