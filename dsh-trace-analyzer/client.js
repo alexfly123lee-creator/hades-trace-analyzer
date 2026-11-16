@@ -377,11 +377,22 @@ window.__ModuleLoader__.load({
      * in this session — a 52× skew — so a linear ramp would paint one dark cell
      * and 173 invisible ones.
      *
-     * Sticky (F151): the card stays at the top of the scroll container so the
-     * picture never leaves the screen while reading a run far down the list.
+     * Sticky (F151/F152): the card stays at the top so the picture never leaves
+     * the screen while reading a run far down the list.
+     *
+     * Why this is a JS pin and not `position: sticky`: the panel's scroll owner is
+     * not knowable up-front (in the shipped GUI the *conversation page* scrolls,
+     * not our box) and any ancestor with `overflow: hidden` silently turns into a
+     * non-scrolling sticky container — the card then scrolls away with the page,
+     * which is exactly what happened. Translating the card inside a same-size
+     * placeholder is layout-space independent: it does not care which ancestor
+     * scrolls, it never shifts the list, and it cannot create a fixed-position
+     * containing-block surprise.
      */
     function OverviewMatrix({ rows, label, onLocate }) {
       const [hover, setHover] = useState(null);
+      const wrapRef = useRef(null);
+      const cardRef = useRef(null);
       const n = rows.length;
       const ranks = useMemo(() => {
         const rank = (pick) => {
@@ -396,6 +407,38 @@ window.__ModuleLoader__.load({
           steps: rank((r) => r.stepCount),
         };
       }, [rows]);
+      // Pin the card while its placeholder is above the visible area.
+      useEffect(() => {
+        const wrap = wrapRef.current;
+        const card = cardRef.current;
+        if (!wrap || !card || typeof window === 'undefined') return undefined;
+        let raf = null;
+        const update = () => {
+          raf = null;
+          if (!wrap.isConnected || !card.isConnected) return;
+          const host = wrap.closest('[data-hades-scroll]');
+          const hostRect = host ? host.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+          const w = wrap.getBoundingClientRect();
+          const cardH = card.offsetHeight || 0;
+          const pinTop = Math.max(0, hostRect.top);
+          // Never travel further than the run list: the card parks at the bottom.
+          const maxT = Math.max(0, hostRect.bottom - cardH - w.top);
+          const t = Math.max(0, Math.min(pinTop - w.top, maxT));
+          card.style.transform = t > 0.5 ? `translateY(${t}px)` : '';
+        };
+        const onScroll = () => { if (raf == null) raf = window.requestAnimationFrame(update); };
+        update();
+        document.addEventListener('scroll', onScroll, true);
+        window.addEventListener('resize', onScroll);
+        const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(onScroll) : null;
+        if (ro) ro.observe(wrap);
+        return () => {
+          document.removeEventListener('scroll', onScroll, true);
+          window.removeEventListener('resize', onScroll);
+          if (ro) ro.disconnect();
+          if (raf != null) window.cancelAnimationFrame(raf);
+        };
+      }, [rows.length]);
       if (n === 0) return null;
       // 8% floor keeps the smallest run visible; 88% ceiling keeps the largest
       // from turning into a solid block.
@@ -418,32 +461,46 @@ window.__ModuleLoader__.load({
         left: `calc(${MX_LABEL_W + MX_GAP}px + ${hover} * ((${track}) + 1px))`,
         width: `calc(${track})`,
       };
-      const swatch = (tone, title) => h('i', {
-        key: title, title,
-        style: { width: 9, height: 9, borderRadius: 2, background: tone, display: 'inline-block' },
+      // F152: three separate rectangles instead of one bordered box. A 1px
+      // border on a 2–4px wide element collapses into a tapered wedge as the
+      // column count grows (the "梯形" artefact), while independent 1px lines
+      // stay crisp at any width. They are painted *after* the cells so the
+      // highlight reads as one continuous column instead of showing through the
+      // 1px gaps in a ladder pattern.
+      const bandLayer = (key, style) => h('div', {
+        key,
+        style: Object.assign({ position: 'absolute', top: -2, bottom: -2, pointerEvents: 'none' }, style),
       });
-      return h('div', {
-        style: {
-          // Sticky under the panel's top edge; opaque so rows pass behind it.
-          position: 'sticky', top: 0, zIndex: 3,
-          border: '1px solid ' + T.border, borderRadius: T.radiusMd,
-          padding: '8px 12px 7px', background: T.surface, marginBottom: 12,
-          boxShadow: `0 10px 18px -14px color-mix(in srgb, ${T.text} 55%, transparent)`,
+      // Flag lane: translucent red / amber — solid semantic colours on a 3px
+      // cell are far too loud next to the pastel metric rows (F152).
+      const flagBg = (run) => (run.hasError
+        ? `color-mix(in srgb, ${T.error} 58%, transparent)`
+        : run.hasSlow
+          ? `color-mix(in srgb, ${T.warn} 58%, transparent)`
+          : `color-mix(in srgb, ${T.muted} 10%, transparent)`);
+      const legendItem = (tone, text) => h('span', {
+        key: 'lg-' + text,
+        style: { display: 'inline-flex', alignItems: 'center', gap: 4, color: T.muted },
+      }, h('i', { style: { width: 9, height: 9, borderRadius: 2, background: tone, display: 'inline-block' } }), text);
+      return h('div', { ref: wrapRef, style: { marginBottom: 12 } },
+        h('div', {
+          ref: cardRef,
+          style: {
+            // F152: pinned by the transform effect above, not by `position:
+            // sticky` — see the comment at the top of this component.
+            zIndex: 3, willChange: 'transform',
+            border: '1px solid ' + T.border, borderRadius: T.radiusMd,
+            padding: '8px 12px 7px', background: T.surface,
+            boxShadow: `0 10px 18px -14px color-mix(in srgb, ${T.text} 55%, transparent)`,
+          },
+          onMouseLeave: () => setHover(null),
         },
-        onMouseLeave: () => setHover(null),
-      },
         h('div', { style: { position: 'relative' } },
-          band ? h('div', {
-            style: {
-              position: 'absolute', top: -2, bottom: -2, pointerEvents: 'none',
-              left: band.left, width: band.width, boxSizing: 'border-box',
-              borderLeft: '1px solid ' + T.brand, borderRight: '1px solid ' + T.brand,
-              background: `color-mix(in srgb, ${T.brand} 16%, transparent)`, borderRadius: 1,
-            },
-          }) : null,
           rowsDef.map((row) => h('div', { key: row.key, style: { display: 'flex', alignItems: 'center', gap: MX_GAP, marginBottom: 3 } },
+            // F152: every row label uses the same colour — the row *swatches* in
+            // the legend carry the colour code, not the typography.
             h('span', {
-              style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: row.tone },
+              style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
             }, row.text),
             h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
               rows.map((r, i) => h('div', {
@@ -455,8 +512,6 @@ window.__ModuleLoader__.load({
               })),
             ),
           )),
-          // Flag lane: error → red, slow → amber, everything else a hairline, so
-          // the two colours are the only thing that pops.
           h('div', { style: { display: 'flex', alignItems: 'center', gap: MX_GAP } },
             h('span', {
               style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
@@ -467,26 +522,25 @@ window.__ModuleLoader__.load({
                 onMouseEnter: () => setHover(i),
                 onClick: () => onLocate(r.idx),
                 title: `Run ${r.idx}`,
-                style: {
-                  ...cellBase,
-                  background: r.hasError ? T.error : r.hasSlow ? T.warn : `color-mix(in srgb, ${T.muted} 12%, transparent)`,
-                  opacity: r.hasError || r.hasSlow ? 0.9 : 1,
-                },
+                style: { ...cellBase, background: flagBg(r) },
               })),
             ),
           ),
+          band ? bandLayer('band-fill', {
+            left: band.left, width: band.width,
+            background: `color-mix(in srgb, ${T.brand} 14%, transparent)`,
+          }) : null,
+          band ? bandLayer('band-l', { left: band.left, width: 1, background: T.brand }) : null,
+          band ? bandLayer('band-r', { left: `calc(${band.left} + (${band.width}) - 1px)`, width: 1, background: T.brand }) : null,
         ),
-        // F151 legend: colour only (no "blue = time" sentence) — the row labels
-        // are already drawn in their own colour, the swatches just restate them,
-        // and the ramp explains the intensity. Tooltips carry the words.
+        // F152 legend: colour block + text, so the colour code is explicit again
+        // (the row labels themselves are now a single neutral colour).
         h('div', {
-          style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 7, font: `11px/1.2 ${T.mono}`, minHeight: 16 },
+          style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 7, font: `11px/1.2 ${T.mono}`, minHeight: 16 },
         },
-          h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 3 } },
-            swatch(T.brand, label('col.time', 'Time')),
-            swatch(T.token, label('col.token', 'Token')),
-            swatch(T.success, label('mx.steps', '步数')),
-          ),
+          legendItem(T.brand, label('col.time', 'Time')),
+          legendItem(T.token, label('col.token', 'Token')),
+          legendItem(T.success, label('mx.steps', '步数')),
           h('span', {
             title: label('mx.ramp', '颜色越深 = 该 Run 在全会话里的排位越高'),
             style: {
@@ -494,18 +548,17 @@ window.__ModuleLoader__.load({
               background: `linear-gradient(90deg, color-mix(in srgb, ${T.brand} 8%, var(--dsw-alias-bg-layer-1)), color-mix(in srgb, ${T.brand} 88%, var(--dsw-alias-bg-layer-1)))`,
             },
           }),
-          h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 3 } },
-            swatch(T.error, label('mx.error', '有错误')),
-            swatch(T.warn, label('mx.slow', '有慢操作')),
-          ),
+          legendItem(T.error, label('mx.error', '有错误')),
+          legendItem(T.warn, label('mx.slow', '有慢操作')),
           h('span', {
             title: hovered ? summary : '',
             style: {
-              marginLeft: 'auto', minWidth: 0, maxWidth: '56%', textAlign: 'right',
+              marginLeft: 'auto', minWidth: 0, maxWidth: '46%', textAlign: 'right',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               color: hovered ? T.text : T.faint,
             },
           }, hovered ? summary : label('mx.hint', '悬停看这个 Run · 点击定位')),
+        ),
         ),
       );
     }
@@ -1250,6 +1303,12 @@ window.__ModuleLoader__.load({
       const [detailErrors, setDetailErrors] = useState(() => new Map());
       // Handle of the running "glide to this run" tween (F151).
       const glideRaf = useRef(null);
+      // F152: whether this panel is the scroller. When the host gives the view an
+      // unbounded height (the conversation page scrolls instead), our own
+      // `overflow: auto` box never scrolls — and a non-scrolling scroll container
+      // silently kills `position: sticky` for everything inside it. Detecting
+      // that lets us drop the overflow so the card pins to the page scrollport.
+      const [pageScroll, setPageScroll] = useState(false);
       // F140 realtime: `seq` is the log offset the current payload was built at.
       const seqRef = useRef(null);
       const tickBusy = useRef(false);
@@ -1422,21 +1481,30 @@ window.__ModuleLoader__.load({
         const glide = () => {
           const el = host.querySelector('[data-run="' + idx + '"]');
           if (!el) return;
-          const offset = el.getBoundingClientRect().top - host.getBoundingClientRect().top;
-          const anchor = host.clientHeight * 0.32; // keep clear of the sticky card
-          const max = Math.max(0, host.scrollHeight - host.clientHeight);
-          const target = Math.max(0, Math.min(max, host.scrollTop + offset - anchor));
-          const delta = target - host.scrollTop;
+          // F152: two possible scroll owners — our own box (bounded panel) or the
+          // conversation page (unbounded panel). Measure against whichever one
+          // actually moves.
+          const win = typeof window === 'undefined' ? null : window;
+          const scroller = pageScroll || !win ? null : host;
+          const origin = scroller ? scroller.getBoundingClientRect().top : 0;
+          const viewH = scroller ? scroller.clientHeight : (win ? win.innerHeight : 600);
+          const current = scroller ? scroller.scrollTop : (win ? win.scrollY : 0);
+          const maxScroll = scroller
+            ? Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+            : (win ? Math.max(0, document.documentElement.scrollHeight - win.innerHeight) : 0);
+          const anchor = viewH * 0.32; // keep clear of the sticky card
+          const target = Math.max(0, Math.min(maxScroll, current + (el.getBoundingClientRect().top - origin) - anchor));
+          const delta = target - current;
           if (Math.abs(delta) < 2) return;
-          if (reduce || typeof requestAnimationFrame !== 'function') { host.scrollTop = target; return; }
-          const start = host.scrollTop;
+          const apply = (v) => { if (scroller) scroller.scrollTop = v; else if (win) win.scrollTo(0, v); };
+          if (reduce || typeof requestAnimationFrame !== 'function') { apply(target); return; }
           const duration = Math.min(700, Math.max(260, Math.abs(delta) * 0.5));
           const t0 = performance.now();
           const ease = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
           if (glideRaf.current != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(glideRaf.current);
           const step = (now) => {
             const p = Math.min(1, (now - t0) / duration);
-            host.scrollTop = start + delta * ease(p);
+            apply(current + delta * ease(p));
             glideRaf.current = p < 1 ? requestAnimationFrame(step) : null;
           };
           glideRaf.current = requestAnimationFrame(step);
@@ -1446,6 +1514,28 @@ window.__ModuleLoader__.load({
         if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(glide));
         else glide();
       };
+
+      // F152: decide who scrolls the list. A bounded panel scrolls itself; an
+      // unbounded one lets the conversation page scroll — and in that case our
+      // own `overflow: auto` box must stop being a scroll container, otherwise it
+      // traps `position: sticky` and the matrix card scrolls away with the page.
+      useEffect(() => {
+        const host = scrollRef.current;
+        if (!host || pageScroll) return undefined;
+        let decided = false;
+        const check = () => {
+          if (decided || !host.isConnected) return;
+          if (host.scrollHeight < 480) return; // too little content to judge
+          decided = true;
+          if (host.scrollHeight > host.clientHeight + 8) return; // this box scrolls
+          setPageScroll(true);
+        };
+        check();
+        if (typeof ResizeObserver !== 'function') return undefined;
+        const ro = new ResizeObserver(check);
+        ro.observe(host);
+        return () => ro.disconnect();
+      }, [payload, pageScroll]);
 
       /** Toggle one Step's panel; its row highlight follows the open state. */
       const selectStep = (runIdx, stepIdx) => {
@@ -1635,7 +1725,7 @@ window.__ModuleLoader__.load({
         // F151: no header bar — the "cache hit / server ms / live badge / refresh
         // button" chrome was developer telemetry sitting on top of the product,
         // and the 2 s realtime tick makes a manual refresh unnecessary.
-        h('div', { ref: scrollRef, style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '10px 12px 0' } },
+        h('div', { ref: scrollRef, 'data-hades-scroll': '1', style: { flex: '1 1 auto', minHeight: 0, overflowY: pageScroll ? 'visible' : 'auto', overflowX: 'hidden', padding: '10px 12px 0' } },
           renderContent(),
         ),
       );

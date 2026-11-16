@@ -356,7 +356,17 @@
   7. **Run / Step 首字母大写**：行索引 `Run 42` / `Step 7`、KPI 标签 `Run（指令）` `Step（迭代）` `异常 Run`、提示语 `悬停看这个 Run`、tooltip `% of Run`、`载入 Step 内容…`、`该 Step 无内容`，中英文两套都改。
   - **AC**：滚到列表第 90 行时矩阵卡仍贴在面板顶部（`mockup/overview-sticky.html` 实测截图）；悬停十字线的左右边界与单元左右边界重合（像素级测量：band 1072–1079 = 单元 1072–1079）；点任意格子后行在 ~500ms 内平滑滑到视口 1/3 处（连点不叠加）；图例里没有任何"颜色 = 含义"的句子；顶部不再出现缓存/服务端/实时/刷新；`check-served` 68/68（新增 `function KpiSummary` / `position: 'sticky'` / `glideRaf` / `mx.ramp` / `Run ${r.idx}`，并把 `缓存命中`、`cacheHit`、`firstPaint`、`realtime.live`、`perf.lastBuildMs` 改为 absent 断言）；单测 43/43。
 
-## 29. 范围外（v1 不做）
+## 29. 吸顶改成 transform 钉住 + 十字线拆线（F152）
+
+- **F152 四点修正**（都是上一版落地后暴露的问题）：
+  1. **吸顶在真实面板里失效 → 换成 transform 钉住**。原因：面板的滚动所有者不是我们的盒子（真实 GUI 里滚的是对话页），而且任意一个 `overflow: hidden` 祖先都会变成"不滚动的 sticky 容器"，于是 `position: sticky` 静默失效、卡片跟着页面滚走。现在改为 JS 钉住：卡片放在同尺寸的占位 `div` 里，滚动时按占位盒的视口坐标算 `translateY(max(0, min(pinTop − wrapTop, maxT)))` 并写到卡片的 `transform` 上——**布局空间无关**（不依赖谁在滚）、不改列表布局、也不会踩 `position: fixed` 的 containing-block 坑；`maxT` 保证卡到列表底部就停住。事件：`document` 上捕获阶段监听 `scroll` + `resize` + `ResizeObserver`，rAF 合并。无头浏览器对照实测（同一份病态 DOM：`panel{overflow:hidden}` + 页面滚动 520px）：不钉时卡片 `top=-395`（滚走），钉住后 `top=0`、`transform: translateY(395.4px)`。
+  2. **"梯形底纹"**：十字线原先是一个带 1px 左右边框的盒子；列宽只有 2–4px 时，`border-box` 装不下两侧边框，盒子塌成楔形/梯形。现在拆成**三个独立矩形**（淡底 + 左 1px 线 + 右 1px 线），无边框、无圆角，任何列宽都不会塌；并且它们画在单元**之后**（覆盖在数据上），十字线是一整条连续的高亮列，而不是从单元缝隙里透出来的"梯子"。
+  3. **同一行的文字颜色统一**：矩阵 4 行标签全部改成 `label-secondary` 中性灰（原先 Time/Token/步数 各用自己的颜色，读起来像 4 种风格）。
+  4. **图例回到「色块 + 文字」**：`■ Time ■ Token ■ 步数 ▭渐变 ■ 有错误 ■ 有慢操作`，色块负责辨识、文字负责命名。
+  5. **红/黄降饱和**：异常行的红/橙不再是纯色实心，改为 `color-mix(… 58%, transparent)`，3px 小格不再刺眼；图例色块仍用纯色以便对照。
+  - **AC**：滚动对话页时矩阵卡始终贴在可视区顶部（实测 `top=0`），滚到列表末尾时停在底部不越界；悬停十字线是**两条 1px 直线 + 一层 14% 淡底**，任何列宽下都不出现梯形/楔形；4 行标签颜色一致；图例是色块 + 文字；红/橙为半透明；`check-served` 72/72（新增 `band-fill`、`bandLayer('band-l'`、`data-hades-scroll`、`translateY(${t}px)`，并把 `position: 'sticky'` 改为 absent 断言）；单测 43/43。
+
+## 30. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
