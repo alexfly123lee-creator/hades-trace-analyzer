@@ -60,11 +60,14 @@ window.__ModuleLoader__.load({
     // F141: live-appended rows fade in instead of popping in.
     const ROW_ANIM_CSS = '@keyframes hadesRowIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}';
 
-    // F144 expand motion (plan C): height + fade, one uniform curve, no stagger;
-    // opening takes 220ms so the content is readable while it grows, closing 140ms
-    // so the list snaps back instead of lingering.
-    const EXPAND_MS = 220;
-    const COLLAPSE_MS = 140;
+    // F144 expand motion (plan C, tightened): height + fade, one uniform curve,
+    // no stagger. Opening is short enough to feel immediate (160ms); closing is
+    // shorter still (120ms) so the list snaps back instead of lingering.
+    const EXPAND_MS = 160;
+    const COLLAPSE_MS = 120;
+    // Content that arrives *after* the open (the /step and /run fetches) must not
+    // pop the panel taller — it follows at this short duration instead.
+    const FOLLOW_MS = 120;
     // A 200-step run is ~7k px tall; animating that height costs layout every
     // frame, so big runs fade in instead of measuring/growing.
     const BIG_RUN_STEPS = 60;
@@ -84,11 +87,14 @@ window.__ModuleLoader__.load({
       const ref = useRef(null);
       const [visible, setVisible] = useState(open);
       // Closing must animate the content that is going away, so keep the last
-      // open children around for the 140 ms of the collapse.
+      // open children around for the collapse.
       const lastChildren = useRef(children);
       if (open) lastChildren.current = children;
+      // Height we last rendered at, used to follow async content smoothly.
+      const heightRef = useRef(null);
       useEffect(() => {
         if (open) setVisible(true);
+        else heightRef.current = null;
       }, [open]);
       useLayoutEffect(() => {
         const el = ref.current;
@@ -114,10 +120,12 @@ window.__ModuleLoader__.load({
             { duration: expandMs, easing: 'cubic-bezier(.2,.7,.3,1)' },
           );
           anim.onfinish = () => { el.style.height = 'auto'; el.style.opacity = '1'; };
+          heightRef.current = height;
           return () => anim.cancel();
         }
         if (!visible) return undefined;
         const height = el.scrollHeight;
+        heightRef.current = null;
         const anim = el.animate(
           [{ height: height + 'px', opacity: 1 }, { height: '0px', opacity: 0 }],
           { duration: collapseMs, easing: 'cubic-bezier(.4,0,1,1)' },
@@ -125,6 +133,19 @@ window.__ModuleLoader__.load({
         anim.onfinish = () => setVisible(false);
         return () => anim.cancel();
       }, [open, visible, expandMs, collapseMs]);
+      // F144: the step/run detail arrives asynchronously. When it lands while the
+      // panel is open, grow/shrink into the new height instead of jumping.
+      useLayoutEffect(() => {
+        const el = ref.current;
+        if (el == null || !open || !visible) return undefined;
+        const height = el.scrollHeight;
+        const prev = heightRef.current;
+        heightRef.current = height;
+        if (prev == null || motionReduced() || expandMs <= 0 || Math.abs(height - prev) < 8) return undefined;
+        const anim = el.animate([{ height: prev + 'px' }, { height: height + 'px' }], { duration: FOLLOW_MS, easing: 'cubic-bezier(.2,.7,.3,1)' });
+        anim.onfinish = () => { el.style.height = 'auto'; };
+        return () => anim.cancel();
+      }, [children, open, visible, expandMs]);
       if (!visible) return null;
       return h('div', { ref, style: { overflow: 'hidden', height: open ? 'auto' : 0, opacity: open ? 1 : 0 } },
         open ? children : lastChildren.current);
@@ -304,7 +325,7 @@ window.__ModuleLoader__.load({
     const TOKEN_W = 112;
     const TOKEN_NUM_W = 50;
 
-    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, label }) {
+    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, label }) {
       const listRef = useRef(null);
       const prevTops = useRef(new Map());
       const first = useRef(true);
@@ -493,6 +514,11 @@ window.__ModuleLoader__.load({
           // fade it in so "a new run arrived" reads as growth, not as a repaint.
           const isNewRow = !first.current && !seenRuns.current.has(r.idx);
           if (isNewRow) seenRuns.current.add(r.idx);
+          // F144: animate the height only when the step index is already loaded.
+          // A first open would otherwise animate a one-line "载入 step…" placeholder
+          // and then grow again when the data lands — that double growth is what
+          // reads as "slow". Uncached expands appear at once and follow the data.
+          const detailReady = hasDetail ? hasDetail(r.idx) : false;
           return h('div', {
             key: r.idx,
             'data-run': String(r.idx),
@@ -539,7 +565,7 @@ window.__ModuleLoader__.load({
             // F144: opening a run grows its bracket instead of snapping it in;
             // a very long run (200+ steps, ~7k px) fades instead of animating
             // height, which would relayout every frame.
-            h(Collapse, { open, expandMs: (r.stepCount ?? 0) > BIG_RUN_STEPS ? 0 : EXPAND_MS }, renderDetail(r)),
+            h(Collapse, { open, expandMs: detailReady && (r.stepCount ?? 0) <= BIG_RUN_STEPS ? EXPAND_MS : 0 }, renderDetail(r)),
           );
         })),
       );
@@ -635,7 +661,7 @@ window.__ModuleLoader__.load({
       const zh = overflow ? `${count} 个动作未显示` : `${tag}${count > 1 ? ' ×' + count : ''}${label ? ' · ' + label : ''}`;
       return h(RowTag, { text, color: palette.color, background: palette.background, title: zh });
     }
-    function StepRow({ step, selected, open, onSelect, idxWidth, timeMetric, tokenMetric, text, title, tag, tags, marks, waitMs, hasError, content }) {
+    function StepRow({ step, selected, open, onSelect, idxWidth, timeMetric, tokenMetric, text, title, tag, tags, marks, waitMs, hasError, content, contentReady }) {
       const [hover, setHover] = useState(false);
       const background = selected ? T.stepSelBg : (hover ? T.stepHoverBg : 'transparent');
       // Title = verb + object (F23.1); the chip row carries every action the
@@ -710,7 +736,7 @@ window.__ModuleLoader__.load({
           // no separator either — spacing alone separates them.
           : { marginLeft: `${STEP_INDENT}px` },
       },
-      row, h(Collapse, { open }, content));
+      row, h(Collapse, { open, expandMs: contentReady ? EXPAND_MS : 0 }, content));
     }
 
     /**
@@ -1239,6 +1265,8 @@ window.__ModuleLoader__.load({
               tags: step.tags ?? null,
               marks: step.marks ?? [],
               waitMs: step.waitMs ?? 0,
+              // F144: only animate the height when this step's slice is cached.
+              contentReady: cache.step.has(sessionId + '::' + run.idx + '::' + stepIdx),
               hasError: step.hasError,
               content: sopen
                 ? h(StepContent, {
@@ -1305,6 +1333,7 @@ window.__ModuleLoader__.load({
             expanded,
             onToggleRun: openRun,
             renderDetail,
+            hasDetail: (idx) => details.has(idx),
             label,
           }),
         );
