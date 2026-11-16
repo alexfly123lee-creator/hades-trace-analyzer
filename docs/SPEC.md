@@ -260,7 +260,7 @@
   - **空转不写状态**：`unchanged` 的 tick 不再 `setState`（用函数式更新返回 `prev` 让 React bail out）——空闲时每 2 s 一次 tick **不产生任何 React 提交**；
   - **FLIP 只在行序变化时做**：`DualBarChart` 记住上一次的行序（`data-run` 序列），行序未变直接跳过测量与动画；同时把 `getBoundingClientRect().top` 换成 `offsetTop`，滚动再也不会被误判成"所有行都移动了"；
   - **step 面板 stale-while-revalidate**：`refreshToken` 变化时**保留旧内容**继续显示，新切片到达后原地替换；只有首次加载才出现「载入 step 内容…」，刷新时不会再闪空态；
-  - **柱子宽度过渡**：Time/Token 条的 `width`（以及 `TimeBar` 的 `left`）加 `transition .25s`，新值不再硬跳，缩放看起来是"长过去"的；
+  - **柱子宽度过渡**：Time/Token 条的 `left` / `width` 加 `transition .25s`（F145 起两根条共用同一个过渡），新值不再硬跳，缩放看起来是"长过去"的；
   - **行按 `idx` 复用**：run 行 key = `idx`、step 行 key = 序号、面板活动行 key = `seq`，新事件只新增尾部行、只有数值变更的行重绘。
   - **AC**：面板开着空闲 30 s，React DevTools 里**无 commit**、Performance 面板无 paint；新事件到达时只有新增/变化的行更新，其余行的 DOM 不重建；打开某个 step 观察，面板内容**不出现空态闪烁**，工具行在结果到达时原地长出耗时；切换排序时仍有 FLIP 动画；`check-served` 37/37；单测 41/41。
 
