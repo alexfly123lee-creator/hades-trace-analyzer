@@ -95,9 +95,6 @@ window.__ModuleLoader__.load({
     // F138: a run may hold 200+ steps; render them in pages so a single expand
     // cannot mount thousands of nodes at once.
     const STEP_PAGE = 80;
-    // Last Body build cost (ms). Written during render, read one frame later by
-    // the header caption, so the number is attributable without extra renders.
-    const perf = { lastBuildMs: null };
     // F141: live-appended rows fade in instead of popping in.
     const ROW_ANIM_CSS = '@keyframes hadesRowIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}';
 
@@ -231,14 +228,6 @@ window.__ModuleLoader__.load({
       while (map.size > max) map.delete(map.keys().next().value);
     }
 
-    function clearSessionCache(sessionId) {
-      for (const map of [cache.runs, cache.run, cache.step, cache.event]) {
-        for (const key of [...map.keys()]) {
-          if (key === sessionId || key.startsWith(sessionId + '::')) map.delete(key);
-        }
-      }
-    }
-
     function buildUrl(op, params) {
       const url = new URL(PREFIX + '/' + op, window.location.origin);
       for (const [key, value] of Object.entries(params ?? {})) {
@@ -279,11 +268,6 @@ window.__ModuleLoader__.load({
       if (n == null) return '—';
       if (n < 1000) return String(n);
       return (n / 1000).toFixed(1) + 'k';
-    }
-    function fmtBytes(n) {
-      if (n == null || !Number.isFinite(n)) return '—';
-      if (n < 1024) return n + ' B';
-      return (n / 1024).toFixed(0) + ' KB';
     }
 
     // Role tags (SPEC F131) mirror the built-in Trajectory's `kindTag` exactly:
@@ -347,23 +331,56 @@ window.__ModuleLoader__.load({
       return h(RowTag, { text, color: role.color, background: role.background, title: zh });
     }
 
+    // ---------------------------------------------------------------------
+    // F151 top overview — two modules instead of one card:
+    //   KpiSummary      the numbers, its own module (scrolls away)
+    //   OverviewMatrix  the picture, sticky: it stays pinned at the top while
+    //                   the run list scrolls underneath it
+    // ---------------------------------------------------------------------
+    function KpiSummary({ kpi, label }) {
+      const items = [
+        [String(kpi.runs), label('stat.runs', 'Run（指令）')],
+        [String(kpi.steps), label('stat.steps', 'Step（迭代）')],
+        [String(kpi.events), label('stat.events', '事件')],
+        [fmtK(kpi.tokenTotal), label('stat.tokens', 'Token')],
+        [String(kpi.errors), label('stat.errors', '错误'), T.error],
+        [String(kpi.slow), label('stat.slow', '慢操作'), T.warn],
+        [String(kpi.abnormal), label('stat.abnormal', '异常 Run'), T.warn],
+        [kpi.slowest ? fmtMs(kpi.slowest.durationMs) : '—', label('stat.slowest', '最慢操作'), T.warn, kpi.slowest?.name],
+      ];
+      return h('div', {
+        style: {
+          display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap',
+          border: '1px solid ' + T.border, borderRadius: T.radiusMd,
+          padding: '9px 12px', background: T.surface, marginBottom: 10,
+        },
+      }, items.map(([num, lbl, tone, sub], i) => h('span', {
+        key: 'kpi-' + i, style: { display: 'inline-flex', alignItems: 'baseline', gap: 4, minWidth: 0 },
+      },
+        h('b', { style: { fontSize: 15, fontWeight: 600, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums', color: tone ?? T.text, letterSpacing: '-.01em' } }, num),
+        h('span', { style: { fontSize: 11, color: T.muted, whiteSpace: 'nowrap' } }, lbl),
+        sub ? h('span', { style: { fontSize: 11, color: T.faint, fontFamily: T.mono } }, sub) : null,
+      )));
+    }
+
+    // Matrix geometry: a fixed label column, then one track per run with 1px
+    // gaps. The hover band is positioned from these numbers so its edges sit
+    // exactly on the cell borders (a plain `i/n` percentage ignores the gaps and
+    // drifts across the cell centres as the count grows).
+    const MX_LABEL_W = 46;
+    const MX_GAP = 8;
+
     /**
-     * F150 top overview: one compact KPI line + a heat matrix over every run.
+     * F150/F151 heat matrix: four rows × one column per run.
      *
-     * Why a matrix instead of eight number cards: totals alone cannot answer
-     * "which turn should I open?" or "where is the problem". Four rows × one
-     * column per run turns the whole session into a picture: a column that is
-     * dark in 耗时 / Token / 步数 at the same time is *slow, expensive AND
-     * long*; the 异常 row puts the red and amber flags exactly on the columns
-     * that need a look.
+     * Shading is rank-based, not linear: token goes 13.4k (median) → 691k (max)
+     * in this session — a 52× skew — so a linear ramp would paint one dark cell
+     * and 173 invisible ones.
      *
-     * Shading is rank-based, not linear: in this session token goes 13.4k
-     * (median) → 691k (max), a 52× skew, so a linear ramp would paint one dark
-     * cell and 173 invisible ones. Ranks make relative position readable.
-     *
-     * Hover = crosshair tooltip; click = locate (open + scroll to that run).
+     * Sticky (F151): the card stays at the top of the scroll container so the
+     * picture never leaves the screen while reading a run far down the list.
      */
-    function OverviewMatrix({ rows, kpi, label, onLocate }) {
+    function OverviewMatrix({ rows, label, onLocate }) {
       const [hover, setHover] = useState(null);
       const n = rows.length;
       const ranks = useMemo(() => {
@@ -379,8 +396,9 @@ window.__ModuleLoader__.load({
           steps: rank((r) => r.stepCount),
         };
       }, [rows]);
-      // Rank → alpha. 8% floor keeps "smallest run" visible, 88% ceiling keeps
-      // the biggest from turning into a solid block.
+      if (n === 0) return null;
+      // 8% floor keeps the smallest run visible; 88% ceiling keeps the largest
+      // from turning into a solid block.
       const shade = (tone, rank) => `color-mix(in srgb, ${tone} ${Math.round(8 + 80 * rank)}%, var(--dsw-alias-bg-layer-1))`;
       const rowsDef = [
         { key: 'time', text: label('col.time', 'Time'), tone: T.brand, values: ranks.time },
@@ -390,72 +408,65 @@ window.__ModuleLoader__.load({
       const cellBase = { height: 11, borderRadius: 1, cursor: 'pointer' };
       const hovered = hover == null ? null : rows[hover];
       const summary = hovered
-        ? `run ${hovered.idx} · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} 步`
+        ? `Run ${hovered.idx} · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} 步`
           + (hovered.hasError ? ' · 有错误' : '') + (hovered.hasSlow ? ' · 有慢操作' : '')
-          + (hovered.prompt ? ' — ' + String(hovered.prompt).replace(/\s+/g, ' ').slice(0, 60) : '')
+          + (hovered.prompt ? ' — ' + String(hovered.prompt).replace(/\s+/g, ' ').slice(0, 56) : '')
         : '';
-      const kpiItems = [
-        [String(kpi.runs), label('stat.runs', 'run（指令）')],
-        [String(kpi.steps), label('stat.steps', 'step（迭代）')],
-        [String(kpi.events), label('stat.events', '事件')],
-        [fmtK(kpi.tokenTotal), label('stat.tokens', 'Token')],
-        [String(kpi.errors), label('stat.errors', '错误'), T.error],
-        [String(kpi.slow), label('stat.slow', '慢操作'), T.warn],
-        [String(kpi.abnormal), label('stat.abnormal', '异常 run'), T.warn],
-        [kpi.slowest ? fmtMs(kpi.slowest.durationMs) : '—', label('stat.slowest', '最慢操作'), T.warn, kpi.slowest?.name],
-      ];
-      return h('div', { style: { border: '1px solid ' + T.border, borderRadius: T.radiusMd, padding: '9px 12px 10px', background: T.surface, marginBottom: 12 } },
-        h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap', minHeight: 20 } },
-          kpiItems.map(([num, lbl, tone, sub], i) => h('span', { key: 'kpi-' + i, style: { display: 'inline-flex', alignItems: 'baseline', gap: 4, minWidth: 0 } },
-            h('b', { style: { fontSize: 15, fontWeight: 600, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums', color: tone ?? T.text, letterSpacing: '-.01em' } }, num),
-            h('span', { style: { fontSize: 11, color: T.muted, whiteSpace: 'nowrap' } }, lbl),
-            sub ? h('span', { style: { fontSize: 11, color: T.faint, fontFamily: T.mono } }, sub) : null,
-          )),
-          // Hint / crosshair readout share one line so the card never jumps.
-          h('span', {
-            style: {
-              marginLeft: 'auto', fontSize: 11, fontFamily: T.mono, color: hovered ? T.text : T.faint,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '46%',
-            },
-          }, hovered ? summary : label('mx.hint', '悬停看这个 run · 点击定位')),
-        ),
-        h('div', {
-          style: { position: 'relative', marginTop: 8 },
-          onMouseLeave: () => setHover(null),
+      const gaps = Math.max(0, n - 1);
+      const track = `(100% - ${MX_LABEL_W + MX_GAP + gaps}px) / ${n}`;
+      const band = hover == null ? null : {
+        left: `calc(${MX_LABEL_W + MX_GAP}px + ${hover} * ((${track}) + 1px))`,
+        width: `calc(${track})`,
+      };
+      const swatch = (tone, title) => h('i', {
+        key: title, title,
+        style: { width: 9, height: 9, borderRadius: 2, background: tone, display: 'inline-block' },
+      });
+      return h('div', {
+        style: {
+          // Sticky under the panel's top edge; opaque so rows pass behind it.
+          position: 'sticky', top: 0, zIndex: 3,
+          border: '1px solid ' + T.border, borderRadius: T.radiusMd,
+          padding: '8px 12px 7px', background: T.surface, marginBottom: 12,
+          boxShadow: `0 10px 18px -14px color-mix(in srgb, ${T.text} 55%, transparent)`,
         },
-          // Crosshair: one absolutely positioned band over the hovered column,
-          // so all four rows light up together without re-rendering 174 cells.
-          hovered ? h('div', {
+        onMouseLeave: () => setHover(null),
+      },
+        h('div', { style: { position: 'relative' } },
+          band ? h('div', {
             style: {
               position: 'absolute', top: -2, bottom: -2, pointerEvents: 'none',
-              left: `calc(${(hover / n) * 100}% - 1px)`, width: `calc(${100 / n}% + 2px)`,
+              left: band.left, width: band.width, boxSizing: 'border-box',
               borderLeft: '1px solid ' + T.brand, borderRight: '1px solid ' + T.brand,
-              background: `color-mix(in srgb, ${T.brand} 14%, transparent)`, borderRadius: 1,
+              background: `color-mix(in srgb, ${T.brand} 16%, transparent)`, borderRadius: 1,
             },
           }) : null,
-          rowsDef.map((row) => h('div', { key: row.key, style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 } },
-            h('span', { style: { flex: '0 0 46px', textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted } }, row.text),
+          rowsDef.map((row) => h('div', { key: row.key, style: { display: 'flex', alignItems: 'center', gap: MX_GAP, marginBottom: 3 } },
+            h('span', {
+              style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: row.tone },
+            }, row.text),
             h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
               rows.map((r, i) => h('div', {
                 key: r.idx,
-                'data-mx': row.key + '-' + r.idx,
                 onMouseEnter: () => setHover(i),
                 onClick: () => onLocate(r.idx),
-                title: `run ${r.idx}`,
+                title: `Run ${r.idx}`,
                 style: { ...cellBase, background: shade(row.tone, row.values[i]) },
               })),
             ),
           )),
-          // 异常 row: the flag lane. A column with an error is red, a slow run
-          // amber, everything else stays a hairline so the flags pop.
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-            h('span', { style: { flex: '0 0 46px', textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted } }, label('mx.flags', '异常')),
+          // Flag lane: error → red, slow → amber, everything else a hairline, so
+          // the two colours are the only thing that pops.
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: MX_GAP } },
+            h('span', {
+              style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
+            }, label('mx.flags', '异常')),
             h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
               rows.map((r, i) => h('div', {
                 key: 'flag-' + r.idx,
                 onMouseEnter: () => setHover(i),
                 onClick: () => onLocate(r.idx),
-                title: `run ${r.idx}`,
+                title: `Run ${r.idx}`,
                 style: {
                   ...cellBase,
                   background: r.hasError ? T.error : r.hasSlow ? T.warn : `color-mix(in srgb, ${T.muted} 12%, transparent)`,
@@ -465,22 +476,36 @@ window.__ModuleLoader__.load({
             ),
           ),
         ),
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 7, fontSize: 11, fontFamily: T.mono, color: T.faint } },
-          h('span', null, label('mx.low', '低')),
+        // F151 legend: colour only (no "blue = time" sentence) — the row labels
+        // are already drawn in their own colour, the swatches just restate them,
+        // and the ramp explains the intensity. Tooltips carry the words.
+        h('div', {
+          style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 7, font: `11px/1.2 ${T.mono}`, minHeight: 16 },
+        },
+          h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 3 } },
+            swatch(T.brand, label('col.time', 'Time')),
+            swatch(T.token, label('col.token', 'Token')),
+            swatch(T.success, label('mx.steps', '步数')),
+          ),
           h('span', {
+            title: label('mx.ramp', '颜色越深 = 该 Run 在全会话里的排位越高'),
             style: {
-              flex: '0 0 90px', height: 6, borderRadius: 3,
+              flex: '0 0 84px', height: 6, borderRadius: 3,
               background: `linear-gradient(90deg, color-mix(in srgb, ${T.brand} 8%, var(--dsw-alias-bg-layer-1)), color-mix(in srgb, ${T.brand} 88%, var(--dsw-alias-bg-layer-1)))`,
             },
           }),
-          h('span', null, label('mx.high', '高')),
-          h('span', { style: { width: 1, height: 10, background: T.border } }),
-          h('span', { style: { color: T.muted } }, label('mx.legend', '蓝 = 耗时 · 紫 = Token · 绿 = 步数')),
-          h('span', { style: { width: 1, height: 10, background: T.border } }),
-          h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 4 } },
-            h('i', { style: { width: 8, height: 8, borderRadius: 2, background: T.error } }), label('mx.error', '有错误'),
-            h('i', { style: { width: 8, height: 8, borderRadius: 2, background: T.warn, marginLeft: 4 } }), label('mx.slow', '有慢操作'),
+          h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 3 } },
+            swatch(T.error, label('mx.error', '有错误')),
+            swatch(T.warn, label('mx.slow', '有慢操作')),
           ),
+          h('span', {
+            title: hovered ? summary : '',
+            style: {
+              marginLeft: 'auto', minWidth: 0, maxWidth: '56%', textAlign: 'right',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              color: hovered ? T.text : T.faint,
+            },
+          }, hovered ? summary : label('mx.hint', '悬停看这个 Run · 点击定位')),
         ),
       );
     }
@@ -711,7 +736,7 @@ window.__ModuleLoader__.load({
             },
               h('span', { style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : (runSelected || hoverRun === r.idx ? T.text : T.muted), fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 } },
                 r.stepCount ? h(Caret, { key: 'caret', open, tone: hoverRun === r.idx ? T.brand : undefined }) : null,
-                `run ${r.idx}`),
+                `Run ${r.idx}`),
               // F145: both columns are the same slice (left 0, width = share of
               // the session max); only `tone` differs.
               h(MetricBar, {
@@ -914,7 +939,7 @@ window.__ModuleLoader__.load({
       },
         h('span', { style: { flex: `0 0 ${idxWidth}px`, minWidth: 0, color: selected || hover ? T.text : T.muted, fontSize: 12, userSelect: 'none', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 2 } },
           h(Caret, { key: 'caret', open, tone: hover ? T.brand : undefined }),
-          `step ${step.step}`),
+          `Step ${step.step}`),
         timeMetric,
         tokenMetric,
         chips.map((chip, i) => h(StepTag, {
@@ -1004,7 +1029,7 @@ window.__ModuleLoader__.load({
         padding: '2px 10px 4px 12px',
       };
 
-      if (state.loading) return h('div', { style: { ...cardStyle, fontSize: 12, color: T.muted } }, label('step.loading', '载入 step 内容…'));
+      if (state.loading) return h('div', { style: { ...cardStyle, fontSize: 12, color: T.muted } }, label('step.loading', '载入 Step 内容…'));
       if (state.error != null) {
         return h('div', { style: { ...cardStyle, fontSize: 12, color: T.error } },
           state.error,
@@ -1160,7 +1185,7 @@ window.__ModuleLoader__.load({
       }
 
       if (children.length === 1 && !hasInstruction) {
-        children.push(h('div', { key: 'empty', style: { marginTop: 6, fontSize: 12, color: T.muted } }, label('step.empty', '该 step 无内容')));
+        children.push(h('div', { key: 'empty', style: { marginTop: 6, fontSize: 12, color: T.muted } }, label('step.empty', '该 Step 无内容')));
       }
 
       return h('div', { style: cardStyle }, children);
@@ -1197,7 +1222,6 @@ window.__ModuleLoader__.load({
     }
 
     function Body({ sessionId, t }) {
-      const renderStart = performance.now();
       // F149: keep the hover/selection palette in sync with the live theme. This
       // runs during render (cheap attribute read) and the observer below forces a
       // re-render when the user flips light/dark.
@@ -1219,28 +1243,27 @@ window.__ModuleLoader__.load({
       const [payload, setPayload] = useState(null);
       const [error, setError] = useState(null);
       const [loading, setLoading] = useState(false);
-      const [loadInfo, setLoadInfo] = useState(null);
       const [sort, setSort] = useState(null);
       const [expanded, setExpanded] = useState(() => new Set());
       const [details, setDetails] = useState(() => new Map());
       const [detailLoading, setDetailLoading] = useState(() => new Set());
       const [detailErrors, setDetailErrors] = useState(() => new Map());
-      // F140 realtime: `seq` is the log offset the current payload was built at,
-      // `live` mirrors the tick health, `lastAt` feeds the header badge.
+      // Handle of the running "glide to this run" tween (F151).
+      const glideRaf = useRef(null);
+      // F140 realtime: `seq` is the log offset the current payload was built at.
       const seqRef = useRef(null);
       const tickBusy = useRef(false);
       const expandedRef = useRef(expanded);
       expandedRef.current = expanded;
-      const [realtime, setRealtime] = useState({ live: true, paused: false, lastAt: null });
       // step key -> counter; bumping it makes an open StepContent refetch.
       const [stepTokens, setStepTokens] = useState(() => ({}));
 
       const load = useCallback((force) => {
-        if (!sessionId) { setPayload(null); setError(null); setLoading(false); setLoadInfo(null); return undefined; }
+        if (!sessionId) { setPayload(null); setError(null); setLoading(false); return undefined; }
         if (!force && cache.runs.has(sessionId)) {
           const hit = cache.runs.get(sessionId);
           seqRef.current = hit.payload?.meta?.seq ?? null;
-          setPayload(hit.payload); setLoadInfo({ ...hit.info, cached: true }); setError(null); setLoading(false);
+          setPayload(hit.payload); setError(null); setLoading(false);
           return undefined;
         }
         let cancelled = false;
@@ -1260,7 +1283,7 @@ window.__ModuleLoader__.load({
           };
           cacheSet(cache.runs, sessionId, { payload: json, info }, CACHE_MAX.runs);
           seqRef.current = json?.meta?.seq ?? null;
-          setPayload(json); setLoadInfo(info); setLoading(false);
+          setPayload(json); setLoading(false);
         }).catch((err) => {
           if (cancelled) return;
           if (err && err.name === 'AbortError') { setLoading(false); return; }
@@ -1289,7 +1312,6 @@ window.__ModuleLoader__.load({
             // F141: a quiet tick must not write state. Returning `prev` from the
             // updater lets React bail out, so the 150+ row table is not rebuilt
             // (and does not re-measure) every 2 s while the session is idle.
-            setRealtime((prev) => (prev.live && !prev.paused ? prev : { live: true, paused: false, lastAt: Date.now() }));
             return;
           }
           seqRef.current = json?.meta?.seq ?? null;
@@ -1317,11 +1339,9 @@ window.__ModuleLoader__.load({
               return next;
             });
           }
-          setRealtime({ live: true, paused: false, lastAt: Date.now() });
         } catch {
           // A failed tick is not an error state: keep the last good table and
-          // just mark the badge as not-live.
-          setRealtime((prev) => ({ ...prev, live: false }));
+          // let the next tick try again.
         } finally {
           tickBusy.current = false;
         }
@@ -1338,7 +1358,6 @@ window.__ModuleLoader__.load({
           timer = setTimeout(() => {
             timer = null;
             if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-              setRealtime((prev) => ({ ...prev, paused: true }));
               schedule(EVERY);
               return;
             }
@@ -1348,10 +1367,8 @@ window.__ModuleLoader__.load({
         const onVisibility = () => {
           if (typeof document === 'undefined') return;
           if (document.visibilityState === 'visible') {
-            setRealtime((prev) => ({ ...prev, paused: false }));
             schedule(400); // come back: catch up right away, then resume the rhythm
           } else {
-            setRealtime((prev) => ({ ...prev, paused: true }));
           }
         };
         schedule(EVERY);
@@ -1362,8 +1379,6 @@ window.__ModuleLoader__.load({
           if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
         };
       }, [sessionId, tick]);
-
-      const refresh = () => { if (sessionId) clearSessionCache(sessionId); load(true); };
 
       const openRun = (idx) => {
         const runKey = 'run-' + idx;
@@ -1388,19 +1403,48 @@ window.__ModuleLoader__.load({
       };
 
       /**
-       * F150: a click on the overview matrix locates a run — it opens the run
-       * (never toggles it closed, unlike a click on the row itself) and scrolls
-       * its row into view.
+       * F150/F151: a click on the overview matrix locates a run — it opens the
+       * run (never toggles it closed, unlike a click on the row itself) and
+       * glides its row into view.
+       *
+       * The glide is animated by hand instead of `scrollIntoView({behavior:
+       * 'smooth'})`: the native version is jumpy on long distances, cannot be
+       * cancelled, and (in this panel) sometimes does not move at all. A rAF
+       * tween with easeInOutCubic is deterministic, ~260–700 ms by distance, and
+       * a new click simply replaces the running animation.
        */
       const locateRun = (idx) => {
         if (!expanded.has('run-' + idx)) openRun(idx);
-        const scroll = () => {
-          const host = scrollRef.current;
-          const el = host ? host.querySelector('[data-run="' + idx + '"]') : null;
-          if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        const host = scrollRef.current;
+        if (!host) return;
+        const reduce = typeof window !== 'undefined' && window.matchMedia
+          && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const glide = () => {
+          const el = host.querySelector('[data-run="' + idx + '"]');
+          if (!el) return;
+          const offset = el.getBoundingClientRect().top - host.getBoundingClientRect().top;
+          const anchor = host.clientHeight * 0.32; // keep clear of the sticky card
+          const max = Math.max(0, host.scrollHeight - host.clientHeight);
+          const target = Math.max(0, Math.min(max, host.scrollTop + offset - anchor));
+          const delta = target - host.scrollTop;
+          if (Math.abs(delta) < 2) return;
+          if (reduce || typeof requestAnimationFrame !== 'function') { host.scrollTop = target; return; }
+          const start = host.scrollTop;
+          const duration = Math.min(700, Math.max(260, Math.abs(delta) * 0.5));
+          const t0 = performance.now();
+          const ease = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+          if (glideRaf.current != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(glideRaf.current);
+          const step = (now) => {
+            const p = Math.min(1, (now - t0) / duration);
+            host.scrollTop = start + delta * ease(p);
+            glideRaf.current = p < 1 ? requestAnimationFrame(step) : null;
+          };
+          glideRaf.current = requestAnimationFrame(step);
         };
-        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(scroll));
-        else scroll();
+        // Two frames: the expansion has to be committed (and the row list laid
+        // out) before the target offset is measured.
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(glide));
+        else glide();
       };
 
       /** Toggle one Step's panel; its row highlight follows the open state. */
@@ -1496,7 +1540,7 @@ window.__ModuleLoader__.load({
               // spent before this step (same underlay as the time column)
               h(SpentFill, { tone: T.token, pct: beforePct }),
               // this step's own slice
-              h(SliceFill, { tone: T.token, left: beforePct, width: ownPct, tip: `${tokenText} tok · ${sharePct}% of run · 累计 ${fmtK(cumTokens[stepIdx])} (${Math.round(cumPct)}%)` }),
+              h(SliceFill, { tone: T.token, left: beforePct, width: ownPct, tip: `${tokenText} tok · ${sharePct}% of Run · 累计 ${fmtK(cumTokens[stepIdx])} (${Math.round(cumPct)}%)` }),
             );
             return h(StepRow, {
               key: stepIdx,
@@ -1518,7 +1562,7 @@ window.__ModuleLoader__.load({
                 width: METRIC_W, numWidth: METRIC_NUM_W, tone: T.token, fill: tokenFill, valueText: tokenText,
                 // F143: the track is the run's total, so the tip says where this
                 // step sits inside it and how much of the run is spent already.
-                tip: `${tokenText} tok · ${sharePct}% of run · 累计 ${fmtK(cumTokens[stepIdx])} (${Math.round(cumPct)}%)`,
+                tip: `${tokenText} tok · ${sharePct}% of Run · 累计 ${fmtK(cumTokens[stepIdx])} (${Math.round(cumPct)}%)`,
               }),
               text: step.text ?? '—',
               title: step.title ?? step.text ?? '—',
@@ -1557,28 +1601,17 @@ window.__ModuleLoader__.load({
         );
       };
 
-      const caption = () => {
-        if (!loadInfo) return null;
-        const parts = [];
-        if (loadInfo.cached) parts.push(label('cacheHit', '缓存命中'));
-        else parts.push(`${label('firstPaint', '首屏')} ${loadInfo.ms} ms`);
-        if (!loadInfo.cached) parts.push(fmtBytes(loadInfo.bytes));
-        if (loadInfo.serverMs != null) parts.push(`${label('server', '服务端')} ${loadInfo.serverMs} ms`);
-        // F138: our own build cost, so "is Hades Lab the slow thing?" is a number
-        // on screen instead of a guess. Only shown when it is big enough to feel.
-        if (perf.lastBuildMs != null && perf.lastBuildMs >= 8) parts.push(`${label('render', '渲染')} ${Math.round(perf.lastBuildMs)} ms`);
-        return parts.join(' · ');
-      };
-
       const renderContent = () => {
         if (error != null) return h('div', { style: { color: T.error } }, String(error));
         if (loading && !payload) return h('div', { style: { color: T.muted } }, label('loading', '加载中…'));
         if (!payload) return null;
         if ((payload.counts?.events ?? 0) === 0) return h('div', { style: { color: T.muted } }, label('empty', '该会话暂无事件'));
         return h('div', null,
+          // F151: numbers and picture are two modules — the summary scrolls away,
+          // the matrix sticks.
+          h(KpiSummary, { kpi, label }),
           h(OverviewMatrix, {
             rows: payload.runs ?? [],
-            kpi,
             label,
             onLocate: locateRun,
           }),
@@ -1596,24 +1629,13 @@ window.__ModuleLoader__.load({
         );
       };
 
-      perf.lastBuildMs = performance.now() - renderStart;
+      
       return h('div', { style: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', boxSizing: 'border-box', fontSize: 13, lineHeight: 1.6, color: T.text, fontFamily: T.font } },
         h('style', { key: 'hades-row-anim' }, ROW_ANIM_CSS),
-        h('div', { style: { flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid ' + T.border, padding: '6px 12px', minHeight: 30 } },
-          h('span', { style: { fontSize: 11, color: T.faint, fontVariantNumeric: 'tabular-nums', fontFamily: T.mono } }, caption() ?? ''),
-          // F140: the panel says out loud whether it is following the log.
-          h('span', {
-            title: realtime.paused
-              ? label('realtime.tipPaused', '页面不可见时暂停轮询；切回来会立刻补一次')
-              : label('realtime.tip', '每 2 秒检查一次日志偏移；没有新事件时服务端只回 ~40 B'),
-            style: { display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto', fontSize: 11, fontFamily: T.mono, color: realtime.live && !realtime.paused ? T.muted : T.warn },
-          },
-            h('span', { style: { width: 6, height: 6, borderRadius: 3, background: realtime.paused ? T.faint : (realtime.live ? T.success : T.warn) } }),
-            realtime.paused ? label('realtime.paused', '已暂停') : (realtime.live ? label('realtime.live', '实时') : label('realtime.stalled', '实时中断')),
-          ),
-          h('button', { type: 'button', onClick: refresh, style: { font: 'inherit', color: T.text, background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm, padding: '2px 10px', cursor: 'pointer' } }, label('refresh', '刷新')),
-        ),
-        h('div', { ref: scrollRef, style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: 12 } },
+        // F151: no header bar — the "cache hit / server ms / live badge / refresh
+        // button" chrome was developer telemetry sitting on top of the product,
+        // and the 2 s realtime tick makes a manual refresh unnecessary.
+        h('div', { ref: scrollRef, style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '10px 12px 0' } },
           renderContent(),
         ),
       );
@@ -1625,20 +1647,17 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, {
           zh: {
             'view.title': 'Hades Lab',
-            'loading': '加载中…', 'refresh': '刷新', 'empty': '该会话暂无事件',
-            'run': 'run ', 'step': 'step ', 'followup': '续跑', 'system': '系统提示词',
-            'stat.runs': 'run（指令）', 'stat.steps': 'step（迭代）', 'stat.events': '事件', 'stat.tokens': 'Token',
-            'stat.errors': '错误', 'stat.slow': '慢操作', 'stat.abnormal': '异常 run', 'stat.slowest': '最慢操作',
-            'mx.steps': '步数', 'mx.flags': '异常', 'mx.hint': '悬停看这个 run · 点击定位',
-            'mx.low': '低', 'mx.high': '高', 'mx.legend': '蓝 = 耗时 · 紫 = Token · 绿 = 步数',
+            'loading': '加载中…', 'empty': '该会话暂无事件',
+            'run': 'Run ', 'step': 'Step ', 'followup': '续跑', 'system': '系统提示词',
+            'stat.runs': 'Run（指令）', 'stat.steps': 'Step（迭代）', 'stat.events': '事件', 'stat.tokens': 'Token',
+            'stat.errors': '错误', 'stat.slow': '慢操作', 'stat.abnormal': '异常 Run', 'stat.slowest': '最慢操作',
+            'mx.steps': '步数', 'mx.flags': '异常', 'mx.hint': '悬停看这个 Run · 点击定位',
+            'mx.ramp': '颜色越深 = 该 Run 在全会话里的排位越高',
             'mx.error': '有错误', 'mx.slow': '有慢操作',
-            'firstPaint': '首屏', 'server': '服务端', 'cacheHit': '缓存命中', 'render': '渲染', 'loadingDetail': '载入 step…',
-            'realtime.live': '实时', 'realtime.paused': '已暂停', 'realtime.stalled': '实时中断',
-            'realtime.tip': '每 2 秒检查一次日志偏移；没有新事件时服务端只回 ~40 B',
-            'realtime.tipPaused': '页面不可见时暂停轮询；切回来会立刻补一次',
+            'loadingDetail': '载入 Step…',
             'step.model': '模型', 'step.timing': '计时', 'step.tokens': 'Token', 'step.summary': '概述',
-            'step.args': '参数', 'step.result': '结果', 'step.original': '原文', 'step.loading': '载入 step 内容…',
-            'step.retry': '重试', 'step.empty': '该 step 无内容', 'step.instruction': '指令',
+            'step.args': '参数', 'step.result': '结果', 'step.original': '原文', 'step.loading': '载入 Step 内容…',
+            'step.retry': '重试', 'step.empty': '该 Step 无内容', 'step.instruction': '指令',
             'step.countModels': '模型调用', 'step.countTools': '工具调用', 'step.countContexts': '上下文',
             'step.modelCall': '模型调用', 'step.injected': '注入', 'step.systemPrompt': '系统提示词', 'step.slow': '慢',
             'role.user': '用户', 'role.assistant': '助手', 'role.context': '上下文',
@@ -1652,20 +1671,17 @@ window.__ModuleLoader__.load({
           },
           en: {
             'view.title': 'Hades Lab',
-            'loading': 'Loading…', 'refresh': 'Refresh', 'empty': 'No events in this session',
-            'run': 'run ', 'step': 'step ', 'followup': 'follow-up', 'system': 'system prompt',
-            'stat.runs': 'runs', 'stat.steps': 'steps', 'stat.events': 'events', 'stat.tokens': 'Tokens',
-            'stat.errors': 'errors', 'stat.slow': 'slow', 'stat.abnormal': 'abnormal runs', 'stat.slowest': 'slowest',
-            'mx.steps': 'steps', 'mx.flags': 'flags', 'mx.hint': 'hover a run · click to locate',
-            'mx.low': 'low', 'mx.high': 'high', 'mx.legend': 'blue = time · violet = tokens · green = steps',
+            'loading': 'Loading…', 'empty': 'No events in this session',
+            'run': 'Run ', 'step': 'Step ', 'followup': 'follow-up', 'system': 'system prompt',
+            'stat.runs': 'Runs', 'stat.steps': 'Steps', 'stat.events': 'Events', 'stat.tokens': 'Tokens',
+            'stat.errors': 'Errors', 'stat.slow': 'Slow ops', 'stat.abnormal': 'Abnormal runs', 'stat.slowest': 'Slowest',
+            'mx.steps': 'Steps', 'mx.flags': 'Flags', 'mx.hint': 'hover a Run · click to locate',
+            'mx.ramp': 'darker = higher rank within the session',
             'mx.error': 'has error', 'mx.slow': 'has slow op',
-            'firstPaint': 'first paint', 'server': 'server', 'cacheHit': 'cache hit', 'render': 'render', 'loadingDetail': 'loading steps…',
-            'realtime.live': 'live', 'realtime.paused': 'paused', 'realtime.stalled': 'not live',
-            'realtime.tip': 'Checks the log offset every 2 s; an unchanged session answers in ~40 B',
-            'realtime.tipPaused': 'Polling pauses while the page is hidden and catches up at once',
+            'loadingDetail': 'loading Steps…',
             'step.model': 'model', 'step.timing': 'elapsed', 'step.tokens': 'tokens', 'step.summary': 'summary',
-            'step.args': 'args', 'step.result': 'result', 'step.original': 'raw', 'step.loading': 'loading step…',
-            'step.retry': 'Retry', 'step.empty': 'Empty step', 'step.instruction': 'instruction',
+            'step.args': 'args', 'step.result': 'result', 'step.original': 'raw', 'step.loading': 'loading Step…',
+            'step.retry': 'Retry', 'step.empty': 'Empty Step', 'step.instruction': 'instruction',
             'step.countModels': 'model calls', 'step.countTools': 'tool calls', 'step.countContexts': 'context',
             'step.modelCall': 'model call', 'step.injected': 'injected', 'step.systemPrompt': 'system prompt', 'step.slow': 'slow',
             'role.user': 'USER', 'role.assistant': 'ASSISTANT', 'role.context': 'CONTEXT',

@@ -344,7 +344,19 @@
   - **口径修正（同属 F150）**：`kpi.slowest` / `kpi.slow` / run 的 `hasSlow` 一律排除**人机等待**（`ask_user_question` / `exit_plan_mode` / `plugin_manager` 且 ≥5s）。本会话里 `ask_user_question 13.1min` 之前被报成"最慢操作"，指向一个不存在的性能问题；修正后最慢操作 = `pwsh 2.0min`，慢操作 53 → 37 条。等待本身仍按 F133 在 step 行显示为 `⏸`，只是不再计入慢操作。
   - **AC**：浅色/深色下 175 列都清晰可分；悬停任一列四行同时点亮且读数与表内数据一致；点击格子会打开并滚动到该 run（已展开的 run 不会被收起）；`最慢操作` 不再出现 `ask_user_question`；`check-served` 63/63（新增 `function OverviewMatrix` / `locateRun` / `mx.hint`）；单测 **43/43**（新增 F150 用例：10min 的 ask_user_question 不算最慢，pwsh 60s 才算）；`verify-perf` 9/9（P06 基线同步改为排除等待）；对照图 `mockup/overview-card.png`。
 
-## 28. 范围外（v1 不做）
+## 28. 顶部模块重构：吸顶矩阵 + 纯色图例（F151）
+
+- **F151 顶部按"数字 / 图 / 操作"三件事拆开**，同时去掉开发者面板式的头部：
+  1. **矩阵卡吸顶**：矩阵卡 `position: sticky; top: 0; z-index: 3`，滚动 run 列表时**始终钉在面板顶部**，行从它下面滑过；KPI 模块正常滚走。卡片背景不透明 + 一层很浅的外阴影，滚到列表深处也随时能对照"哪块厚"。
+  2. **十字线精确对齐单元边界**：旧实现用 `left: i/n%` —— 它忽略了每格之间 1px 的 gap，格数一多就整体漂移、线从单元中心切过。现在按真实网格算：`track = (100% − 标签列 − 间隙总数) / n`，`left = 标签列 + i × (track + 1px)`，宽度 = `track`，配合 `box-sizing: border-box`，**左右边界正好压在单元边框上**（无头浏览器逐像素实测：band 边框像素 = 单元首/末像素，见 `mockup/overview-card.png` 第四块"测量用"）。
+  3. **点矩阵 → 丝滑下滑**：不再用 `scrollIntoView({behavior:'smooth'})`（长距离会跳、无法取消、在本面板里偶尔不动），改为 **rAF 手写补间**：`easeInOutCubic`，时长按距离取 260–700ms，落点 = 目标行距滚动容器顶部 32% 处（避开吸顶卡），连续点击会取消上一段动画；`prefers-reduced-motion` 时直接跳到位。
+  4. **图例只留颜色**：删除"蓝 = 耗时 · 紫 = Token · 绿 = 步数"这类文字说明，改成「3 枚行色块 + 低→高渐变条 + 红/橙异常色块」，含义靠行标签本身的颜色 + tooltip 承载。
+  5. **数字摘要独立成模块**：KPI 从矩阵卡里拆出来，成为矩阵上方的独立卡片；矩阵卡只留"图 + 图例 + 读数"。
+  6. **去掉头部运维条**：删除「缓存命中 / 服务端 xx ms / 首屏 / 渲染 / 实时 ● 徽标 / 刷新按钮」整条头部；面板直接从内容开始（实时 tick 仍在跑，只是不再显示遥测）。随之删除 `caption()`、`refresh()`、`clearSessionCache()`、`loadInfo`、`realtime` 状态、`perf.lastBuildMs`、`fmtBytes()` 等死代码。
+  7. **Run / Step 首字母大写**：行索引 `Run 42` / `Step 7`、KPI 标签 `Run（指令）` `Step（迭代）` `异常 Run`、提示语 `悬停看这个 Run`、tooltip `% of Run`、`载入 Step 内容…`、`该 Step 无内容`，中英文两套都改。
+  - **AC**：滚到列表第 90 行时矩阵卡仍贴在面板顶部（`mockup/overview-sticky.html` 实测截图）；悬停十字线的左右边界与单元左右边界重合（像素级测量：band 1072–1079 = 单元 1072–1079）；点任意格子后行在 ~500ms 内平滑滑到视口 1/3 处（连点不叠加）；图例里没有任何"颜色 = 含义"的句子；顶部不再出现缓存/服务端/实时/刷新；`check-served` 68/68（新增 `function KpiSummary` / `position: 'sticky'` / `glideRaf` / `mx.ramp` / `Run ${r.idx}`，并把 `缓存命中`、`cacheHit`、`firstPaint`、`realtime.live`、`perf.lastBuildMs` 改为 absent 断言）；单测 43/43。
+
+## 29. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
