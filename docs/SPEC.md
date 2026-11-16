@@ -180,7 +180,7 @@
 - **F127 实时会话内存路径**：活动（live）会话通过 `inspectSession` 读内存事件日志，冷/持久化会话回退 `readSession`；两条路径产出的一致结果由同一份聚合纯函数保证。
   - AC：live 会话 `/runs` 服务端耗时 ≤ 50 ms（实测 0.9–8.2 ms，对照 `readSession` 880–986 ms）；同一会话两种路径的事件数（5996）与统计结果一致。
 
-## 16. Step 内容与选中态（F128–F137）
+## 16. Step 内容与选中态（F128–F138）
 
 - **F128 Run/Step 高亮跟随展开**：不单独维护「选中某一行」——**展开即高亮、收起即恢复**。展开的 Run 行保持 8% 淡蓝底 + 1px 35% 内环（分组底色 4%→7%、序号主文字色）；展开的 Step 行保持 22% 底色（无环，被括号裁切），其下的 Step 括号容器为 accent 11% 蓝底 + 3px 蓝轨 + 1px 38% 真边框，「行被展开」与「容器」是同一个状态的颜色暗示；可同时展开多个 Run/Step，各自保持高亮。
   - AC：展开的 Run 行与 Step 行各自保持高亮；收起后立即恢复普通行；多个展开项同时高亮互不干扰；切换排序时展开状态与高亮保持；高亮不改变行高（只用 background/box-shadow，不破坏 FLIP）。
@@ -227,6 +227,13 @@
   - **数据契约**：`/run` 的 step 项新增 `tags: [{ tag, count, overflow? }]`（`tag` 字段保留 = 首枚，向后兼容），`suffix` 移除。
   - **AC**：参考会话 2275 步 → 2125 步仍是 1 枚 chip（与 F135 完全一致）、148 步 2 枚、2 步 3 枚（`REPLY INSPECT FETCH`）、0 步 overflow；`查 listService` 显示 `INSPECT ×2 READ`；`修改 6 个文件` 显示 `EDIT ×6`；每步「chip 上的 `×n` 之和」覆盖该步全部 `tool/call`（`mockup/verify-chips.mjs` 断言 0 问题，并校验 `tags[0] === tag`）；chip 一律英文大写、中文在 tooltip；多 chip 行在三档缩进（run / step / 面板）下都不换行。
   - **开销**：`stepTitle()` 全量 11.5–13.7 ms，与「关掉 chip」的 A/B 差异落在噪声内（单调用 step 仍走原来的捷径、chip 词表不扫参数）；`/runs` payload 字节完全不变（该路由不含 step 标题）。
+- **F138 性能加固与"卡顿可自证"**：把插件自身在宿主机 / 渲染进程里的占用收敛，并让"卡是不是我们"变成屏幕上的数字。
+  - **客户端缓存有界**：`cache.{runs,run,step,event}` 由无界 Map 改为 LRU（runs 6 / run 40 / step 240 / event 160 条），超出淘汰最旧条目。原来长时间使用后所有打开过的 step 都留在渲染进程堆里。
+  - **在途请求可取消**：`/runs` 请求带 `AbortController`，面板卸载或切会话时 abort（原来只有 `cancelled` 标志，请求仍跑完并解析 JSON）。
+  - **长 run 分页**：单个 run 的 step 行超过 **80** 条时只渲染前 80 行，末尾给「显示全部 N 步（还有 M 步）」；避免 200+ 步的 run 一次挂上几千个节点（本会话实测最长 run 211 步）。
+  - **渲染计量**：Body 记录本次构建耗时，≥ 8 ms 时表头显示「渲染 x ms」，与服务端耗时、首屏体积并列——卡顿时先看这个数字再怀疑是谁。
+  - **Host 缓存遥测**：`/health` 增加 `cache: { sessions, max, events, seqs, lastBuild: { ms, events, at } }` 与 `uptimeMs`；快照缓存上限 **8 → 4 个会话**（单会话始终只保留最新一条，键 = `sessionId`，按 `seq` 校验命中），按实测 5.9 MB/条，上限从 ~47 MB 降到 ~24 MB。
+  - **AC**：`check-served` 34/34 标记通过（含 `cacheSet` / `STEP_PAGE` / `perf.lastBuildMs` / `AbortController`）；`verify-perf` **9/9**（P02 改为「暖态中位 ≤ 50 ms」= 42.5 ms，冷首建 56.2 ms 单列报告）；`/health` 实测 `cache.events=17955`、`lastBuild.ms=42.8`；211 步的 run 默认 80 行 + 按钮，点开后可继续展开；切会话/卸载后不再有在途 `/runs`；闲置 8 s 全部 DSH 进程 CPU 合计 **0.6%**（无轮询）。
 
 ## 17. 范围外（v1 不做）
 

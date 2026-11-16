@@ -51,6 +51,12 @@ window.__ModuleLoader__.load({
     // Indent for the Step level: Step rows and their bracket sit one level in
     // from the Run group, so nesting reads by position, not only by color.
     const STEP_INDENT = 12;
+    // F138: a run may hold 200+ steps; render them in pages so a single expand
+    // cannot mount thousands of nodes at once.
+    const STEP_PAGE = 80;
+    // Last Body build cost (ms). Written during render, read one frame later by
+    // the header caption, so the number is attributable without extra renders.
+    const perf = { lastBuildMs: null };
 
     // Short tag for the explanation-only rows a step panel gained in F23.2
     // (compaction / retry / file changes / slash commands / approvals …).
@@ -60,12 +66,22 @@ window.__ModuleLoader__.load({
 
     // Session-scoped caches: reopening the tab, switching sessions back and forth,
     // or re-expanding a run must not hit the network again (SPEC F123).
+    // Bounded (F138): an unbounded map keeps every step of every session a user
+    // ever opened alive in the renderer heap, which shows up as GC pressure on
+    // the whole app hours later. Oldest entry wins the eviction.
     const cache = {
       runs: new Map(),
       run: new Map(),
       step: new Map(),
       event: new Map(),
     };
+    const CACHE_MAX = { runs: 6, run: 40, step: 240, event: 160 };
+
+    function cacheSet(map, key, value, max) {
+      map.delete(key);
+      map.set(key, value);
+      while (map.size > max) map.delete(map.keys().next().value);
+    }
 
     function clearSessionCache(sessionId) {
       for (const map of [cache.runs, cache.run, cache.step, cache.event]) {
@@ -84,9 +100,9 @@ window.__ModuleLoader__.load({
     }
 
     /** Fetch + parse, reporting the real payload size and wall time for the header readout. */
-    async function fetchPayload(op, params) {
+    async function fetchPayload(op, params, signal) {
       const started = performance.now();
-      const resp = await fetch(buildUrl(op, params));
+      const resp = await fetch(buildUrl(op, params), signal === undefined ? undefined : { signal });
       const text = await resp.text();
       const ms = performance.now() - started;
       if (!resp.ok) throw new Error('HTTP ' + resp.status + (text ? ': ' + text : ''));
@@ -601,7 +617,7 @@ window.__ModuleLoader__.load({
         setState({ data: null, loading: true, error: null });
         fetchPayload('step', { sessionId, idx: runIdx, step: stepIdx })
           .then(({ json }) => {
-            cache.step.set(key, json);
+            cacheSet(cache.step, key, json, CACHE_MAX.step);
             if (!cancelled) setState({ data: json, loading: false, error: null });
           })
           .catch((err) => {
@@ -795,7 +811,7 @@ window.__ModuleLoader__.load({
         Promise.all(list.map((seq) => fetchPayload('event', { sessionId, seq })))
           .then((results) => {
             const value = results.length === 1 ? (results[0].json?.target ?? results[0].json) : results.map((r) => r.json?.target ?? r.json);
-            cache.event.set(key, value);
+            cacheSet(cache.event, key, value, CACHE_MAX.event);
             if (!cancelled) setState({ value, loading: false, error: null });
           })
           .catch((err) => { if (!cancelled) setState({ value: null, loading: false, error: String((err && err.message) || err) }); });
@@ -810,6 +826,8 @@ window.__ModuleLoader__.load({
     }
 
     function Body({ sessionId, t }) {
+      const renderStart = performance.now();
+      const [fullRuns, setFullRuns] = useState(() => new Set());
       const [payload, setPayload] = useState(null);
       const [error, setError] = useState(null);
       const [loading, setLoading] = useState(false);
@@ -828,9 +846,12 @@ window.__ModuleLoader__.load({
           return undefined;
         }
         let cancelled = false;
+        // F138: a pending /runs must not keep a socket (or a 17k-event session's
+        // JSON parse) alive after the user has already switched away.
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
         setLoading(true); setError(null);
         setDetails(new Map()); setDetailLoading(new Set()); setDetailErrors(new Map());
-        fetchPayload('runs', { sessionId }).then(({ json, bytes, ms }) => {
+        fetchPayload('runs', { sessionId }, controller?.signal).then(({ json, bytes, ms }) => {
           if (cancelled) return;
           const info = {
             ms: Math.round(ms * 10) / 10,
@@ -839,10 +860,14 @@ window.__ModuleLoader__.load({
             parseMs: null,
             cached: false,
           };
-          cache.runs.set(sessionId, { payload: json, info });
+          cacheSet(cache.runs, sessionId, { payload: json, info }, CACHE_MAX.runs);
           setPayload(json); setLoadInfo(info); setLoading(false);
-        }).catch((err) => { if (!cancelled) { setError(String((err && err.message) || err)); setLoading(false); } });
-        return () => { cancelled = true; };
+        }).catch((err) => {
+          if (cancelled) return;
+          if (err && err.name === 'AbortError') { setLoading(false); return; }
+          setError(String((err && err.message) || err)); setLoading(false);
+        });
+        return () => { cancelled = true; controller?.abort(); };
       }, [sessionId]);
 
       useEffect(() => load(false), [load]);
@@ -862,7 +887,7 @@ window.__ModuleLoader__.load({
         }
         setDetailLoading((prev) => new Set(prev).add(idx));
         fetchPayload('run', { sessionId, idx }).then(({ json }) => {
-          cache.run.set(key, json);
+          cacheSet(cache.run, key, json, CACHE_MAX.run);
           setDetails((prev) => new Map(prev).set(idx, json));
         }).catch((err) => {
           setDetailErrors((prev) => new Map(prev).set(idx, String((err && err.message) || err)));
@@ -913,8 +938,14 @@ window.__ModuleLoader__.load({
         // its index cell is narrowed by that amount to keep both bar columns
         // aligned with the Run row above.
         const stepIdxWidth = 64 - (STEP_INDENT + 3);
+        // F138: one run can hold 200+ steps (this session has a 211-step run).
+        // Mounting all of them at once is the only place where our own panel can
+        // jank while scrolling, so long runs open in pages of STEP_PAGE.
+        const showAll = fullRuns.has(run.idx);
+        const shown = showAll ? detail.steps.length : Math.min(detail.steps.length, STEP_PAGE);
+        const hidden = detail.steps.length - shown;
         return h('div', { style: { margin: '2px 0 0 0' } },
-          detail.steps.map((step, stepIdx) => {
+          detail.steps.slice(0, shown).map((step, stepIdx) => {
             const skey = `${run.idx}::${stepIdx}`;
             const sopen = expanded.has(skey);
             // Highlight follows expansion: an open Step keeps its row lit.
@@ -964,6 +995,18 @@ window.__ModuleLoader__.load({
                 : null,
             });
           }),
+          hidden > 0
+            ? h('div', { key: 'more', style: { padding: '2px 0 4px 64px' } },
+              h('button', {
+                type: 'button',
+                onClick: () => setFullRuns((prev) => new Set(prev).add(run.idx)),
+                style: {
+                  font: 'inherit', fontSize: 10, fontFamily: T.mono, color: T.muted,
+                  background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm,
+                  padding: '2px 8px', cursor: 'pointer',
+                },
+              }, `显示全部 ${detail.steps.length} 步（还有 ${hidden} 步）`))
+            : null,
         );
       };
 
@@ -974,6 +1017,9 @@ window.__ModuleLoader__.load({
         else parts.push(`${label('firstPaint', '首屏')} ${loadInfo.ms} ms`);
         if (!loadInfo.cached) parts.push(fmtBytes(loadInfo.bytes));
         if (loadInfo.serverMs != null) parts.push(`${label('server', '服务端')} ${loadInfo.serverMs} ms`);
+        // F138: our own build cost, so "is Hades Lab the slow thing?" is a number
+        // on screen instead of a guess. Only shown when it is big enough to feel.
+        if (perf.lastBuildMs != null && perf.lastBuildMs >= 8) parts.push(`${label('render', '渲染')} ${Math.round(perf.lastBuildMs)} ms`);
         return parts.join(' · ');
       };
 
@@ -1006,6 +1052,7 @@ window.__ModuleLoader__.load({
         );
       };
 
+      perf.lastBuildMs = performance.now() - renderStart;
       return h('div', { style: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', boxSizing: 'border-box', fontSize: 12, lineHeight: 1.45, color: T.text, fontFamily: T.font } },
         h('div', { style: { flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid ' + T.border, padding: '6px 12px', minHeight: 30 } },
           h('span', { style: { fontSize: 10, color: T.faint, fontVariantNumeric: 'tabular-nums', fontFamily: T.mono } }, caption() ?? ''),
@@ -1027,7 +1074,7 @@ window.__ModuleLoader__.load({
             'run': 'run ', 'step': 'step ', 'followup': '续跑', 'system': '系统提示词',
             'stat.runs': 'run（指令）', 'stat.steps': 'step（迭代）', 'stat.events': '事件', 'stat.tokens': 'Token',
             'stat.errors': '错误', 'stat.slow': '慢操作', 'stat.abnormal': '异常 run', 'stat.slowest': '最慢操作',
-            'firstPaint': '首屏', 'server': '服务端', 'cacheHit': '缓存命中', 'loadingDetail': '载入 step…',
+            'firstPaint': '首屏', 'server': '服务端', 'cacheHit': '缓存命中', 'render': '渲染', 'loadingDetail': '载入 step…',
             'step.model': '模型', 'step.timing': '计时', 'step.tokens': 'Token', 'step.summary': '概述',
             'step.args': '参数', 'step.result': '结果', 'step.original': '原文', 'step.loading': '载入 step 内容…',
             'step.retry': '重试', 'step.empty': '该 step 无内容', 'step.instruction': '指令',
@@ -1048,7 +1095,7 @@ window.__ModuleLoader__.load({
             'run': 'run ', 'step': 'step ', 'followup': 'follow-up', 'system': 'system prompt',
             'stat.runs': 'runs', 'stat.steps': 'steps', 'stat.events': 'events', 'stat.tokens': 'Tokens',
             'stat.errors': 'errors', 'stat.slow': 'slow', 'stat.abnormal': 'abnormal runs', 'stat.slowest': 'slowest',
-            'firstPaint': 'first paint', 'server': 'server', 'cacheHit': 'cache hit', 'loadingDetail': 'loading steps…',
+            'firstPaint': 'first paint', 'server': 'server', 'cacheHit': 'cache hit', 'render': 'render', 'loadingDetail': 'loading steps…',
             'step.model': 'model', 'step.timing': 'elapsed', 'step.tokens': 'tokens', 'step.summary': 'summary',
             'step.args': 'args', 'step.result': 'result', 'step.original': 'raw', 'step.loading': 'loading step…',
             'step.retry': 'Retry', 'step.empty': 'Empty step', 'step.instruction': 'instruction',

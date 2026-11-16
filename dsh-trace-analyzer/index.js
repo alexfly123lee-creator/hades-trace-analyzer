@@ -20,9 +20,9 @@ import {
 export const inject = ['webServer', 'connection', 'sessionQuery'];
 
 const PREFIX = '/api/trace-analyzer';
-const SNAPSHOT_MAX = 8;
+const SNAPSHOT_MAX = 4;
 /** Bumped whenever the Host half changes; the loopback health probe reports it. */
-const HOST_REV = 'm8.6';
+const HOST_REV = 'm8.7';
 const ROUTES = ['runs', 'run', 'step', 'event', 'events', 'session', 'lineage', 'event-trace'];
 
 export function apply(ctx) {
@@ -30,6 +30,22 @@ export function apply(ctx) {
   // Keyed by the event count so a growing (live) session is re-read exactly
   // once per change, not once per request.
   const snapshots = new Map();
+  /** Last cold rebuild: { ms, events, at } — reported by the loopback probe. */
+  let lastBuild = null;
+
+  /**
+   * Snapshot cache footprint. The cache holds ONE entry per session (the latest
+   * log offset), so the bound is sessions × (tree + tokens + tools). On this
+   * machine one entry of a 17k-event session measures ~5.9 MB, i.e. the whole
+   * cache tops out at ~24 MB with SNAPSHOT_MAX = 4 instead of ~47 MB at 8.
+   */
+  const cacheStats = () => ({
+    sessions: snapshots.size,
+    max: SNAPSHOT_MAX,
+    events: [...snapshots.values()].reduce((sum, entry) => sum + (entry.eventCount ?? 0), 0),
+    seqs: [...snapshots.values()].map((entry) => entry.eventCount ?? 0),
+    lastBuild,
+  });
 
   const touch = (key, value) => {
     snapshots.delete(key);
@@ -78,7 +94,9 @@ export function apply(ctx) {
       return hit;
     }
     const { events, header } = await readSessionEvents(sessionId);
+    const buildStarted = performance.now();
     const built = buildRunsPayload(events, { header, eventCount: events.length });
+    lastBuild = { ms: Math.round((performance.now() - buildStarted) * 10) / 10, events: events.length, at: Date.now() };
     const entry = {
       seq: seq ?? events.length,
       header,
@@ -117,7 +135,9 @@ export function apply(ctx) {
       // can stay outside the connection fence and prove which Host build is
       // actually loaded (acceptance evidence, see TEST P09).
       if (op === 'health' && isLoopback(req)) {
-        sendJson(res, 200, { ok: true, plugin: '@local/dsh-trace-analyzer', hostRev: HOST_REV, routes: ROUTES });
+        // `cache` makes the plugin's own Host-side footprint observable: after a
+        // lag report we can tell whether the snapshots are the thing growing.
+        sendJson(res, 200, { ok: true, plugin: '@local/dsh-trace-analyzer', hostRev: HOST_REV, routes: ROUTES, cache: cacheStats(), uptimeMs: Math.round(performance.now()) });
         return;
       }
       // Loopback-only bench: measures the real route code path (readSession →

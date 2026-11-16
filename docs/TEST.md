@@ -91,6 +91,7 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 | V50 | 标签体系统一 | 同时看 Turn 行与 Step 行的标签 | 两级标签高度/字号/圆角/内边距/字重一致（19px / 10px / 650 / 0 5px）；都在指标条之后、正文之前；Turn=角色（`USER`/`SYSTEM`），Step=动作（`READ`/`EDIT`/`REPLY`/`FAIL`…），**标签一律英文大写**、中文在 tooltip；配色同源（工具类=warn、回复=assistant、失败=error、系统=system、注入=success）（F136） |
 | V49 | Step 行标签式命名 | 展开任一 run 逐个看 step 行 | 每行开头是**一枚动作标签**（单项动作）/ **多枚动作标签**（多种动作，F137）——`读取/修改/运行/回复/压缩/失败…`，后面才是对象；兜底词不重复（`[运行] …` 而不是 `[运行] 运行命令`）；`失败` 红、`重试/压缩` 橙、`交付/回复` 品牌色；标签宽度不随对象变化（F135） |
 | V51 | 多动作 step 的 chip 行 | 找一步干了两种事的（先读代码再跑命令、先 inspect 再读取），以及「改了 6 个文件」的一步 | 前者行上并排两枚 chip（`INSPECT ×2 READ`、`EDIT RUN`）；后者只一枚 `EDIT ×6`，不再出现 `+5 次调用` 文字后缀；回复类行是 `REPLY` + 它调用的动作 chip；chip 一律英文大写、中文在 tooltip；chip 行不参与标题省略、不改变行高与 Time/Token 列位置；`node mockup/verify-chips.mjs <session>` 报告 0 问题（F137） |
+| V52 | 性能加固与自证（F138） | 打开一个 200+ 步的 run；反复切会话；观察表头 | 该 run 默认只渲染 80 行，末尾出现「显示全部 N 步（还有 M 步）」；切走瞬间在途 /runs 被 abort（DevTools Network 显示 canceled）；表头在构建 ≥8 ms 时出现「渲染 x ms」；/health 返回 cache.events / lastBuild.ms 且 sessions ≤ 4；闲置时进程 CPU ≈0（无轮询） |
 | V48 | step 耗时含工具、不含等人 | 找一个跑了几分钟工具的 step；再找一个等你回答/审批的 step | 前者行上显示 模型+工具 的合计（工具时间算进去）；后者行上只显示模型的几十秒，旁边有 `⏸ 13.1min` 等待标记；`run.time = Σ 各步`；`mockup/verify-traj-align.mjs` 校验模型段 0 差异、工具段差额 = waitMs（F133） |
 | V47 | 标题可回原文 | hover 任一 step 标题 | tooltip 显示原始长摘要（正文全段 / `tool · 名字 · 参数`），压缩不丢信息；展开后详情面板按事件顺序出现说明行 `[压缩]`/`[命令]`/`[审批]`（F23.2） |
 | V24 | Run/Step 共同选中 | 点一个 step，再点另一 run 的 step；再点同一 step；折叠该 run | 选中 step 与其 run 分组出现同色轨道/加深底色；选中转移且旧选中消失；再次点击取消并收起；折叠 run 后选中清除（F128） |
