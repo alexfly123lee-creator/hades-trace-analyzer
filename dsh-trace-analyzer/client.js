@@ -396,11 +396,16 @@ window.__ModuleLoader__.load({
      */
     function OverviewBoard({ kpi, rows, label, onLocate }) {
       const [hover, setHover] = useState(null);
-      // F155: the clicked column stays highlighted so "which Run did I pick?" is
+      // F155: the clicked column stays highlighted, so "which Run did I pick?" is
       // answerable after the pointer leaves the matrix.
       const [selected, setSelected] = useState(null);
       const wrapRef = useRef(null);
       const cardRef = useRef(null);
+      // F156: the parent re-renders on every realtime tick, so a captured
+      // `onLocate` would invalidate the memoised grid each time. Call through a
+      // ref instead.
+      const locateRef = useRef(onLocate);
+      locateRef.current = onLocate;
       const n = rows.length;
       const ranks = useMemo(() => {
         const rank = (pick) => {
@@ -415,7 +420,6 @@ window.__ModuleLoader__.load({
           steps: rank((r) => r.stepCount),
         };
       }, [rows]);
-      if (n === 0) return null;
       // 8% floor keeps the smallest run visible; 88% ceiling keeps the largest
       // from turning into a solid block.
       const shade = (tone, rank) => `color-mix(in srgb, ${tone} ${Math.round(8 + 80 * rank)}%, var(--dsw-alias-bg-layer-1))`;
@@ -424,7 +428,49 @@ window.__ModuleLoader__.load({
         { key: 'token', text: label('col.token', 'Token'), tone: T.token, values: ranks.token },
         { key: 'steps', text: label('mx.steps', '步数'), tone: T.success, values: ranks.steps },
       ];
-      const cellBase = { height: 11, borderRadius: 1, cursor: 'pointer' };
+      // Flag lane: translucent red / amber — solid semantic colours on a 3px cell
+      // are far too loud next to the pastel metric rows (F152).
+      const flagBg = (run) => (run.hasError
+        ? `color-mix(in srgb, ${T.error} 58%, transparent)`
+        : run.hasSlow
+          ? `color-mix(in srgb, ${T.warn} 58%, transparent)`
+          : `color-mix(in srgb, ${T.muted} 10%, transparent)`);
+      const rowTexts = rowsDef.map((row) => row.text).join(',');
+      // F156: 700 cells are expensive to rebuild, and nothing about them changes
+      // on hover/selection — only the overlay band does. Memoise them so a click
+      // costs one band move instead of a full grid re-render.
+      const grid = useMemo(() => [
+        ...rowsDef.map((row) => h('div', { key: row.key, style: { display: 'flex', alignItems: 'center', gap: MX_GAP, marginBottom: 3 } },
+          h('span', {
+            style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
+          }, row.text),
+          h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
+            rows.map((r, i) => h('div', {
+              key: r.idx,
+              onMouseEnter: () => setHover(i),
+              onClick: () => { setSelected(i); setTimeout(() => locateRef.current(r.idx), 0); },
+              title: `Run ${r.idx}`,
+              style: { height: 11, borderRadius: 1, cursor: 'pointer', background: shade(row.tone, row.values[i]) },
+            })),
+          ),
+        )),
+        h('div', { key: 'flags', style: { display: 'flex', alignItems: 'center', gap: MX_GAP } },
+          h('span', {
+            style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
+          }, label('mx.flags', '异常')),
+          h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
+            rows.map((r, i) => h('div', {
+              key: 'flag-' + r.idx,
+              onMouseEnter: () => setHover(i),
+              onClick: () => { setSelected(i); setTimeout(() => locateRef.current(r.idx), 0); },
+              title: `Run ${r.idx}`,
+              style: { height: 11, borderRadius: 1, cursor: 'pointer', background: flagBg(r) },
+            })),
+          ),
+        ),
+        // Callbacks are stable through refs, so they stay out of the deps.
+      ], [rows, ranks, n, rowTexts]);
+      if (n === 0) return null;
       const active = hover == null ? selected : hover;
       const hovered = active == null || rows[active] == null ? null : rows[active];
       const summary = hovered
@@ -438,117 +484,68 @@ window.__ModuleLoader__.load({
         left: `calc(${MX_LABEL_W + MX_GAP}px + ${active} * ((${track}) + 1px))`,
         width: `calc(${track})`,
       };
-      // F152: three separate rectangles instead of one bordered box. A 1px
-      // border on a 2–4px wide element collapses into a tapered wedge as the
-      // column count grows (the "梯形" artefact), while independent 1px lines
-      // stay crisp at any width. They are painted *after* the cells so the
-      // highlight reads as one continuous column instead of showing through the
-      // 1px gaps in a ladder pattern.
+      // F152: three separate rectangles instead of one bordered box. A 1px border
+      // on a 2–4px wide element collapses into a tapered wedge as the column count
+      // grows (the "梯形" artefact), while independent 1px lines stay crisp. They
+      // are painted after the cells so the highlight reads as one column.
       const bandLayer = (key, style) => h('div', {
         key,
         style: Object.assign({ position: 'absolute', top: -2, bottom: -2, pointerEvents: 'none' }, style),
       });
-      // Flag lane: translucent red / amber — solid semantic colours on a 3px
-      // cell are far too loud next to the pastel metric rows (F152).
-      const flagBg = (run) => (run.hasError
-        ? `color-mix(in srgb, ${T.error} 58%, transparent)`
-        : run.hasSlow
-          ? `color-mix(in srgb, ${T.warn} 58%, transparent)`
-          : `color-mix(in srgb, ${T.muted} 10%, transparent)`);
       const legendItem = (tone, text) => h('span', {
         key: 'lg-' + text,
         style: { display: 'inline-flex', alignItems: 'center', gap: 4, color: T.muted },
       }, h('i', { style: { width: 9, height: 9, borderRadius: 2, background: tone, display: 'inline-block' } }), text);
       return h('div', {
         ref: wrapRef,
-        // F153: the placeholder paints the surface colour so the 8px seam between
-        // the KPI card and the matrix card does not reveal the rows behind it
-        // while the block is pinned.
+        // F153: the wrapper paints the surface colour so the seam between the KPI
+        // card and the matrix card never shows the list behind it.
         style: { marginBottom: 12, background: T.surface },
       },
-        h('div', {
-          ref: cardRef,
-          'data-hades-board': '1',
-          style: {
-            // F152/F153: pinned by the transform effect above, not by
-            // `position: sticky` — see the comment at the top of this component.
-            zIndex: 3, willChange: 'transform',
+        h('div', { ref: cardRef, 'data-hades-board': '1', style: { zIndex: 3 } },
+          h(KpiSummary, { kpi, label }),
+          h('div', {
+            style: {
+              border: '1px solid ' + T.border, borderRadius: T.radiusMd,
+              padding: '8px 12px 7px', background: T.surface,
+              boxShadow: `0 10px 18px -14px color-mix(in srgb, ${T.text} 55%, transparent)`,
+            },
+            onMouseLeave: () => setHover(null),
           },
-        },
-        h(KpiSummary, { kpi, label }),
-        h('div', {
-          style: {
-            border: '1px solid ' + T.border, borderRadius: T.radiusMd,
-            padding: '8px 12px 7px', background: T.surface,
-            boxShadow: `0 10px 18px -14px color-mix(in srgb, ${T.text} 55%, transparent)`,
-          },
-          onMouseLeave: () => setHover(null),
-        },
-        h('div', { style: { position: 'relative' } },
-          rowsDef.map((row) => h('div', { key: row.key, style: { display: 'flex', alignItems: 'center', gap: MX_GAP, marginBottom: 3 } },
-            // F152: every row label uses the same colour — the row *swatches* in
-            // the legend carry the colour code, not the typography.
-            h('span', {
-              style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
-            }, row.text),
-            h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
-              rows.map((r, i) => h('div', {
-                key: r.idx,
-                onMouseEnter: () => setHover(i),
-                onClick: () => { setSelected(i); onLocate(r.idx); },
-                title: `Run ${r.idx}`,
-                style: { ...cellBase, background: shade(row.tone, row.values[i]) },
-              })),
+            h('div', { style: { position: 'relative' } },
+              grid,
+              band ? bandLayer('band-fill', {
+                left: band.left, width: band.width,
+                background: `color-mix(in srgb, ${T.brand} 14%, transparent)`,
+              }) : null,
+              band ? bandLayer('band-l', { left: band.left, width: 1, background: T.brand }) : null,
+              band ? bandLayer('band-r', { left: `calc(${band.left} + (${band.width}) - 1px)`, width: 1, background: T.brand }) : null,
             ),
-          )),
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: MX_GAP } },
-            h('span', {
-              style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
-            }, label('mx.flags', '异常')),
-            h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
-              rows.map((r, i) => h('div', {
-                key: 'flag-' + r.idx,
-                onMouseEnter: () => setHover(i),
-                onClick: () => { setSelected(i); onLocate(r.idx); },
-                title: `Run ${r.idx}`,
-                style: { ...cellBase, background: flagBg(r) },
-              })),
+            h('div', {
+              style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 7, font: `11px/1.2 ${T.mono}`, minHeight: 16 },
+            },
+              legendItem(T.brand, label('col.time', 'Time')),
+              legendItem(T.token, label('col.token', 'Token')),
+              legendItem(T.success, label('mx.steps', '步数')),
+              h('span', {
+                title: label('mx.ramp', '颜色越深 = 该 Run 在全会话里的排位越高'),
+                style: {
+                  flex: '0 0 84px', height: 6, borderRadius: 3,
+                  background: `linear-gradient(90deg, color-mix(in srgb, ${T.brand} 8%, var(--dsw-alias-bg-layer-1)), color-mix(in srgb, ${T.brand} 88%, var(--dsw-alias-bg-layer-1)))`,
+                },
+              }),
+              legendItem(T.error, label('mx.error', '有错误')),
+              legendItem(T.warn, label('mx.slow', '有慢操作')),
+              h('span', {
+                title: hovered ? summary : '',
+                style: {
+                  marginLeft: 'auto', minWidth: 0, maxWidth: '46%', textAlign: 'right',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  color: hovered ? T.text : T.faint,
+                },
+              }, hovered ? summary : label('mx.hint', '悬停看这个 Run · 点击定位')),
             ),
           ),
-          band ? bandLayer('band-fill', {
-            left: band.left, width: band.width,
-            background: `color-mix(in srgb, ${T.brand} 14%, transparent)`,
-          }) : null,
-          band ? bandLayer('band-l', { left: band.left, width: 1, background: T.brand }) : null,
-          band ? bandLayer('band-r', { left: `calc(${band.left} + (${band.width}) - 1px)`, width: 1, background: T.brand }) : null,
-        ),
-        // F152 legend: colour block + text, so the colour code is explicit again
-        // (the row labels themselves are now a single neutral colour).
-        h('div', {
-          style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 7, font: `11px/1.2 ${T.mono}`, minHeight: 16 },
-        },
-          legendItem(T.brand, label('col.time', 'Time')),
-          legendItem(T.token, label('col.token', 'Token')),
-          legendItem(T.success, label('mx.steps', '步数')),
-          h('span', {
-            title: label('mx.ramp', '颜色越深 = 该 Run 在全会话里的排位越高'),
-            style: {
-              flex: '0 0 84px', height: 6, borderRadius: 3,
-              background: `linear-gradient(90deg, color-mix(in srgb, ${T.brand} 8%, var(--dsw-alias-bg-layer-1)), color-mix(in srgb, ${T.brand} 88%, var(--dsw-alias-bg-layer-1)))`,
-            },
-          }),
-          legendItem(T.error, label('mx.error', '有错误')),
-          legendItem(T.warn, label('mx.slow', '有慢操作')),
-          h('span', {
-            title: hovered ? summary : '',
-            style: {
-              marginLeft: 'auto', minWidth: 0, maxWidth: '46%', textAlign: 'right',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              color: hovered ? T.text : T.faint,
-            },
-          }, hovered ? summary : label('mx.hint', '悬停看这个 Run · 点击定位')),
-        ),
-        ),
         ),
       );
     }
@@ -1297,8 +1294,10 @@ window.__ModuleLoader__.load({
       const [details, setDetails] = useState(() => new Map());
       const [detailLoading, setDetailLoading] = useState(() => new Set());
       const [detailErrors, setDetailErrors] = useState(() => new Map());
-      // Handle of the running "glide to this run" tween (F151).
+      // Handle of the running "glide to this run" tween (F151) and of the delay
+      // that waits for a just-opened run's height animation (F156).
       const glideRaf = useRef(null);
+      const glideTimer = useRef(null);
       useEffect(() => {
         const root = rootRef.current;
         if (!root || typeof window === 'undefined') return undefined;
@@ -1473,8 +1472,8 @@ window.__ModuleLoader__.load({
       };
 
       /**
-       * F150/F151: a click on the overview matrix locates a run — it opens the
-       * run (never toggles it closed, unlike a click on the row itself) and
+       * F150/F151/F156: a click on the overview matrix locates a run — it opens
+       * the run (never toggles it closed, unlike a click on the row itself) and
        * glides its row into view.
        *
        * The glide is animated by hand instead of `scrollIntoView({behavior:
@@ -1484,7 +1483,8 @@ window.__ModuleLoader__.load({
        * a new click simply replaces the running animation.
        */
       const locateRun = (idx) => {
-        if (!expanded.has('run-' + idx)) openRun(idx);
+        const wasOpen = expanded.has('run-' + idx);
+        if (!wasOpen) openRun(idx);
         const host = scrollRef.current;
         if (!host) return;
         const reduce = typeof window !== 'undefined' && window.matchMedia
@@ -1516,10 +1516,16 @@ window.__ModuleLoader__.load({
           };
           glideRaf.current = requestAnimationFrame(step);
         };
-        // Two frames: the expansion has to be committed (and the list laid out)
-        // before the target offset is measured.
-        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(glide));
-        else glide();
+        // F156: when the run still has to open, its 160ms height animation and
+        // the scroll tween compete for the main thread — and the list keeps
+        // growing underneath the tween. Let the expansion land first, then glide.
+        const kick = () => {
+          if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(glide));
+          else glide();
+        };
+        if (wasOpen) { kick(); return; }
+        if (glideTimer.current != null) clearTimeout(glideTimer.current);
+        glideTimer.current = setTimeout(() => { glideTimer.current = null; kick(); }, 200);
       };
 
       /** Toggle one Step's panel; its row highlight follows the open state. */
