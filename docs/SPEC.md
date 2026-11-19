@@ -415,7 +415,16 @@
      - **选中胶囊**：图例行右侧出现 `Run 90 ✕` 的蓝色小胶囊（点 ✕ 取消选中），把"当前选中哪个 Run"用文字也说清楚。
   - **AC**：列表滚到底后继续滚轮/触控板，**页面不再移动**、表头始终可见；往回滚立刻作用在列表上；悬停任一列能明显看出高亮（20% + 1px），点击后该列变成 30% + 2px 并保持，同时出现 `Run N ✕` 胶囊；点 ✕ 取消后胶囊消失、高亮清除；`check-served` 79/79（新增 `sel-fill` / `bandLayer('sel-l'` / `hov-fill` / `bandLayer('hov-l'` / `overscrollBehavior`）；单测 43/43。
 
-## 35. 范围外（v1 不做）
+## 35. 整体卡顿：去掉 4 个隐藏的热点（F158）
+
+- **F158 卡顿不是某一处，是四处叠在一起**，逐条消掉：
+  1. **每一行都挂着 `will-change: transform`**（175 行 = 175 个常驻合成层）。FLIP 只在排序真正变化时才需要它，常驻只会吃 GPU 内存并拖慢滚动。现在只在 FLIP 动画期间设置、`transitionend` 后清掉。
+  2. **行 hover 是 React 状态**：鼠标扫过列表时，每跨越一行就 `setState` → **整张 175 行的表重渲染一次**，指针移动速度就是渲染频率。改为纯 CSS `:hover`（颜色走根节点上的 `--hades-hover-row / --hades-sel-row / --hades-muted / --hades-text / --hades-brand` 变量，随主题更新），React 里不再有 `hoverRun` 状态。
+  3. **`renderDetail(r)` 对 175 行无条件调用**：即使某行是收起的，也在每次渲染时重新构建它的 step 列表——展开的 80 步 run 等于每次渲染多建 80 个 step 行。现在只在 `open` 时构建（折叠动画仍由 `Collapse` 保留最后一帧内容）。
+  4. **每 2 s 的实时 tick 无条件重渲染**：日志 seq 变动但屏幕数字没变时，也会重建 175 行 + 700 格矩阵。现在先用**可见变化签名**（counts + token 总数 + 尾行 `idx/token/time/stepCount`）比对，签名相同就只更新 seq 与缓存、不写 state；并且**用户正在滚动时（<220ms 内有 scroll）把更新延迟 240ms**，避免更新抢滚动帧。
+  - **AC**：鼠标快速扫过 175 行不再触发列表重渲染（React DevTools 无 commit）；空闲时 tick 零 commit；滚轮滚动期间不会插入数据更新；展开的 run 折叠后不再构建其 step 列表；`check-served` 79/79（`.hades-run-row` / `--hades-hover-row` / `el.style.willChange` / `appliedSig` 均在 bundle 内）；单测 43/43。
+
+## 36. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

@@ -319,6 +319,8 @@ dsh-trace-analyzer/
 
 30. **M29 断开滚动链 + 矩阵选中态（F157）** ✅：① 滚到底后往回滑"表头消失"不是固定失效，而是**滚动链**——列表到 `scrollTop=max` 后再滚一格就把滚轮传给页面，整个面板被页面带走；给列表加 `overscroll-behavior: contain` 解决。② hover 与 selected 原来共用 14%/1px 淡带，既轻又分不清：选中改为 30% 底 + 左右 2px 实线（指针移开仍保留），悬停 20% + 1px（跟随指针），两者可同时存在；图例旁再加 `Run N ✕` 选中胶囊（✕ 取消选中）。验收：check-served 79/79（新增 sel-fill / bandLayer('sel-l' / hov-fill / bandLayer('hov-l' / overscrollBehavior）；单测 43/43。见 TEST V70。
 
+31. **M30 整体卡顿：去掉 4 个隐藏热点（F158）** ✅：① 每行常驻 `will-change: transform`（175 个合成层）→ 只在 FLIP 期间设置并在 `transitionend` 清除；② 行 hover 是 React 状态，鼠标扫过列表每次跨界都重渲染 175 行 → 改成纯 CSS `:hover`（颜色走根节点上的 `--hades-hover-row` 等变量，随主题更新），删掉 `hoverRun` 状态；③ `renderDetail(r)` 对 175 行无条件调用（展开的 80 步 run 每次渲染多建 80 个 step 行）→ 只在 `open` 时构建；④ 每 2s 的实时 tick 无条件重渲染 → 先用可见变化签名（counts + token 总数 + 尾行 idx/token/time/stepCount）比对，相同就只更新 seq/缓存，且用户滚动中（<220ms 有 scroll）把更新延后 240ms。验收：check-served 83/83（.hades-run-row / --hades-hover-row / el.style.willChange / appliedSig）；单测 43/43。见 TEST V71。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

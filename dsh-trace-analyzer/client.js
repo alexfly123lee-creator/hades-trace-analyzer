@@ -96,7 +96,17 @@ window.__ModuleLoader__.load({
     // cannot mount thousands of nodes at once.
     const STEP_PAGE = 80;
     // F141: live-appended rows fade in instead of popping in.
-    const ROW_ANIM_CSS = '@keyframes hadesRowIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}';
+    const ROW_ANIM_CSS = '@keyframes hadesRowIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}'
+      // F158: run-row hover lives in CSS, not React state. Colours come from
+      // variables set on the panel root (they are theme-dependent, see
+      // applyThemePalette) — sweeping the pointer across 175 rows no longer
+      // re-renders the list.
+      + '.hades-run-row{transition:background 120ms ease}'
+      + '.hades-run-row:hover{background:var(--hades-hover-row)}'
+      + '.hades-run-row.is-open,.hades-run-row.is-open:hover{background:var(--hades-sel-row)}'
+      + '.hades-run-row .hades-idx{color:var(--hades-muted)}'
+      + '.hades-run-row:hover .hades-idx,.hades-run-row.is-open .hades-idx{color:var(--hades-text)}'
+      + '.hades-run-row:hover .hades-caret,.hades-run-row.is-open .hades-caret{color:var(--hades-brand)}';
 
     // F144 expand motion (plan C, tightened): height + fade, one uniform curve,
     // no stagger. Opening is short enough to feel immediate (160ms); closing is
@@ -606,8 +616,9 @@ window.__ModuleLoader__.load({
       const first = useRef(true);
       const lastOrder = useRef(null);
       const seenRuns = useRef(new Set());
-      // Hover tint is the same hue as the expanded state, one notch lighter.
-      const [hoverRun, setHoverRun] = useState(null);
+      // F158: run-row hover moved to CSS (see ROW_ANIM_CSS) — React state here
+      // meant every pointer move re-rendered the whole list. Only the sort
+      // header still tracks hover (it changes an icon and a border).
       const [hoverSort, setHoverSort] = useState(null);
       const sorted = useMemo(() => {
         const arr = [...rows];
@@ -641,12 +652,16 @@ window.__ModuleLoader__.load({
             // read as "every row moved".
             const dy = prevTop - el.offsetTop;
             if (Math.abs(dy) > 1) {
+              // F158: promote the row only while it actually animates — a standing
+              // `will-change` on 175 rows costs compositing memory and is a classic
+              // scroll-jank source.
+              el.style.willChange = 'transform';
               el.style.transition = 'none';
               el.style.transform = 'translateY(' + dy + 'px)';
               void el.offsetHeight; // force reflow so the transform applies before the transition
               el.style.transition = 'transform .3s cubic-bezier(.4,0,.2,1)';
               el.style.transform = 'translateY(0)';
-              const cleanup = () => { el.style.transition = ''; el.style.transform = ''; el.removeEventListener('transitionend', cleanup); };
+              const cleanup = () => { el.style.transition = ''; el.style.transform = ''; el.style.willChange = ''; el.removeEventListener('transitionend', cleanup); };
               el.addEventListener('transitionend', cleanup);
             }
           });
@@ -780,7 +795,8 @@ window.__ModuleLoader__.load({
             borderBottom: open ? '1px solid ' + T.groupRing : 'none',
             borderLeft: '3px solid ' + (open ? T.rail : 'transparent'),
             padding: open ? '0 0 6px' : '6px 0',
-            willChange: 'transform',
+            // F158: no standing `will-change` — 175 permanently promoted layers
+            // are a scroll-jank source. FLIP adds it only while animating.
             borderRadius: T.radiusMd,
             overflow: open ? 'hidden' : 'visible',
             background: 'transparent',
@@ -801,19 +817,19 @@ window.__ModuleLoader__.load({
           },
             h('div', {
               onClick: () => onToggleRun(r.idx),
-              onMouseEnter: () => setHoverRun(r.idx),
-              onMouseLeave: () => setHoverRun((prev) => (prev === r.idx ? null : prev)),
+              // F158: hover is CSS (:hover) — no React state, so moving the
+              // pointer across the list no longer re-renders 175 rows.
+              className: 'hades-run-row' + (runSelected ? ' is-open' : ''),
               style: {
                 display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', minWidth: 0,
                 // No row separators: the outline look relies on the bracket + spacing.
-                // Fill only: the group's overflow clips it to the outer radius.
-                // F148: hover is fill only — deeper tint, 120ms ease, no outline.
-                background: runSelected ? T.runSelBg : (hoverRun === r.idx ? T.runHoverBg : 'transparent'),
-                transition: 'background 120ms ease',
               },
             },
-              h('span', { style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : (runSelected || hoverRun === r.idx ? T.text : T.muted), fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 } },
-                r.stepCount ? h(Caret, { key: 'caret', open, tone: hoverRun === r.idx ? T.brand : undefined }) : null,
+              h('span', {
+                className: 'hades-idx',
+                style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : undefined, fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 },
+              },
+                r.stepCount ? h(Caret, { key: 'caret', open }) : null,
                 `Run ${r.idx}`),
               // F145: both columns are the same slice (left 0, width = share of
               // the session max); only `tone` differs.
@@ -847,7 +863,11 @@ window.__ModuleLoader__.load({
             // F144: opening a run grows its bracket instead of snapping it in;
             // a very long run (200+ steps, ~7k px) fades instead of animating
             // height, which would relayout every frame.
-            h(Collapse, { open, expandMs: detailReady && (r.stepCount ?? 0) <= BIG_RUN_STEPS ? EXPAND_MS : 0 }, renderDetail(r)),
+            // F158: build the step list ONLY while the row is open. `renderDetail`
+            // was being called for all 175 rows on every render — for an expanded
+            // 80-step run that built 80 step rows per row per render, which is the
+            // single most expensive thing a re-render could do.
+            h(Collapse, { open, expandMs: detailReady && (r.stepCount ?? 0) <= BIG_RUN_STEPS ? EXPAND_MS : 0 }, open ? renderDetail(r) : null),
           );
         })),
       );
@@ -1390,6 +1410,7 @@ window.__ModuleLoader__.load({
           };
           cacheSet(cache.runs, sessionId, { payload: json, info }, CACHE_MAX.runs);
           seqRef.current = json?.meta?.seq ?? null;
+          appliedSig.current = payloadSig(json);
           setPayload(json); setLoading(false);
         }).catch((err) => {
           if (cancelled) return;
@@ -1400,6 +1421,50 @@ window.__ModuleLoader__.load({
       }, [sessionId]);
 
       useEffect(() => load(false), [load]);
+
+      /**
+       * F158: how much "visible change" is in a payload? The 2 s tick can deliver
+       * a new seq while every number on screen is identical; re-rendering 175 rows
+       * and 700 matrix cells for that is pure waste. Signature covers the counts,
+       * the token totals and the tail run (the row that actually grows while a
+       * turn is running).
+       */
+      const payloadSig = (p) => {
+        if (!p) return '';
+        const total = p.tokens?.total ?? {};
+        const last = p.runs && p.runs.length ? p.runs[p.runs.length - 1] : null;
+        return [
+          p.counts?.runs, p.counts?.steps, p.counts?.events, total.input, total.output,
+          last ? `${last.idx}:${last.token}:${last.time}:${last.stepCount}` : '',
+        ].join('|');
+      };
+      const appliedSig = useRef('');
+      // Last time the user scrolled the list. A payload that lands mid-scroll is
+      // applied after the gesture ends, so the update never steals frames from the
+      // scroll itself.
+      const scrollAt = useRef(0);
+      const pendingCommit = useRef(null);
+
+      const commitRunsPayload = (json) => {
+        seqRef.current = json?.meta?.seq ?? null;
+        cacheSet(cache.runs, sessionId, {
+          payload: json,
+          info: { ms: 0, bytes: 0, serverMs: json?.meta?.serverMs ?? null, cached: true },
+        }, CACHE_MAX.runs);
+        const sig = payloadSig(json);
+        if (sig === appliedSig.current) return false; // nothing visible changed
+        appliedSig.current = sig;
+        setPayload(json);
+        return true;
+      };
+
+      useEffect(() => {
+        const host = scrollRef.current;
+        if (!host) return undefined;
+        const onScroll = () => { scrollAt.current = Date.now(); };
+        host.addEventListener('scroll', onScroll, { passive: true });
+        return () => host.removeEventListener('scroll', onScroll);
+      }, []);
 
       /**
        * F140: one cheap poll. Sends the offset we already hold, so an unchanged
@@ -1426,25 +1491,35 @@ window.__ModuleLoader__.load({
             payload: json,
             info: { ms: 0, bytes: 0, serverMs: json?.meta?.serverMs ?? null, cached: true },
           }, CACHE_MAX.runs);
-          setPayload(json);
-          const openKeys = [...expandedRef.current];
-          for (const key of openKeys) {
-            if (!key.startsWith('run-')) continue;
-            const idx = Number(key.slice(4));
-            if (!Number.isInteger(idx)) continue;
-            try {
-              const { json: detail } = await fetchPayload('run', { sessionId, idx });
-              cacheSet(cache.run, sessionId + '::' + idx, detail, CACHE_MAX.run);
-              setDetails((prev) => new Map(prev).set(idx, detail));
-            } catch { /* keep the previous detail for this run */ }
-          }
-          const openSteps = openKeys.filter((key) => !key.startsWith('run-'));
-          if (openSteps.length > 0) {
-            setStepTokens((prev) => {
-              const next = { ...prev };
-              for (const key of openSteps) next[key] = (next[key] ?? 0) + 1;
-              return next;
-            });
+          // F158: apply now, or after the user stops scrolling.
+          const applyNow = async () => {
+            pendingCommit.current = null;
+            if (!commitRunsPayload(json)) return;
+            const openKeys = [...expandedRef.current];
+            for (const key of openKeys) {
+              if (!key.startsWith('run-')) continue;
+              const idx = Number(key.slice(4));
+              if (!Number.isInteger(idx)) continue;
+              try {
+                const { json: detail } = await fetchPayload('run', { sessionId, idx });
+                cacheSet(cache.run, sessionId + '::' + idx, detail, CACHE_MAX.run);
+                setDetails((prev) => new Map(prev).set(idx, detail));
+              } catch { /* keep the previous detail for this run */ }
+            }
+            const openSteps = openKeys.filter((key) => !key.startsWith('run-'));
+            if (openSteps.length > 0) {
+              setStepTokens((prev) => {
+                const next = { ...prev };
+                for (const key of openSteps) next[key] = (next[key] ?? 0) + 1;
+                return next;
+              });
+            }
+          };
+          if (Date.now() - scrollAt.current < 220) {
+            if (pendingCommit.current != null) clearTimeout(pendingCommit.current);
+            pendingCommit.current = setTimeout(() => { void applyNow(); }, 240);
+          } else {
+            void applyNow();
           }
         } catch {
           // A failed tick is not an error state: keep the last good table and
@@ -1753,7 +1828,19 @@ window.__ModuleLoader__.load({
         });
       };
 
-      return h('div', { ref: rootRef, style: { height: shellH ? shellH + 'px' : '100%', minHeight: 0, display: 'flex', flexDirection: 'column', boxSizing: 'border-box', fontSize: 13, lineHeight: 1.6, color: T.text, fontFamily: T.font } },
+      return h('div', {
+        ref: rootRef,
+        style: {
+          height: shellH ? shellH + 'px' : '100%', minHeight: 0, display: 'flex', flexDirection: 'column',
+          boxSizing: 'border-box', fontSize: 13, lineHeight: 1.6, color: T.text, fontFamily: T.font,
+          // F158: consumed by the injected hover rules (see ROW_ANIM_CSS).
+          '--hades-hover-row': T.runHoverBg,
+          '--hades-sel-row': T.runSelBg,
+          '--hades-muted': T.muted,
+          '--hades-text': T.text,
+          '--hades-brand': T.brand,
+        },
+      },
         h('style', { key: 'hades-row-anim' }, ROW_ANIM_CSS),
         // F151: no header bar — the "cache hit / server ms / live badge / refresh
         // button" chrome was developer telemetry sitting on top of the product,
