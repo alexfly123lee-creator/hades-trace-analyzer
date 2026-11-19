@@ -321,6 +321,8 @@ dsh-trace-analyzer/
 
 31. **M30 整体卡顿：去掉 4 个隐藏热点（F158）** ✅：① 每行常驻 `will-change: transform`（175 个合成层）→ 只在 FLIP 期间设置并在 `transitionend` 清除；② 行 hover 是 React 状态，鼠标扫过列表每次跨界都重渲染 175 行 → 改成纯 CSS `:hover`（颜色走根节点上的 `--hades-hover-row` 等变量，随主题更新），删掉 `hoverRun` 状态；③ `renderDetail(r)` 对 175 行无条件调用（展开的 80 步 run 每次渲染多建 80 个 step 行）→ 只在 `open` 时构建；④ 每 2s 的实时 tick 无条件重渲染 → 先用可见变化签名（counts + token 总数 + 尾行 idx/token/time/stepCount）比对，相同就只更新 seq/缓存，且用户滚动中（<220ms 有 scroll）把更新延后 240ms。验收：check-served 83/83（.hades-run-row / --hades-hover-row / el.style.willChange / appliedSig）；单测 43/43。见 TEST V71。
 
+32. **M31 Step 明细卡重做：统计条 + 时间轴卡片（F159）** ✅：旧面板是一条灰色 meta 行 + 平铺行，所有行同样重（两条 `system-reminder` 注入和模型回答等权，工具参数/结果永远展开）。按选定的 B+E 方案重做：顶部一行统计条（模型/工具/上下文 · 计时 · in/out/cache，模型名挂在“模型”后），下面是**竖轴 + 类型圆点**的时间轴卡片——指令卡（USER + 字数，全文可滚动）、回复卡（REPLY + in/out）、工具卡（TOOL + 名称 + 耗时，args/result 各一行等宽省略）、注入卡（`CTX 注入 ×N` 虚线卡，**默认折叠**，点击展开，`ctxOpen`）、说明行（点线小卡）。`原文` 移到卡片右上角并在原卡内展开 JSON（`rawPanel`）。验收：check-served 87/87（ctxOpen / setCtxOpen / rawPanel / 注入 ×）；单测 43/43；设计稿 mockup/step-cards-final.png。见 TEST V72。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

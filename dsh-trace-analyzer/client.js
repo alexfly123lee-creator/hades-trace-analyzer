@@ -1085,6 +1085,8 @@ window.__ModuleLoader__.load({
         ? { data: cache.step.get(key), loading: false, error: null }
         : { data: null, loading: true, error: null }));
       const [rawOpen, setRawOpen] = useState(() => new Set());
+      // F159: context/system injections collapse into one row by default.
+      const [ctxOpen, setCtxOpen] = useState(false);
       // F140: the parent bumps this token when the session log grew, so an open
       // panel shows a running tool call turning into "finished + duration"
       // without the user closing and reopening the step.
@@ -1144,85 +1146,173 @@ window.__ModuleLoader__.load({
       const usage = data.usage ?? {};
       const counts = data.counts ?? { models: 0, tools: 0, contexts: 0 };
 
-      const headerParts = [];
-      if (data.model != null) {
-        const who = [data.model.provider, data.model.model].filter(Boolean).join('/');
-        if (who) headerParts.push(`${label('step.model', '模型')} ${who}`);
-      }
-      headerParts.push(`${label('step.countModels', '模型调用')} ${counts.models}`);
-      headerParts.push(`${label('step.countTools', '工具调用')} ${counts.tools}`);
-      if ((counts.contexts ?? 0) > 0) headerParts.push(`${label('step.countContexts', '上下文')} ${counts.contexts}`);
-      headerParts.push(`${label('step.timing', '计时')} ${fmtMs(data.timeMs)}`);
-      headerParts.push(`${label('step.tokens', 'Token')} in ${fmtK(usage.input)} · out ${fmtK(usage.output)}`
-        + ((usage.cacheRead ?? 0) > 0 ? ` · cache ${fmtK(usage.cacheRead)}` : '')
-        + ((usage.reasoning ?? 0) > 0 ? ` · think ${fmtK(usage.reasoning)}` : ''));
-
       const toggleRaw = (rawKey) => setRawOpen((prev) => {
         const next = new Set(prev);
         if (next.has(rawKey)) next.delete(rawKey); else next.add(rawKey);
         return next;
       });
-
-      /** One activity row: role tag + title + meta + optional 原文 link. */
-      const renderRow = (rowKey, actor, title, meta, errorText, seqs, body) => {
+      // F159: the raw JSON panel belongs to the card that owns the seqs.
+      const rawPanel = (seqs) => {
         const rawKey = seqs.filter((value) => value != null).join(',');
-        const open = rawOpen.has(rawKey);
-        return h('div', { key: rowKey },
-          h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 } },
-            h(RoleTag, { actor, label }),
-            h('span', { style: { fontSize: 12, fontFamily: T.mono, color: errorText != null ? T.error : T.text, flex: '0 0 auto' } }, title),
-            meta != null ? h('span', { style: { fontSize: 11, fontFamily: T.mono, color: T.muted, flex: '0 0 auto' } }, meta) : null,
-            errorText != null ? h('span', { style: { fontSize: 11, color: T.error, flex: '0 0 auto' } }, errorText) : null,
-            h('span', { style: { flex: '1 1 auto' } }),
-            rawKey !== ''
-              ? h('button', {
-                type: 'button',
-                onClick: () => toggleRaw(rawKey),
-                style: { font: 'inherit', fontSize: 11, color: T.muted, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 },
-              }, label('step.original', '原文'))
-              : null,
-          ),
-          body,
-          open ? h(EventDetail, { sessionId, seqs }) : null,
-        );
+        if (rawKey === '' || !rawOpen.has(rawKey)) return null;
+        return h(EventDetail, { sessionId, seqs });
       };
 
-      const children = [
-        h('div', { key: 'head', style: { display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 11, fontFamily: T.mono, color: T.muted } },
-          headerParts.map((part) => h('span', { key: part }, part))),
-      ];
+      // F159 (option B+E): one summary strip, then a timeline of small cards.
+      // Context/system injections are runtime noise — they collapse into a single
+      // row and only expand on request.
+      const palette = (role) => ROLE[role] ?? ROLE.system;
+      const chipOf = (text, role, title) => h(RowTag, {
+        text,
+        color: palette(role).color,
+        background: palette(role).background,
+        title: title ?? text,
+      });
+      const mono11 = { fontFamily: T.mono, fontSize: 11 };
+      const cardBox = (extra) => Object.assign({
+        border: '1px solid ' + T.border, borderRadius: T.radiusSm,
+        padding: '5px 9px 6px', background: T.surface, minWidth: 0,
+      }, extra ?? {});
+      const capRow = (left, right) => h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 } },
+        left,
+        h('span', { style: { flex: '1 1 auto' } }),
+        right ?? null);
 
-      const pushRow = (rowKey, node) => children.push(h('div', {
-        key: rowKey,
-        style: { marginTop: 8 },
-      }, node));
+      // ---- E: summary strip -------------------------------------------------
+      const sumChip = (text, role, title) => h('span', {
+        key: 'sum-' + text,
+        style: { display: 'inline-flex', alignItems: 'baseline', gap: 5, color: palette(role).color },
+      },
+        h('b', { style: { fontSize: 12, fontWeight: 600 } }, text),
+        title ? h('span', { style: { fontSize: 11, color: T.muted } }, title) : null);
 
-      // The run's instruction belongs to this step's details (SPEC F131).
-      let hasInstruction = false;
+      const tokenText = 'in ' + fmtK(usage.input) + ' / out ' + fmtK(usage.output)
+        + ((usage.cacheRead ?? 0) > 0 ? ` · cache ${fmtK(usage.cacheRead)}` : '')
+        + ((usage.reasoning ?? 0) > 0 ? ` · think ${fmtK(usage.reasoning)}` : '');
+      const strip = h('div', {
+        key: 'strip',
+        style: {
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          padding: '5px 10px', marginBottom: 8,
+          border: '1px solid ' + T.border, borderRadius: T.radiusSm, background: T.surface,
+        },
+      },
+        sumChip(`模型 ${counts.models ?? 0}`, 'assistant', data.model ? [data.model.provider, data.model.model].filter(Boolean).join('/') : null),
+        h('span', { style: { width: 1, height: 11, background: T.border } }),
+        sumChip(`工具 ${counts.tools ?? 0}`, 'tool'),
+        (counts.contexts ?? 0) > 0 ? h('span', { style: { width: 1, height: 11, background: T.border } }) : null,
+        (counts.contexts ?? 0) > 0 ? sumChip(`上下文 ${counts.contexts}`, 'context') : null,
+        h('span', { style: { flex: '1 1 auto' } }),
+        h('span', { style: { ...mono11, color: T.muted } }, `计时 ${fmtMs(data.timeMs)} · ${tokenText}`),
+      );
+
+      // ---- B: timeline ------------------------------------------------------
+      // Group the injections so a step with six system-reminders still reads as
+      // "reply + tools" instead of a wall of context.
+      const items = [];
+      let ctxGroup = null;
+      for (const op of data.operations ?? []) {
+        if (op.kind === 'context' || op.kind === 'system') {
+          if (!ctxGroup) {
+            ctxGroup = { kind: 'ctxGroup', list: [], seqs: [] };
+            items.push(ctxGroup);
+          }
+          ctxGroup.list.push(op);
+          ctxGroup.seqs.push(op.seq);
+          continue;
+        }
+        items.push(op);
+      }
+
+      const DOT = {
+        user: T.brand, assistant: palette('assistant').color, tool: palette('tool').color,
+        context: palette('context').color, note: T.muted, error: T.error,
+      };
+      const dotOf = (role) => h('span', {
+        style: {
+          position: 'absolute', left: -13, top: 8, width: 7, height: 7, borderRadius: '50%',
+          background: DOT[role] ?? T.muted,
+        },
+      });
+
+      const rawButton = (seqs) => {
+        const rawKey = seqs.filter((value) => value != null).join(',');
+        if (rawKey === '') return null;
+        const open = rawOpen.has(rawKey);
+        return h('button', {
+          type: 'button',
+          onClick: () => toggleRaw(rawKey),
+          style: { font: 'inherit', fontSize: 11, color: open ? T.text : T.faint, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 },
+        }, label('step.original', '原文'));
+      };
+
+      const timeline = [];
+
       if (stepIdx === 0 && runActor === 'user' && runPrompt) {
-        hasInstruction = true;
-        children.push(h('div', { key: 'instruction', style: { marginTop: 8 } },
-          h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
-            h(RoleTag, { actor: 'user', label }),
-            h('span', { style: { fontSize: 11, color: T.muted } }, label('step.instruction', '指令'))),
-          // F147: full instruction text; the block scrolls, it is not cut.
-          h('div', { title: runPrompt, style: { marginTop: 2, fontSize: 12, lineHeight: 1.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto' } }, runPrompt),
+        timeline.push(h('div', { key: 'instruction', style: { position: 'relative', marginBottom: 8 } },
+          dotOf('user'),
+          h('div', { style: cardBox() },
+            capRow(chipOf('USER', 'user', label('step.instruction', '指令')),
+              h('span', { style: { ...mono11, color: T.faint } }, `${runPrompt.length} 字`)),
+            // F147: full instruction text; the block scrolls, it is not cut.
+            h('div', {
+              title: runPrompt,
+              style: { marginTop: 2, fontSize: 12, lineHeight: 1.55, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto' },
+            }, runPrompt),
+          ),
         ));
       }
 
-      for (const op of data.operations ?? []) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === 'ctxGroup') {
+          const n = item.list.length;
+          const open = ctxOpen;
+          timeline.push(h('div', { key: 'ctx-group', style: { position: 'relative', marginBottom: 8 } },
+            dotOf('context'),
+            h('div', {
+              style: cardBox({ borderStyle: 'dashed', background: T.surface, cursor: 'pointer' }),
+              onClick: () => setCtxOpen((value) => !value),
+              title: open ? '收起注入内容' : '展开注入内容',
+            },
+              capRow(
+                h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
+                  chipOf('CTX', 'context'),
+                  h('span', { style: { fontSize: 12, ...mono11 } }, `注入 ×${n}`),
+                  h('span', { style: { ...mono11, color: T.muted } }, open ? '收起' : '展开'),
+                ),
+                rawButton(item.seqs),
+              ),
+              open ? item.list.map((op, k) => h('div', {
+                key: 'ctx-' + (op.seq ?? k),
+                style: { marginTop: 4, fontSize: 12, lineHeight: 1.5, color: T.muted, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto' },
+                title: op.text,
+              }, op.text)) : null,
+              rawPanel(item.seqs),
+            ),
+          ));
+          continue;
+        }
+        const op = item;
         if (op.kind === 'assistant') {
           const value = op.usage ?? {};
-          pushRow('op-' + op.seq, renderRow(
-            'op-' + op.seq,
-            'assistant',
-            label('step.modelCall', '模型调用'),
-            `in ${fmtK(value.input)} · out ${fmtK(value.output)}`,
-            null,
-            [op.seq],
-            op.text
-              ? h('div', { title: op.text, style: { marginTop: 2, fontSize: 12, lineHeight: 1.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 132, overflow: 'auto' } }, op.text)
-              : null,
+          timeline.push(h('div', { key: 'op-' + op.seq, style: { position: 'relative', marginBottom: 8 } },
+            dotOf('assistant'),
+            h('div', { style: cardBox() },
+              capRow(
+                h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
+                  chipOf('REPLY', 'assistant', label('step.modelCall', '模型调用')),
+                  h('span', { style: { fontSize: 12, ...mono11 } }, label('step.modelCall', '模型调用'))),
+                h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
+                  h('span', { style: { ...mono11, color: T.muted } }, `in ${fmtK(value.input)} · out ${fmtK(value.output)}`),
+                  rawButton([op.seq])),
+              ),
+              op.text ? h('div', {
+                title: op.text,
+                style: { marginTop: 2, fontSize: 12, lineHeight: 1.55, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 132, overflow: 'auto' },
+              }, op.text) : null,
+              rawPanel([op.seq]),
+            ),
           ));
           continue;
         }
@@ -1230,63 +1320,65 @@ window.__ModuleLoader__.load({
           const failed = op.error != null || op.isError;
           const isSlow = typeof op.durationMs === 'number' && op.durationMs > slowMs;
           const errorText = failed ? (op.error ?? 'error') : (isSlow ? label('step.slow', '慢') : null);
-          pushRow('op-' + op.seq, renderRow(
-            'op-' + op.seq,
-            'tool',
-            `tool · ${op.name}`,
-            op.durationMs != null ? fmtMs(op.durationMs) : '—',
-            errorText,
-            [op.callSeq, op.resultSeq],
-            h('div', null,
-              op.args
-                ? h('div', { style: { marginTop: 2, fontSize: 12, minWidth: 0 } },
-                  h('span', { style: { fontSize: 11, color: T.muted, marginRight: 6 } }, label('step.args', '参数')),
-                  h('span', { title: op.args, style: { fontFamily: T.mono, whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }, op.args))
-                : null,
-              op.result
-                ? h('div', { style: { marginTop: 2, fontSize: 12, minWidth: 0, color: failed ? T.error : T.text } },
-                  h('span', { style: { fontSize: 11, color: T.muted, marginRight: 6 } }, label('step.result', '结果')),
-                  h('span', { title: op.result, style: { fontFamily: T.mono, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto', display: 'block' } }, op.result))
-                : null,
+          timeline.push(h('div', { key: 'op-' + op.seq, style: { position: 'relative', marginBottom: 8 } },
+            dotOf(failed ? 'error' : 'tool'),
+            h('div', { style: cardBox(failed ? { borderColor: T.error } : null) },
+              capRow(
+                h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8, minWidth: 0 } },
+                  chipOf('TOOL', 'tool'),
+                  h('span', { style: { fontSize: 12, ...mono11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, String(op.name ?? ''))),
+                h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
+                  errorText != null ? h('span', { style: { fontSize: 11, color: failed ? T.error : T.warn } }, errorText) : null,
+                  h('span', { style: { ...mono11, color: T.muted } }, op.durationMs != null ? fmtMs(op.durationMs) : '—'),
+                  rawButton([op.callSeq, op.resultSeq])),
+              ),
+              op.args ? h('div', {
+                title: op.args,
+                style: { marginTop: 3, ...mono11, color: T.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+              }, op.args) : null,
+              op.result ? h('div', {
+                title: op.result,
+                style: { marginTop: 1, ...mono11, color: failed ? T.error : T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+              }, op.result) : (op.durationMs != null ? h('div', { style: { marginTop: 1, ...mono11, color: T.faint } }, '无结果') : null),
+              rawPanel([op.callSeq, op.resultSeq]),
             ),
           ));
           continue;
         }
-        if (op.kind === 'note') {
-          // Explanation rows use the SAME tag component and language as every
-          // other row (F136): English chip, Chinese wording in the tooltip.
-          const tone = op.noteKind === 'fail' ? T.error : op.noteKind === 'retry' ? T.warn : T.muted;
-          const palette = op.noteKind === 'fail'
-            ? STEP_TAG_ERROR
-            : (op.noteKind === 'retry' || op.noteKind === 'compact' ? ROLE.tool : ROLE.system);
-          const zh = label('note.' + (op.noteKind ?? 'note'), NOTE_TAG[op.noteKind] ?? '事件');
-          pushRow('op-' + op.seq, h('div', {
-            key: 'note-' + op.seq,
-            style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 },
-          },
-            h(RowTag, { text: NOTE_TAG_EN[op.noteKind] ?? 'EVENT', color: palette.color, background: palette.background, title: zh }),
-            h('span', { title: op.text, style: { fontSize: 12, fontFamily: T.mono, color: tone, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, op.text),
-          ));
-          continue;
-        }
-        if (op.kind === 'context' || op.kind === 'system') {
-          pushRow('op-' + op.seq, renderRow(
-            'op-' + op.seq,
-            op.kind,
-            op.kind === 'context' ? label('step.injected', '注入') : label('step.systemPrompt', '系统提示词'),
-            null,
-            null,
-            [op.seq],
-            h('div', { title: op.text, style: { marginTop: 2, fontSize: 12, lineHeight: 1.5, color: op.kind === 'system' ? T.text : T.muted, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto' } }, op.text),
-          ));
-        }
+        // note rows keep the compact one-liner look (they are annotations, not work)
+        const noteKey = 'op-' + op.seq;
+        const tone = op.noteKind === 'fail' ? T.error : op.noteKind === 'retry' ? T.warn : T.muted;
+        const notePalette = op.noteKind === 'fail'
+          ? STEP_TAG_ERROR
+          : (op.noteKind === 'retry' || op.noteKind === 'compact' ? ROLE.tool : ROLE.system);
+        timeline.push(h('div', { key: noteKey, style: { position: 'relative', marginBottom: 8 } },
+          dotOf(op.noteKind === 'fail' ? 'error' : 'note'),
+          h('div', { style: cardBox({ padding: '3px 9px', background: 'transparent', borderStyle: 'dotted' }) },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 } },
+              h(RowTag, {
+                text: NOTE_TAG_EN[op.noteKind] ?? 'EVENT',
+                color: notePalette.color,
+                background: notePalette.background,
+                title: label('note.' + (op.noteKind ?? 'note'), NOTE_TAG[op.noteKind] ?? '事件'),
+              }),
+              h('span', { title: op.text, style: { fontSize: 12, ...mono11, color: tone, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, op.text),
+            ),
+          ),
+        ));
       }
 
-      if (children.length === 1 && !hasInstruction) {
-        children.push(h('div', { key: 'empty', style: { marginTop: 6, fontSize: 12, color: T.muted } }, label('step.empty', '该 Step 无内容')));
-      }
-
-      return h('div', { style: cardStyle }, children);
+      const empty = timeline.length === 0;
+      return h('div', { style: cardStyle },
+        strip,
+        empty
+          ? h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, label('step.empty', '该 Step 无内容'))
+          : h('div', { style: { position: 'relative', paddingLeft: 14 } },
+            h('span', {
+              style: { position: 'absolute', left: 4, top: 6, bottom: 6, width: 1, background: 'color-mix(in srgb, ' + T.text + ' 12%, transparent)' },
+            }),
+            timeline,
+          ),
+      );
     }
 
 
