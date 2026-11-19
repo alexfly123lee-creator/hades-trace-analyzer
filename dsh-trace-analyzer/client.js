@@ -396,6 +396,9 @@ window.__ModuleLoader__.load({
      */
     function OverviewBoard({ kpi, rows, label, onLocate }) {
       const [hover, setHover] = useState(null);
+      // F155: the clicked column stays highlighted so "which Run did I pick?" is
+      // answerable after the pointer leaves the matrix.
+      const [selected, setSelected] = useState(null);
       const wrapRef = useRef(null);
       const cardRef = useRef(null);
       const n = rows.length;
@@ -412,82 +415,6 @@ window.__ModuleLoader__.load({
           steps: rank((r) => r.stepCount),
         };
       }, [rows]);
-      // Pin the block while its placeholder is above the visible area.
-      //
-      // F154: the scroll listener has to be attached to *every* scrollable
-      // ancestor, not to `document`. Scroll events are NOT composed, so when the
-      // panel lives under a shadow root and the element that scrolls is inside
-      // that root, a `document`-level (even capture-phase) listener never fires —
-      // which is exactly why the pin appeared dead. We therefore walk up the
-      // ancestor chain, crossing shadow boundaries through `getRootNode().host`,
-      // and also drive a cheap 120 ms watchdog so a missed event cannot leave the
-      // block behind.
-      useEffect(() => {
-        const wrap = wrapRef.current;
-        const card = cardRef.current;
-        if (!wrap || !card || typeof window === 'undefined') return undefined;
-        let raf = null;
-        const update = () => {
-          raf = null;
-          if (!wrap.isConnected || !card.isConnected) return;
-          const host = wrap.closest('[data-hades-scroll]');
-          const hostRect = host ? host.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
-          const w = wrap.getBoundingClientRect();
-          const cardH = card.offsetHeight || 0;
-          const pinTop = Math.max(0, hostRect.top);
-          // Never travel further than the run list: the block parks at the bottom.
-          const maxT = Math.max(0, hostRect.bottom - cardH - w.top);
-          const t = Math.max(0, Math.min(pinTop - w.top, maxT));
-          card.style.transform = t > 0.5 ? `translateY(${t}px)` : '';
-        };
-        const onScroll = () => { if (raf == null) raf = window.requestAnimationFrame(update); };
-        // F154: wheel / touch / scroll keys ARE composed, so they cross shadow
-        // boundaries even when the scroll event does not. Use them as a hint to
-        // run `update` for the next few frames — that keeps the motion smooth
-        // between watchdog ticks.
-        let boostUntil = 0;
-        const tick = () => {
-          raf = null;
-          update();
-          if (performance.now() < boostUntil) raf = window.requestAnimationFrame(tick);
-        };
-        const boost = () => {
-          boostUntil = performance.now() + 400;
-          if (raf == null) raf = window.requestAnimationFrame(tick);
-        };
-        const targets = [];
-        let node = wrap.parentNode;
-        let guard = 0;
-        while (node && guard++ < 40) {
-          if (typeof node.addEventListener === 'function') targets.push(node);
-          if (node === document) break;
-          const root = typeof node.getRootNode === 'function' ? node.getRootNode() : null;
-          if (root && root !== node && root.host) {
-            // Inside a shadow root: listen on the root, then continue at its host.
-            targets.push(root);
-            node = root.host;
-            continue;
-          }
-          node = node.parentNode;
-        }
-        if (!targets.includes(window)) targets.push(window);
-        for (const t of targets) t.addEventListener('scroll', onScroll, true);
-        const HINTS = ['wheel', 'touchmove', 'keydown'];
-        for (const type of HINTS) window.addEventListener(type, boost, { capture: true, passive: true });
-        const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(onScroll) : null;
-        if (ro) ro.observe(wrap);
-        // Watchdog: 8 rect reads a second is free, and it self-heals any missed
-        // scroll event (non-composed shadow scrolls, virtualised listeners, …).
-        const timer = window.setInterval(update, 120);
-        update();
-        return () => {
-          for (const t of targets) t.removeEventListener('scroll', onScroll, true);
-          for (const type of HINTS) window.removeEventListener(type, boost, true);
-          if (ro) ro.disconnect();
-          window.clearInterval(timer);
-          if (raf != null) window.cancelAnimationFrame(raf);
-        };
-      }, [rows.length]);
       if (n === 0) return null;
       // 8% floor keeps the smallest run visible; 88% ceiling keeps the largest
       // from turning into a solid block.
@@ -498,7 +425,8 @@ window.__ModuleLoader__.load({
         { key: 'steps', text: label('mx.steps', '步数'), tone: T.success, values: ranks.steps },
       ];
       const cellBase = { height: 11, borderRadius: 1, cursor: 'pointer' };
-      const hovered = hover == null ? null : rows[hover];
+      const active = hover == null ? selected : hover;
+      const hovered = active == null || rows[active] == null ? null : rows[active];
       const summary = hovered
         ? `Run ${hovered.idx} · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} 步`
           + (hovered.hasError ? ' · 有错误' : '') + (hovered.hasSlow ? ' · 有慢操作' : '')
@@ -506,8 +434,8 @@ window.__ModuleLoader__.load({
         : '';
       const gaps = Math.max(0, n - 1);
       const track = `(100% - ${MX_LABEL_W + MX_GAP + gaps}px) / ${n}`;
-      const band = hover == null ? null : {
-        left: `calc(${MX_LABEL_W + MX_GAP}px + ${hover} * ((${track}) + 1px))`,
+      const band = active == null ? null : {
+        left: `calc(${MX_LABEL_W + MX_GAP}px + ${active} * ((${track}) + 1px))`,
         width: `calc(${track})`,
       };
       // F152: three separate rectangles instead of one bordered box. A 1px
@@ -567,7 +495,7 @@ window.__ModuleLoader__.load({
               rows.map((r, i) => h('div', {
                 key: r.idx,
                 onMouseEnter: () => setHover(i),
-                onClick: () => onLocate(r.idx),
+                onClick: () => { setSelected(i); onLocate(r.idx); },
                 title: `Run ${r.idx}`,
                 style: { ...cellBase, background: shade(row.tone, row.values[i]) },
               })),
@@ -581,7 +509,7 @@ window.__ModuleLoader__.load({
               rows.map((r, i) => h('div', {
                 key: 'flag-' + r.idx,
                 onMouseEnter: () => setHover(i),
-                onClick: () => onLocate(r.idx),
+                onClick: () => { setSelected(i); onLocate(r.idx); },
                 title: `Run ${r.idx}`,
                 style: { ...cellBase, background: flagBg(r) },
               })),
@@ -1355,6 +1283,12 @@ window.__ModuleLoader__.load({
       // F150: scroll container, so "locate this run" can bring the row into view
       // without touching the document (another slot instance may be mounted).
       const scrollRef = useRef(null);
+      const rootRef = useRef(null);
+      // F155 app-shell height: without a definite height the panel just grows and
+      // the *page* scrolls, carrying the header away no matter how it is pinned.
+      // Give the shell the viewport space below its own top edge, capped by the
+      // parent's visible box, so the list gets a real scrollport of its own.
+      const [shellH, setShellH] = useState(null);
       const [payload, setPayload] = useState(null);
       const [error, setError] = useState(null);
       const [loading, setLoading] = useState(false);
@@ -1365,12 +1299,27 @@ window.__ModuleLoader__.load({
       const [detailErrors, setDetailErrors] = useState(() => new Map());
       // Handle of the running "glide to this run" tween (F151).
       const glideRaf = useRef(null);
-      // F152: whether this panel is the scroller. When the host gives the view an
-      // unbounded height (the conversation page scrolls instead), our own
-      // `overflow: auto` box never scrolls — and a non-scrolling scroll container
-      // silently kills `position: sticky` for everything inside it. Detecting
-      // that lets us drop the overflow so the card pins to the page scrollport.
-      const [pageScroll, setPageScroll] = useState(false);
+      useEffect(() => {
+        const root = rootRef.current;
+        if (!root || typeof window === 'undefined') return undefined;
+        const fit = () => {
+          const rootTop = Math.max(0, root.getBoundingClientRect().top);
+          const parent = root.parentElement;
+          const parentRect = parent ? parent.getBoundingClientRect() : null;
+          const availView = Math.max(0, window.innerHeight - rootTop);
+          const availParent = parentRect ? Math.max(0, parentRect.bottom - rootTop) : availView;
+          const h = Math.max(320, Math.min(availView, availParent || availView));
+          setShellH((prev) => (prev != null && Math.abs(prev - h) < 2 ? prev : Math.round(h)));
+        };
+        fit();
+        window.addEventListener('resize', fit);
+        // The slot may be laid out a frame or two after mount.
+        const id = window.setTimeout(fit, 250);
+        return () => {
+          window.removeEventListener('resize', fit);
+          window.clearTimeout(id);
+        };
+      }, []);
       // F140 realtime: `seq` is the log offset the current payload was built at.
       const seqRef = useRef(null);
       const tickBusy = useRef(false);
@@ -1543,65 +1492,35 @@ window.__ModuleLoader__.load({
         const glide = () => {
           const el = host.querySelector('[data-run="' + idx + '"]');
           if (!el) return;
-          // F152: two possible scroll owners — our own box (bounded panel) or the
-          // conversation page (unbounded panel). Measure against whichever one
-          // actually moves.
-          const win = typeof window === 'undefined' ? null : window;
-          const scroller = pageScroll || !win ? null : host;
-          const origin = scroller ? scroller.getBoundingClientRect().top : 0;
-          const viewH = scroller ? scroller.clientHeight : (win ? win.innerHeight : 600);
-          const current = scroller ? scroller.scrollTop : (win ? win.scrollY : 0);
-          const maxScroll = scroller
-            ? Math.max(0, scroller.scrollHeight - scroller.clientHeight)
-            : (win ? Math.max(0, document.documentElement.scrollHeight - win.innerHeight) : 0);
-          // F153: the pinned block is taller now, so the landing point has to sit
-          // below it — otherwise the located row would be hidden behind it.
-          const board = host.querySelector('[data-hades-board]');
+          // F155: the list box is the only scroller now (the header block is a
+          // flex sibling above it), so this is plain scrollTop arithmetic.
+          const viewH = host.clientHeight;
+          const current = host.scrollTop;
+          const maxScroll = Math.max(0, host.scrollHeight - host.clientHeight);
+          const board = rootRef.current ? rootRef.current.querySelector('[data-hades-board]') : null;
           const boardH = board ? board.offsetHeight : 0;
-          const anchor = Math.min(viewH * 0.6, Math.max(viewH * 0.32, boardH + 24));
-          const target = Math.max(0, Math.min(maxScroll, current + (el.getBoundingClientRect().top - origin) - anchor));
+          const anchor = Math.min(viewH * 0.6, Math.max(viewH * 0.32, boardH + 16));
+          const offset = el.getBoundingClientRect().top - host.getBoundingClientRect().top;
+          const target = Math.max(0, Math.min(maxScroll, current + offset - anchor));
           const delta = target - current;
           if (Math.abs(delta) < 2) return;
-          const apply = (v) => { if (scroller) scroller.scrollTop = v; else if (win) win.scrollTo(0, v); };
-          if (reduce || typeof requestAnimationFrame !== 'function') { apply(target); return; }
+          if (reduce || typeof requestAnimationFrame !== 'function') { host.scrollTop = target; return; }
           const duration = Math.min(700, Math.max(260, Math.abs(delta) * 0.5));
           const t0 = performance.now();
           const ease = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
           if (glideRaf.current != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(glideRaf.current);
           const step = (now) => {
             const p = Math.min(1, (now - t0) / duration);
-            apply(current + delta * ease(p));
+            host.scrollTop = current + delta * ease(p);
             glideRaf.current = p < 1 ? requestAnimationFrame(step) : null;
           };
           glideRaf.current = requestAnimationFrame(step);
         };
-        // Two frames: the expansion has to be committed (and the row list laid
-        // out) before the target offset is measured.
+        // Two frames: the expansion has to be committed (and the list laid out)
+        // before the target offset is measured.
         if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(glide));
         else glide();
       };
-
-      // F152: decide who scrolls the list. A bounded panel scrolls itself; an
-      // unbounded one lets the conversation page scroll — and in that case our
-      // own `overflow: auto` box must stop being a scroll container, otherwise it
-      // traps `position: sticky` and the matrix card scrolls away with the page.
-      useEffect(() => {
-        const host = scrollRef.current;
-        if (!host || pageScroll) return undefined;
-        let decided = false;
-        const check = () => {
-          if (decided || !host.isConnected) return;
-          if (host.scrollHeight < 480) return; // too little content to judge
-          decided = true;
-          if (host.scrollHeight > host.clientHeight + 8) return; // this box scrolls
-          setPageScroll(true);
-        };
-        check();
-        if (typeof ResizeObserver !== 'function') return undefined;
-        const ro = new ResizeObserver(check);
-        ro.observe(host);
-        return () => ro.disconnect();
-      }, [payload, pageScroll]);
 
       /** Toggle one Step's panel; its row highlight follows the open state. */
       const selectStep = (runIdx, stepIdx) => {
@@ -1757,42 +1676,47 @@ window.__ModuleLoader__.load({
         );
       };
 
-      const renderContent = () => {
+      // F155: split the panel into an app shell — the header block (KPI + matrix)
+      // is a flex child ABOVE the scroller, so it cannot scroll: no listeners, no
+      // transforms, nothing that a shadow boundary or an `overflow: hidden`
+      // ancestor can defeat. Only the Run list scrolls.
+      const renderHeader = () => {
+        if (error != null || !payload) return null;
+        if ((payload.counts?.events ?? 0) === 0) return null;
+        return h(OverviewBoard, {
+          kpi,
+          rows: payload.runs ?? [],
+          label,
+          onLocate: locateRun,
+        });
+      };
+
+      const renderList = () => {
         if (error != null) return h('div', { style: { color: T.error } }, String(error));
         if (loading && !payload) return h('div', { style: { color: T.muted } }, label('loading', '加载中…'));
         if (!payload) return null;
         if ((payload.counts?.events ?? 0) === 0) return h('div', { style: { color: T.muted } }, label('empty', '该会话暂无事件'));
-        return h('div', null,
-          // F153: numbers + picture are one pinned block — both stay at the panel
-          // top while the run list scrolls under them.
-          h(OverviewBoard, {
-            kpi,
-            rows: payload.runs ?? [],
-            label,
-            onLocate: locateRun,
-          }),
-          h(DualBarChart, {
-            rows: payload.runs ?? [],
-            sort,
-            onSort: setSort,
-            sysLabel: label('system', '系统提示词'),
-            expanded,
-            onToggleRun: openRun,
-            renderDetail,
-            hasDetail: (idx) => details.has(idx),
-            label,
-          }),
-        );
+        return h(DualBarChart, {
+          rows: payload.runs ?? [],
+          sort,
+          onSort: setSort,
+          sysLabel: label('system', '系统提示词'),
+          expanded,
+          onToggleRun: openRun,
+          renderDetail,
+          hasDetail: (idx) => details.has(idx),
+          label,
+        });
       };
 
-      
-      return h('div', { style: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', boxSizing: 'border-box', fontSize: 13, lineHeight: 1.6, color: T.text, fontFamily: T.font } },
+      return h('div', { ref: rootRef, style: { height: shellH ? shellH + 'px' : '100%', minHeight: 0, display: 'flex', flexDirection: 'column', boxSizing: 'border-box', fontSize: 13, lineHeight: 1.6, color: T.text, fontFamily: T.font } },
         h('style', { key: 'hades-row-anim' }, ROW_ANIM_CSS),
         // F151: no header bar — the "cache hit / server ms / live badge / refresh
         // button" chrome was developer telemetry sitting on top of the product,
         // and the 2 s realtime tick makes a manual refresh unnecessary.
-        h('div', { ref: scrollRef, 'data-hades-scroll': '1', style: { flex: '1 1 auto', minHeight: 0, overflowY: pageScroll ? 'visible' : 'auto', overflowX: 'hidden', padding: '10px 12px 0' } },
-          renderContent(),
+        h('div', { style: { flex: '0 0 auto', padding: '10px 12px 0', background: T.surface } }, renderHeader()),
+        h('div', { ref: scrollRef, 'data-hades-scroll': '1', style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 12px 12px' } },
+          renderList(),
         ),
       );
     }

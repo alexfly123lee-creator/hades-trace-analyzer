@@ -382,7 +382,17 @@
   - **钉到哪**：`pinTop = max(0, hostRect.top)` —— 优先贴**面板顶部**；面板顶部滚出视口时才退化为贴视口顶部。
   - **AC**：shadow root 内的滚动也能钉住（实测：不钉 `top=-183`，钉住 `top=67` = 面板顶部、`translateY(250px)`）；`document` 收到 0 个 scroll 事件的情况下依然工作；滚轮连续滚动时无可见滞后；把面板滚到底时块停在列表底部不越界；`check-served` 76/76（新增 `getRootNode` / `boostUntil` / `setInterval(update`）；单测 43/43。
 
-## 32. 范围外（v1 不做）
+## 32. 顶部改结构性固定 + 矩阵可选可定位（F155）
+
+- **F155 不再"钉"，改成没有东西可滚**：F151–F154 都在想办法把表头钉在滚动之上（`sticky` → `transform` → 跨 shadow 的监听），但真机上始终失效。这次换架构：**面板是一个有确定高度的 app shell**，表头块是滚动区**外面的 flex 兄弟**——它结构上就不可能滚。
+  - **高度**：`shellH = clamp(320, min(视口高度 − 面板顶部, 父容器可见底 − 面板顶部))`；挂载 + `resize` + 250ms 后再量一次。有了确定高度，列表才真的自己滚，页面不再被撑长。
+  - **结构**：`root(shellH, flex column)` → `hdr(flex 0, padding 10/12/0)`［KPI 卡 + 矩阵卡］→ `list(flex 1, minHeight 0, overflow auto)`［只有 Run 列表］。
+  - **删掉的机制**：`position: sticky`、`transform` 钉住、跨 shadow 的祖先链监听、120ms 看门狗、`pageScroll` 探测——全部删除（`-3.6 KB`）。这几层都是对"谁在滚"的猜测，现在不需要猜。
+  - **矩阵可选 + 滚动定位**：点击任一单元格 → 该列**选中并保持高亮**（hover 结束后仍然保留），同时 `locateRun` 用 rAF + `easeInOutCubic` 把列表滚到该 Run（落点 `max(viewH×0.32, 矩阵高 + 16)`，上限 `viewH×0.6`，保证不被表头挡住）。
+  - **实测**（harness：shadow root + 无界父容器，CDP 读取）：shell 高 **567px**、列表可滚 **746px**；列表滚 400px 后表头 **top 103 → 103**（不动）；点击第 30 列后列表滚到 **734**、表头仍 **103**、选中带 `display:block`（保持高亮）。
+  - **AC**：滚列表任意距离，KPI + 矩阵在面板顶部**一动不动**（因为它们在滚动容器之外）；点矩阵任一列 → 该列持续高亮、列表平滑滚到对应 Run 且行不被表头遮挡；页面不再因为面板被撑长而整体滚动；`check-served` 76/76（新增 `shellH` / `const renderHeader` / `const renderList` / `setSelected(i)`，移除 `translateY(${t}px)` 等钉住标记）；单测 43/43。
+
+## 33. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
