@@ -317,6 +317,8 @@ dsh-trace-analyzer/
 28. **M27 顶部改结构性固定 + 矩阵可选可定位（F155）** ✅：前四版都在"把表头钉在滚动之上"（`sticky` → `transform` → 跨 shadow 监听），真机始终失效。这次换架构：**面板变成有确定高度的 app shell**，表头块是滚动区**外面的 flex 兄弟**，结构上不可能滚。`shellH = clamp(320, min(视口高 − 面板顶, 父容器可见底 − 面板顶))`，挂载/resize/250ms 各量一次；顺带**删掉** sticky、transform 钉住、祖先链监听、看门狗、pageScroll 探测（-3.6 KB）。矩阵点击改为"选中并保持高亮"（`selected` 状态，hover 结束后仍亮）+ `locateRun` 滚到该 Run（落点 `max(viewH×0.32, 矩阵高+16)`，不被表头挡）。CDP 实测（shadow + 无界父容器）：shell 567px、可滚 746px，列表滚 400 后表头 top 103→103；点第 30 列列表滚到 734、表头仍 103、高亮保持。验收：check-served 76/76（新增 shellH / const renderHeader / const renderList / setSelected(i)，移除钉住类标记）；单测 43/43。见 TEST V68。
 29. **M28 点击矩阵不再卡顿（F156）** ✅：卡顿是三个热点叠加——① `selected`/`hover` 变化把 700 个格子整块重建；② 展开该 Run 的 160ms 高度动画与 260–700ms 的滚动补间同时改列表高度；③ 这些全在点击的同一个事件任务里做完才绘帧。改法：网格 `useMemo([rows, ranks, n, rowTexts])` 缓存（回调走 `locateRef`，避免每 2s 的实时 tick 打穿 memo）→ 点击只重渲染高亮三件套；点击时先 `setSelected` 立刻亮，`setTimeout(0)` 把定位推到下一个任务，`locateRun` 再等 200ms（高度动画结束）才起补间，已展开的 Run 仍立即定位。验收：check-served 76/76（`const grid = useMemo` / `locateRef` / `setSelected(i)` 均在线上 bundle）；单测 43/43。见 TEST V69。
 
+30. **M29 断开滚动链 + 矩阵选中态（F157）** ✅：① 滚到底后往回滑"表头消失"不是固定失效，而是**滚动链**——列表到 `scrollTop=max` 后再滚一格就把滚轮传给页面，整个面板被页面带走；给列表加 `overscroll-behavior: contain` 解决。② hover 与 selected 原来共用 14%/1px 淡带，既轻又分不清：选中改为 30% 底 + 左右 2px 实线（指针移开仍保留），悬停 20% + 1px（跟随指针），两者可同时存在；图例旁再加 `Run N ✕` 选中胶囊（✕ 取消选中）。验收：check-served 79/79（新增 sel-fill / bandLayer('sel-l' / hov-fill / bandLayer('hov-l' / overscrollBehavior）；单测 43/43。见 TEST V70。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

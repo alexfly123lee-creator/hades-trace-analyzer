@@ -480,10 +480,12 @@ window.__ModuleLoader__.load({
         : '';
       const gaps = Math.max(0, n - 1);
       const track = `(100% - ${MX_LABEL_W + MX_GAP + gaps}px) / ${n}`;
-      const band = active == null ? null : {
-        left: `calc(${MX_LABEL_W + MX_GAP}px + ${active} * ((${track}) + 1px))`,
+      // Column geometry, gap-aware: the highlight edges must land exactly on the
+      // cell borders (a plain i/n percentage ignores the 1px gaps and drifts).
+      const bandAt = (i) => ({
+        left: `calc(${MX_LABEL_W + MX_GAP}px + ${i} * ((${track}) + 1px))`,
         width: `calc(${track})`,
-      };
+      });
       // F152: three separate rectangles instead of one bordered box. A 1px border
       // on a 2–4px wide element collapses into a tapered wedge as the column count
       // grows (the "梯形" artefact), while independent 1px lines stay crisp. They
@@ -514,12 +516,28 @@ window.__ModuleLoader__.load({
           },
             h('div', { style: { position: 'relative' } },
               grid,
-              band ? bandLayer('band-fill', {
-                left: band.left, width: band.width,
-                background: `color-mix(in srgb, ${T.brand} 14%, transparent)`,
+              // F157: two distinct states, both readable at a glance —
+              //   selected (clicked): 26% fill + 2px edges, stays after the
+              //                       pointer leaves;
+              //   hover:              18% fill + 1px edges, follows the pointer.
+              // Previously both used the same faint 14%/1px band, so hovering felt
+              // like nothing happened and a selection was indistinguishable.
+              selected != null ? bandLayer('sel-fill', {
+                left: bandAt(selected).left, width: bandAt(selected).width,
+                background: `color-mix(in srgb, ${T.brand} 26%, transparent)`,
               }) : null,
-              band ? bandLayer('band-l', { left: band.left, width: 1, background: T.brand }) : null,
-              band ? bandLayer('band-r', { left: `calc(${band.left} + (${band.width}) - 1px)`, width: 1, background: T.brand }) : null,
+              selected != null ? bandLayer('sel-l', { left: bandAt(selected).left, width: 2, background: T.brand }) : null,
+              selected != null ? bandLayer('sel-r', {
+                left: `calc(${bandAt(selected).left} + (${bandAt(selected).width}) - 2px)`, width: 2, background: T.brand,
+              }) : null,
+              hover != null && hover !== selected ? bandLayer('hov-fill', {
+                left: bandAt(hover).left, width: bandAt(hover).width,
+                background: `color-mix(in srgb, ${T.brand} 18%, transparent)`,
+              }) : null,
+              hover != null && hover !== selected ? bandLayer('hov-l', { left: bandAt(hover).left, width: 1, background: T.brand }) : null,
+              hover != null && hover !== selected ? bandLayer('hov-r', {
+                left: `calc(${bandAt(hover).left} + (${bandAt(hover).width}) - 1px)`, width: 1, background: T.brand,
+              }) : null,
             ),
             h('div', {
               style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 7, font: `11px/1.2 ${T.mono}`, minHeight: 16 },
@@ -536,6 +554,26 @@ window.__ModuleLoader__.load({
               }),
               legendItem(T.error, label('mx.error', '有错误')),
               legendItem(T.warn, label('mx.slow', '有慢操作')),
+              // F157: an explicit selection chip, so "what is currently selected"
+              // is answered in words as well as by the 30%/2px column band.
+              selected != null && rows[selected] ? h('span', {
+                key: 'sel-chip',
+                style: {
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  height: 17, padding: '0 5px 0 6px', borderRadius: 4,
+                  border: '1px solid ' + T.brand,
+                  background: `color-mix(in srgb, ${T.brand} 10%, transparent)`,
+                  color: T.brand, whiteSpace: 'nowrap',
+                },
+              },
+                `Run ${rows[selected].idx}`,
+                h('button', {
+                  type: 'button',
+                  title: label('mx.clearSel', '取消选中'),
+                  onClick: () => setSelected(null),
+                  style: { border: 'none', background: 'transparent', color: T.brand, cursor: 'pointer', font: 'inherit', padding: 0, lineHeight: 1 },
+                }, '✕'),
+              ) : null,
               h('span', {
                 title: hovered ? summary : '',
                 style: {
@@ -1721,7 +1759,19 @@ window.__ModuleLoader__.load({
         // button" chrome was developer telemetry sitting on top of the product,
         // and the 2 s realtime tick makes a manual refresh unnecessary.
         h('div', { style: { flex: '0 0 auto', padding: '10px 12px 0', background: T.surface } }, renderHeader()),
-        h('div', { ref: scrollRef, 'data-hades-scroll': '1', style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 12px 12px' } },
+        h('div', {
+          ref: scrollRef,
+          'data-hades-scroll': '1',
+          style: {
+            flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
+            padding: '0 12px 12px',
+            // F157: stop scroll chaining. Without this, one extra wheel tick at
+            // the bottom of the list scrolled the *page* — which carried the whole
+            // panel (header included) off-screen, and it looked like the matrix
+            // had "stopped sticking" when scrolling back up.
+            overscrollBehavior: 'contain',
+          },
+        },
           renderList(),
         ),
       );
@@ -1737,7 +1787,7 @@ window.__ModuleLoader__.load({
             'run': 'Run ', 'step': 'Step ', 'followup': '续跑', 'system': '系统提示词',
             'stat.runs': 'Run（指令）', 'stat.steps': 'Step（迭代）', 'stat.events': '事件', 'stat.tokens': 'Token',
             'stat.errors': '错误', 'stat.slow': '慢操作', 'stat.abnormal': '异常 Run', 'stat.slowest': '最慢操作',
-            'mx.steps': '步数', 'mx.flags': '异常', 'mx.hint': '悬停看这个 Run · 点击定位',
+            'mx.steps': '步数', 'mx.flags': '异常', 'mx.hint': '悬停看这个 Run · 点击定位', 'mx.clearSel': '取消选中',
             'mx.ramp': '颜色越深 = 该 Run 在全会话里的排位越高',
             'mx.error': '有错误', 'mx.slow': '有慢操作',
             'loadingDetail': '载入 Step…',
@@ -1761,7 +1811,7 @@ window.__ModuleLoader__.load({
             'run': 'Run ', 'step': 'Step ', 'followup': 'follow-up', 'system': 'system prompt',
             'stat.runs': 'Runs', 'stat.steps': 'Steps', 'stat.events': 'Events', 'stat.tokens': 'Tokens',
             'stat.errors': 'Errors', 'stat.slow': 'Slow ops', 'stat.abnormal': 'Abnormal runs', 'stat.slowest': 'Slowest',
-            'mx.steps': 'Steps', 'mx.flags': 'Flags', 'mx.hint': 'hover a Run · click to locate',
+            'mx.steps': 'Steps', 'mx.flags': 'Flags', 'mx.hint': 'hover a Run · click to locate', 'mx.clearSel': 'clear selection',
             'mx.ramp': 'darker = higher rank within the session',
             'mx.error': 'has error', 'mx.slow': 'has slow op',
             'loadingDetail': 'loading Steps…',
