@@ -412,7 +412,16 @@ window.__ModuleLoader__.load({
           steps: rank((r) => r.stepCount),
         };
       }, [rows]);
-      // Pin the card while its placeholder is above the visible area.
+      // Pin the block while its placeholder is above the visible area.
+      //
+      // F154: the scroll listener has to be attached to *every* scrollable
+      // ancestor, not to `document`. Scroll events are NOT composed, so when the
+      // panel lives under a shadow root and the element that scrolls is inside
+      // that root, a `document`-level (even capture-phase) listener never fires —
+      // which is exactly why the pin appeared dead. We therefore walk up the
+      // ancestor chain, crossing shadow boundaries through `getRootNode().host`,
+      // and also drive a cheap 120 ms watchdog so a missed event cannot leave the
+      // block behind.
       useEffect(() => {
         const wrap = wrapRef.current;
         const card = cardRef.current;
@@ -426,21 +435,56 @@ window.__ModuleLoader__.load({
           const w = wrap.getBoundingClientRect();
           const cardH = card.offsetHeight || 0;
           const pinTop = Math.max(0, hostRect.top);
-          // Never travel further than the run list: the card parks at the bottom.
+          // Never travel further than the run list: the block parks at the bottom.
           const maxT = Math.max(0, hostRect.bottom - cardH - w.top);
           const t = Math.max(0, Math.min(pinTop - w.top, maxT));
           card.style.transform = t > 0.5 ? `translateY(${t}px)` : '';
         };
         const onScroll = () => { if (raf == null) raf = window.requestAnimationFrame(update); };
-        update();
-        document.addEventListener('scroll', onScroll, true);
-        window.addEventListener('resize', onScroll);
+        // F154: wheel / touch / scroll keys ARE composed, so they cross shadow
+        // boundaries even when the scroll event does not. Use them as a hint to
+        // run `update` for the next few frames — that keeps the motion smooth
+        // between watchdog ticks.
+        let boostUntil = 0;
+        const tick = () => {
+          raf = null;
+          update();
+          if (performance.now() < boostUntil) raf = window.requestAnimationFrame(tick);
+        };
+        const boost = () => {
+          boostUntil = performance.now() + 400;
+          if (raf == null) raf = window.requestAnimationFrame(tick);
+        };
+        const targets = [];
+        let node = wrap.parentNode;
+        let guard = 0;
+        while (node && guard++ < 40) {
+          if (typeof node.addEventListener === 'function') targets.push(node);
+          if (node === document) break;
+          const root = typeof node.getRootNode === 'function' ? node.getRootNode() : null;
+          if (root && root !== node && root.host) {
+            // Inside a shadow root: listen on the root, then continue at its host.
+            targets.push(root);
+            node = root.host;
+            continue;
+          }
+          node = node.parentNode;
+        }
+        if (!targets.includes(window)) targets.push(window);
+        for (const t of targets) t.addEventListener('scroll', onScroll, true);
+        const HINTS = ['wheel', 'touchmove', 'keydown'];
+        for (const type of HINTS) window.addEventListener(type, boost, { capture: true, passive: true });
         const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(onScroll) : null;
         if (ro) ro.observe(wrap);
+        // Watchdog: 8 rect reads a second is free, and it self-heals any missed
+        // scroll event (non-composed shadow scrolls, virtualised listeners, …).
+        const timer = window.setInterval(update, 120);
+        update();
         return () => {
-          document.removeEventListener('scroll', onScroll, true);
-          window.removeEventListener('resize', onScroll);
+          for (const t of targets) t.removeEventListener('scroll', onScroll, true);
+          for (const type of HINTS) window.removeEventListener(type, boost, true);
           if (ro) ro.disconnect();
+          window.clearInterval(timer);
           if (raf != null) window.cancelAnimationFrame(raf);
         };
       }, [rows.length]);

@@ -374,7 +374,15 @@
   - **实测**（CDP，同一份病态 DOM：`panel{overflow:hidden}` + 页面滚 520px）：不钉时整块 `top=-445 / bottom=-318`；钉住后 `top=0 / bottom=127`、`translateY(445.4px)`，且 KPI 卡在块内 `top=0`（即数字与矩阵一起挂在顶部）。
   - **AC**：页面滚动时**数字与矩阵都不动**（两者 top 恒为 0，直到列表底）；两块之间的缝隙不透出下面的行；点格子定位后的行完整可见（不被吸顶块压住）；`check-served` 73/73（新增 `function OverviewBoard`、`data-hades-board`）；单测 43/43。
 
-## 31. 范围外（v1 不做）
+## 31. 吸顶真正生效：跨 shadow root 的滚动监听（F154）
+
+- **F154 根因是事件到不了**：DSH 的宿主是 Lit 组件（`attachShadow({mode:'open'})`），插件视图挂在 **shadow root 内部**；而 **`scroll` 事件不是 composed**，shadow 内部的滚动**不会**派发到 `document`。所以前两版无论用 `position: sticky` 还是 `transform` + `document` 监听，在真实面板里都表现为"完全没钉住"。
+  - **实测证据**（`mockup/overview-shadow.html`，CDP 读取）：组件挂在 shadow root、滚动发生在 shadow 内部时，`document` 上的 scroll 计数 = **0**；同一个页面里不钉的块 `top=-183`（滚走）。
+  - **修法**：从占位块出发**沿祖先链逐级挂监听**，遇到 shadow 边界就 `getRootNode()` 拿到 shadow root 挂上、再跳到 `root.host` 继续往上，最后补 `window`；共 9 个目标。另外加两层保险：① 120ms 看门狗（每帧 8 次 `getBoundingClientRect`，代价可忽略）兜住任何漏掉的滚动；② `wheel` / `touchmove` / `keydown`（**这些事件是 composed 的**）作为提示，触发后 400ms 内每帧重算，滚轮滚动时依然跟手。
+  - **钉到哪**：`pinTop = max(0, hostRect.top)` —— 优先贴**面板顶部**；面板顶部滚出视口时才退化为贴视口顶部。
+  - **AC**：shadow root 内的滚动也能钉住（实测：不钉 `top=-183`，钉住 `top=67` = 面板顶部、`translateY(250px)`）；`document` 收到 0 个 scroll 事件的情况下依然工作；滚轮连续滚动时无可见滞后；把面板滚到底时块停在列表底部不越界；`check-served` 76/76（新增 `getRootNode` / `boostUntil` / `setInterval(update`）；单测 43/43。
+
+## 32. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
