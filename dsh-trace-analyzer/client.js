@@ -463,53 +463,8 @@ window.__ModuleLoader__.load({
 
     // ---------------------------------------------------------------------
     // F151 top overview — two modules instead of one card:
-    //   KpiSummary     the numbers — its own bordered module
-    //   OverviewBoard  numbers + picture in ONE pinned block (F153): both stay
-    //                  at the panel top while the run list scrolls underneath
+    //   OverviewBoard  one pinned block: the run heat matrix (F153) stays at the
     // ---------------------------------------------------------------------
-    // F168: eight numbers in one flat row read as a wall. They now sit in three
-    // clusters — volume · tokens · health — separated by hairlines, so the eye can
-    // stop at the group it cares about.
-    function KpiSummary({ kpi, label }) {
-      const item = (key, num, lbl, tone, sub) => h('span', {
-        key, style: { display: 'inline-flex', alignItems: 'baseline', gap: 4, minWidth: 0 },
-      },
-        h('b', { style: { fontSize: 15, fontWeight: 600, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums', color: tone ?? T.text, letterSpacing: '-.01em' } }, num),
-        h('span', { style: { fontSize: 11, color: T.muted, whiteSpace: 'nowrap' } }, lbl),
-        sub ? h('span', { style: { fontSize: 11, color: T.faint, fontFamily: T.mono } }, sub) : null,
-      );
-      const grp = (key, children) => h('span', {
-        key, style: { display: 'inline-flex', alignItems: 'baseline', gap: DESIGN.space.sm + 2, minWidth: 0 },
-      }, children);
-      const rule = (key) => h('span', {
-        key, style: { width: 1, height: 14, alignSelf: 'center', background: T.border, flex: '0 0 1px' },
-      });
-      return h('div', {
-        style: {
-          display: 'flex', alignItems: 'baseline', gap: DESIGN.space.md, flexWrap: 'wrap',
-          border: '1px solid ' + T.border, borderRadius: T.radiusMd,
-          padding: `${DESIGN.space.sm}px ${DESIGN.space.md}px`, background: T.surface, marginBottom: DESIGN.space.sm,
-        },
-      },
-        grp('volume', [
-          item('runs', String(kpi.runs), label('stat.runs', 'Runs')),
-          item('steps', String(kpi.steps), label('stat.steps', 'Steps')),
-          item('events', String(kpi.events), label('stat.events', 'Events')),
-        ]),
-        rule('rule-1'),
-        grp('tokens', [
-          item('tokens', fmtK(kpi.tokenTotal), label('stat.tokens', 'Tokens')),
-        ]),
-        rule('rule-2'),
-        grp('health', [
-          item('errors', String(kpi.errors), label('stat.errors', 'Errors'), T.error),
-          item('slow', String(kpi.slow), label('stat.slow', 'Slow ops'), T.warn),
-          item('abnormal', String(kpi.abnormal), label('stat.abnormal', 'Abnormal'), T.warn),
-          item('slowest', kpi.slowest ? fmtMs(kpi.slowest.durationMs) : '—', label('stat.slowest', 'Slowest'), T.warn, kpi.slowest?.name),
-        ]),
-      );
-    }
-
     // Matrix geometry: a fixed label column, then one track per run with 1px
     // gaps. The hover band is positioned from these numbers so its edges sit
     // exactly on the cell borders (a plain `i/n` percentage ignores the gaps and
@@ -525,7 +480,7 @@ window.__ModuleLoader__.load({
      * and 173 invisible ones.
      *
      * F150..F153 heat matrix: four rows × one column per run, rendered together
-     * with the KPI summary inside a single pinned block (F153: the user wants the
+     * the numbers pinned too, not just the picture).
      * numbers pinned too, not just the picture).
      *
      * Shading is rank-based, not linear: token goes 13.4k (median) → 691k (max)
@@ -541,7 +496,7 @@ window.__ModuleLoader__.load({
      * scrolls, it never shifts the list, and it cannot create a fixed-position
      * containing-block surprise.
      */
-    function OverviewBoard({ kpi, rows, label, onLocate, onScrub, onFocusOnly, followLatest, baseRun }) {
+    function OverviewBoard({ rows, label, onLocate, onScrub, onFocusOnly, followLatest, baseRun }) {
       // F164: hover/selection are stored as Run idx (not column position), so they
       // survive a change of the visible window.
       const [hover, setHover] = useState(null);
@@ -905,14 +860,13 @@ window.__ModuleLoader__.load({
       ) : null;
       return h('div', {
         ref: wrapRef,
-        // F153: the wrapper paints the surface colour so the seam between the KPI
-        // card and the matrix card never shows the list behind it.
+        // F153/F187: the wrapper paints the surface colour so no seam shows the
+        // list behind it; the matrix is the only card above the list now.
         style: { marginBottom: 12, background: T.surface },
       },
         // F165: the custom range styling lives with the card, not the page shell.
         h('style', { key: 'mx-css' }, MATRIX_CSS),
         h('div', { ref: cardRef, 'data-hades-board': '1', style: { zIndex: 3 } },
-          h(KpiSummary, { kpi, label }),
           h('div', {
             className: 'hades-matrix',
             tabIndex: 0,
@@ -2520,21 +2474,6 @@ window.__ModuleLoader__.load({
       // rows ignore it, so a click no longer rebuilds the whole list.
       const detailEpoch = useMemo(() => ({}), [details, detailLoading, detailErrors, stepTokens, expanded]);
 
-      const kpi = useMemo(() => {
-        if (!payload) return null;
-        const total = payload.tokens?.total ?? {};
-        return {
-          runs: payload.counts?.runs ?? payload.runs?.length ?? 0,
-          steps: payload.counts?.steps ?? 0,
-          events: payload.counts?.events ?? 0,
-          tokenTotal: (total.input ?? 0) + (total.output ?? 0),
-          errors: payload.kpi?.errors ?? 0,
-          slow: payload.kpi?.slow ?? 0,
-          abnormal: payload.kpi?.abnormal ?? 0,
-          slowest: payload.kpi?.slowest ?? null,
-          slowMs: payload.meta?.slowMs ?? DEFAULT_SLOW_MS,
-        };
-      }, [payload]);
 
       const renderDetail = (run) => {
         const detail = details.get(run.idx);
@@ -2662,7 +2601,7 @@ window.__ModuleLoader__.load({
         );
       };
 
-      // F155: split the panel into an app shell — the header block (KPI + matrix)
+      // F155/F187: split the panel into an app shell — the header block (the
       // is a flex child ABOVE the scroller, so it cannot scroll: no listeners, no
       // transforms, nothing that a shadow boundary or an `overflow: hidden`
       // ancestor can defeat. Only the Run list scrolls.
@@ -2670,7 +2609,6 @@ window.__ModuleLoader__.load({
         if (error != null || !payload) return null;
         if ((payload.counts?.events ?? 0) === 0) return null;
         return h(OverviewBoard, {
-          kpi,
           rows: payload.runs ?? [],
           label,
           onLocate: locateRun,
@@ -2843,8 +2781,6 @@ window.__ModuleLoader__.load({
           'view.title': 'Trace Lab',
           'loading': 'Loading…', 'empty': 'No events in this session',
           'run': 'Run ', 'step': 'Step ', 'followup': 'follow-up', 'system': 'System prompt',
-          'stat.runs': 'Runs', 'stat.steps': 'Steps', 'stat.events': 'Events', 'stat.tokens': 'Tokens',
-          'stat.errors': 'Errors', 'stat.slow': 'Slow ops', 'stat.abnormal': 'Abnormal runs', 'stat.slowest': 'Slowest',
           'mx.steps': 'Steps', 'mx.flags': 'Flags', 'mx.hint': 'hover a run · click to locate', 'mx.clearSel': 'Clear selection',
           'mx.showAll': 'all', 'mx.showRecent': 'latest', 'mx.runsUnit': 'runs',
           'mx.latest': 'Latest', 'mx.jumpLatest': 'Jump to the latest Run',

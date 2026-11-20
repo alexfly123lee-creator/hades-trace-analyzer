@@ -401,6 +401,8 @@ dsh-trace-analyzer/
 
 58. **M57 打开 Step 不再"先上后下"跳一下（F186）** ✅：两个成因同在一个打开动作里——① **几何只在打开态存在**：Step 括号（1px 三边 + 3px 左轨 + `margin: 2px 0`）只写在 open 分支，点击瞬间凭空长出边框与 margin，内容先被顶一次；改为**两个状态都预留同样边框宽度与 margin**（关闭时 `transparent`），打开只变色不改几何。② **内容到达重放展开动画**：`expandMs` 从 0 变 `EXPAND_MS` 让 `Collapse` 打开 effect 重跑，而首帧恒为 `height: 0` → 先缩到 0（"先向上"）再展开（"再向下"）；现在只有"用户打开内容已就绪的 Step"才动画（`expanding`），占位符→真实内容直接吸附。`smoke:render` 新增断言：closed/open 两棵树的边框宽度、margin、上内边距必须完全一致。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V98、SPEC 62。
 
+59. **M58 去掉顶层统计指标面板（F187）** ✅：按需求移除矩阵上方的 Runs/Steps/Events · Tokens · Errors/Slow/Abnormal/Slowest 面板。① `OverviewBoard` 不再渲染 `KpiSummary`，矩阵卡成为列表上方唯一卡片；② **删除组件本体**（~40 行）+ 配套 `kpi` useMemo（不再计算无人消费的汇总）+ 只被它用的 8 个 `stat.*` 文案键；③ 注释同步（顶部结构说明 / `renderHeader` / app-shell 的"KPI + matrix"措辞）。保留：矩阵图例、悬停读数、滑块窗口、跟随与 `↓ Latest`。回归：`smoke:render` 去掉被删组件；`check-served` 加**反向断言**（`function KpiSummary` / `stat.runs` / `stat.slowest` 不得再出现）。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V99、SPEC 63。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

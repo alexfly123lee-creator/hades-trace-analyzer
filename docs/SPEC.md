@@ -696,7 +696,18 @@
 - **回归**：`smoke:render` 新增结构断言 —— 用同一个 Step 数据渲染 closed / open 两棵树，**逐项比较边框宽度、margin、上内边距必须完全一致**（颜色可不同）。`node mockup/regress.mjs` **ALL GREEN (8 checks)**；`check-served` 144/144；单测 43/43。
 - **AC**：打开 Step 时盒子只在下方展开、上方边界纹丝不动；关闭时同理；`node mockup/regress.mjs` 全绿。
 
-## 63. 范围外（v1 不做）
+## 63. 去掉顶层统计指标面板（F187）
+
+- **F187 需求**：移除矩阵上方的**统计指标面板**（Runs / Steps / Events · Tokens · Errors / Slow ops / Abnormal / Slowest 那一块）。
+- **改动**：
+  1. `OverviewBoard` 不再渲染 `KpiSummary`，矩阵卡成为列表上方**唯一的卡片**；
+  2. **删除 `KpiSummary` 组件本体**（约 40 行）与配套的 `kpi` useMemo（不再计算无人消费的汇总数字）、以及只被它使用的 8 个 `stat.*` 文案键；
+  3. 注释同步：顶部结构说明、`renderHeader`、app-shell 说明里"KPI + matrix"的措辞全部更新，不留"幽灵"描述。
+- **保留**：矩阵自己的图例（Steps / Flags / Tokens 的深浅含义）、悬停读数（`Run N · steps · time · tokens`）、滑块与窗口、跟随与 `↓ Latest` —— 逐 Run 的数字仍然在矩阵里。
+- **回归**：`smoke:render` 不再渲染被删组件；`check-served` 增加**反向断言**（`function KpiSummary` / `stat.runs` / `stat.slowest` 不得再出现在产物里），并在标记表里加 F186/F187 的新字符串。`node mockup/regress.mjs` **ALL GREEN (8 checks)**；`check-served` 143/143；单测 43/43。
+- **AC**：面板顶部只剩热力矩阵；列表可用高度增加；`node mockup/regress.mjs` 全绿。
+
+## 64. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
