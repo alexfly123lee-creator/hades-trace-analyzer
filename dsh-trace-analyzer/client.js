@@ -2181,14 +2181,21 @@ window.__ModuleLoader__.load({
         const current = host.scrollTop;
         const maxScroll = Math.max(0, host.scrollHeight - host.clientHeight);
         const offset = el.getBoundingClientRect().top - host.getBoundingClientRect().top;
-        // F167: park the focused Run about a third down the viewport. Pinned to the
-        // top edge it sat right under the matrix border and was tiring to read —
-        // some context above it is what makes the scrub comfortable.
-        const anchor = Math.round(host.clientHeight * 0.34);
-        const target = Math.max(0, Math.min(maxScroll, current + offset - anchor));
+        const viewH = host.clientHeight;
+        // F178: RELATIVE highlight instead of row-jumping. The list only moves when
+        // the focused Run would fall outside a comfort band — and then just far
+        // enough to bring it back in. Re-anchoring every column to 34% made the
+        // rows leap around under the pointer, which read as "the list is jumping".
+        const bandTop = Math.round(viewH * 0.12);
+        const bandBottom = Math.round(viewH * 0.78);
+        const rowBottom = offset + (el.offsetHeight || DESIGN.row.height);
+        let target = current;
+        if (offset < bandTop) target = current + offset - bandTop;
+        else if (rowBottom > bandBottom) target = current + rowBottom - bandBottom;
+        target = Math.max(0, Math.min(maxScroll, Math.round(target)));
         const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
         // Compose with the tween in flight: start from its target instead of the
-        // current (lagging) scrollTop, so N fast notches move N rows in one motion.
+        // current (lagging) scrollTop, so consecutive moves read as one motion.
         const pending = (now - scrubAt.current < 260 && scrubTarget.current != null) ? scrubTarget.current : null;
         const from = pending != null ? pending : current;
         scrubTarget.current = target;

@@ -383,6 +383,8 @@ dsh-trace-analyzer/
 
 49. **M48 矩阵卡置顶 + 去掉卡片阴影（F177）** ✅：① 置顶加两道保险——表头块 `position: sticky; top: 0; z-index: 4`（`data-hades-header`），即使宿主让页面滚动也贴视口顶部；shell 高度改用 **`ResizeObserver` 监听父容器**（原先只有 `window.resize` + 250ms 一次，侧栏/输入框高度变化时会留过期高度，导致页面接管滚动把矩阵带走）；② 删除矩阵卡的 `box-shadow`（只留 1px 描边）——它是固定在顶部的仪表盘而非浮层，阴影让它像悬浮卡片；`↓ Latest` 胶囊的投影保留（那确实是浮层）。验收：`node mockup/regress.mjs` **ALL GREEN (8 checks)**；`check-served` 128/128（新增 `data-hades-header`/`new ResizeObserver`，矩阵阴影进入 absent 断言防回潮）；单测 43/43。见 TEST V89、SPEC 53。
 
+50. **M49 相对位置高亮：悬停不再让行乱跳（F178）** ✅：每换一列就把该 Run 重新锚定到 34%，扫过 175 列 = 175 次滚动，视觉上就是"行疯狂跳动"。改为**舒适带最小滚动**：`bandTop/bandBottom = 12%/78%`；焦点行**已在带内 → 完全不滚**（高亮跟指针走、列表不动，这才是"相对位置高亮"）；只有要离开带时才滚，且只滚**刚好**把它带回带内（回 12% / 推 78%），不再拉 34%。`cdp:focus` 新增"带内悬停不得改变 scrollTop"与"落点须在 0–80% 带内"两条断言，并把断言基线改成紧邻状态（原先对比更早状态会误报）。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V90、SPEC 54。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
