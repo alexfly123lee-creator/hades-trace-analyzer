@@ -1,4 +1,4 @@
-# Hades Lab — DSH Trace 分析插件
+# Trace Lab — DSH Trace 分析插件
 
 把 **DSH（DeepSeek Harness）** 会话的轨迹重新组织成 `session → run（一次指令）→ step（一次迭代）→ 操作` 的树，
 替换内置「轨迹」视图的阅读体验：统计以 **run** 为单位，step 行用**标签 + 对象**说清「这一步干了什么」。
@@ -15,7 +15,7 @@ docs/TEST.md             测试用例（V/U 用例 + P01–P11 性能门槛）
 docs/REPORT-timing.md    计时口径审计报告（与官方轨迹逐值对齐）
 dsh-trace-analyzer/      插件本体（bundle）
   index.js               Host 半：/api/trace-analyzer/{runs,run,step,event,…} + 快照缓存
-  client.js              Client 半：Hades Lab 视图（KPI + run/step 表 + step 面板）
+  client.js              Client 半：Trace Lab 视图（KPI + run/step 表 + step 面板）
   lib/aggregate.js       纯函数聚合层（可单测、被两端复用）
   test/aggregate.test.js 40 个单测
 mockup/                  校验脚本与设计过程稿（性能/对齐/标签行一致性）——**只在本地，不入库**
@@ -31,7 +31,7 @@ mockup/                  校验脚本与设计过程稿（性能/对齐/标签�
 ```powershell
 # 1) 让 profile 指向本仓库
 #    C:\Users\<you>\.dsh\profiles\desktop\ 里把该 bundle 配成 link:E:\path\to\dsh-trace-analyzer
-# 2) 打开 DSH Web GUI，主对话区上方出现「Hades Lab」标签
+# 2) 打开 DSH Web GUI，主对话区上方出现「Trace Lab」标签
 ```
 
 Host 半改动需要重载插件（禁用 → 启用）；Client 半改动刷新页面（Ctrl+F5）即可。

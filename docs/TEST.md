@@ -72,11 +72,11 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 
 | ID | 场景 | 步骤 | 期望（对应 SPEC） |
 |---|---|---|---|
-| V01 | Tab 出现 | 打开任一会话，看主对话区视图环 | 视图环出现「Hades Lab」Tab，紧邻内置「轨迹」（F01） |
-| V02 | 打开 Tab | 点「Hades Lab」Tab | 打开分析视图，标题走 locale（zh/en「Hades Lab」）（F01/F03） |
+| V01 | Tab 出现 | 打开任一会话，看主对话区视图环 | 视图环出现「Trace Lab」Tab，紧邻内置「轨迹」（F01） |
+| V02 | 打开 Tab | 点「Trace Lab」Tab | 打开分析视图，标题走 locale（zh/en「Trace Lab」）（F01/F03） |
 | V03 | 切换会话 | 切到另一会话再回 | Tab 内容跟随、无残留（F02） |
 | V04 | 空态 | 新建空白会话进 Tab | 空态文案，不报错（F04） |
-| V05 | KPI 卡片 | 打开 Hades Lab 视图 | 顶部大卡片统计正确（run/step/事件/Token/错误/慢/异常/最慢）（F21） |
+| V05 | KPI 卡片 | 打开 Trace Lab 视图 | 顶部大卡片统计正确（run/step/事件/Token/错误/慢/异常/最慢）（F21） |
 | V40 | Hover 与展开态同色相 | 鼠标划过未展开的 Run 行、括号内的 Step 行、表头列头 | 三处都出现淡蓝底（Run 6% / Step 6% / 列头**整列** 8% + 底部 1px 55% 线），颜色比展开态（8% / 22%）更浅；移开后立即恢复（F128/F132） |
 | V06 | run 表排序 | 点表头「Time / Token」 | 即时重排 + FLIP 动效；列头是**整列热区**（246px / 168px，不是标签那 64px）；再点同列 → 降序 → 升序 → 取消回自然序；Time 列与 Token 列在 Run/Step 行严格同列（F22/F132） |
 | V41 | 列头可点击暗示 | 不点任何东西先看表头 | `⇅` 双箭头常驻（未排序 35% 灰）；激活列只点亮一个方向（↓ 100% / ↑ 22%），并转为列主色；标签**左边缘与下方柱子左边缘齐平**（压在柱子上，不压数字）；悬停底色/下划线只覆盖柱槽（F132） |
@@ -137,7 +137,7 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 | V16 | 本地化 | 切宿主语言 | 文案切换（F101） |
 | V17 | 无崩溃 | 控制台 | 无 `slot entry crashed`（NF2） |
 | V18 | 大会话 | 5000+ 事件 | 滚动流畅（F24/NF4） |
-| V19 | 首屏计量 | 打开 Hades Lab | 表头显示「首屏 xx ms · xx KB · 服务端 xx ms」，KPI + run 表即时出现（F124） |
+| V19 | 首屏计量 | 打开 Trace Lab | 表头显示「首屏 xx ms · xx KB · 服务端 xx ms」，KPI + run 表即时出现（F124） |
 | V20 | 按 run 懒加载 | 点某 run 行 | step 列表在 200 ms 内出现；该次只新增一条 `/run` 请求（F120） |
 | V21 | 缓存命中 | 切到别的会话再切回 | 表头显示「缓存命中」，无新的 `/runs` 请求；点刷新后重新请求（F123） |
 | V22 | 原文按需 | 点某 step 内的「原文」 | 此时才出现 `/event` 请求；JSON 完整可读（F121/NF6） |
@@ -166,7 +166,7 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 
 ## 6. UX 评审
 
-- 用 **1 个 subagent** 做 UI/UX 专家评审（`references/verification.md` 要求），提供：用户目标、插件位置（主对话区视图环「Hades Lab」）、可用运行态证据。
+- 用 **1 个 subagent** 做 UI/UX 专家评审（`references/verification.md` 要求），提供：用户目标、插件位置（主对话区视图环「Trace Lab」）、可用运行态证据。
 - 评审维度：可发现性（入口是否易找）、主流程（打开→执行树→详情→过滤→导出）、反馈（加载/错误/空态）、视觉一致性（与宿主组件观感、主题 token）。
 - 记录评审结论，修复被证实的缺陷后复验。
 

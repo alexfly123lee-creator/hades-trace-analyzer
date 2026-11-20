@@ -1961,7 +1961,7 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, {
           zh: {
-            'view.title': 'Hades Lab',
+            'view.title': 'Trace Lab',
             'loading': '加载中…', 'empty': '该会话暂无事件',
             'run': 'Run ', 'step': 'Step ', 'followup': '续跑', 'system': '系统提示词',
             'stat.runs': 'Run（指令）', 'stat.steps': 'Step（迭代）', 'stat.events': '事件', 'stat.tokens': 'Token',
@@ -1985,7 +1985,7 @@ window.__ModuleLoader__.load({
             'note.approval': '审批', 'note.note': '事件',
           },
           en: {
-            'view.title': 'Hades Lab',
+            'view.title': 'Trace Lab',
             'loading': 'Loading…', 'empty': 'No events in this session',
             'run': 'Run ', 'step': 'Step ', 'followup': 'follow-up', 'system': 'system prompt',
             'stat.runs': 'Runs', 'stat.steps': 'Steps', 'stat.events': 'Events', 'stat.tokens': 'Tokens',

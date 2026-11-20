@@ -31,9 +31,9 @@
 
 ### 0.3 本次教训（记录在案）
 
-- 「Hades Lab 改名生效、但时间线仍是旧样式」——根因是我只改了「时间线」tab，而用户默认看到的是「概览」tab 的柱状图（同样存在空白浪费的旧布局）。我在未确认用户实际所在 tab、未做端到端视觉验证的情况下，两次宣称「已修复/已生效」，浪费了用户时间与 Token。
+- 「Trace Lab 改名生效、但时间线仍是旧样式」——根因是我只改了「时间线」tab，而用户默认看到的是「概览」tab 的柱状图（同样存在空白浪费的旧布局）。我在未确认用户实际所在 tab、未做端到端视觉验证的情况下，两次宣称「已修复/已生效」，浪费了用户时间与 Token。
 - 教训：**凡收到「没生效」的反馈，先定位用户实际看到的是哪个界面 / 哪条渲染路径，再做端到端验证，最后才下结论；绝不未经验证就宣称完成。**
-- 「Hades Lab 加载奇慢 vs 轨迹瞬间」——先用真实会话量化：首屏 payload 26.7 MB、`JSON.parse` 107 ms、建树仅 16.7 ms，才确定瓶颈是**下行体积/解析**而非聚合计算。
+- 「Trace Lab 加载奇慢 vs 轨迹瞬间」——先用真实会话量化：首屏 payload 26.7 MB、`JSON.parse` 107 ms、建树仅 16.7 ms，才确定瓶颈是**下行体积/解析**而非聚合计算。
 - 教训：**性能问题必须先量化（payload 字节数、parse/序列化毫秒数、请求次数），再动手；交付时必须给出改造后的真实数字，禁止用「应该变快了」结案。**
 
 ## 1. 目标与背景
@@ -46,7 +46,7 @@
 
 | 维度 | 结论 |
 |---|---|
-| 形态与位置 | 主对话区视图环（`conversation.view` 槽，紧邻内置「轨迹 / Trajectory」），名「Hades Lab」；点击视图环上的「Hades Lab」Tab 打开 |
+| 形态与位置 | 主对话区视图环（`conversation.view` 槽，紧邻内置「轨迹 / Trajectory」），名「Trace Lab」；点击视图环上的「Trace Lab」Tab 打开 |
 | 分析范围 | 仅当前会话，跟随当前 session 走 |
 | 核心可视化 | 事件时间线/瀑布图、会话血缘树、Token 用量统计、耗时/性能分析 |
 | 增强需求 | 异常工具链调用自动高亮（token 消耗大、耗时长等） |
@@ -170,7 +170,7 @@ session
 2. **视图注册**：`ctx.slots.inject('conversation.view', () => ctx.slots.register({ name:'conversation.view', id, order, locale:NS, label:()=>t('view.title'), inject:(sessionId)=>({ sessionId }) }, Body))`，返回 disposer。
    - `id`：实现身份，全局唯一（本插件 `VIEW_ID = 'hades-eye'`）。
    - `order`：视图环排序；内置轨迹为 `order: 10`，本插件 `order: 11`（紧邻「轨迹」右侧）。
-   - `label()`：Tab 文案函数，返回 `t('view.title')`（zh/en「Hades Lab」）。
+   - `label()`：Tab 文案函数，返回 `t('view.title')`（zh/en「Trace Lab」）。
    - `inject(sessionId)`：视图每次打开时回调，返回注入给 Body 的 props（这里透传 `sessionId`）。
 3. **Body 组件 props**：框架注入标准 `ConvViewProps`（`useSession`/`useTrajectory`/`useDuration`/`renderSlot` 等）+ 上一步 `inject` 返回的 props + 由 `locale:NS` 注入的 `t`。本插件只用 `{ sessionId, t }`。
 
@@ -194,7 +194,7 @@ dsh-trace-analyzer/
 ├── package.json            # dsh.bundle.patch + dsh.client（web / immediately / inject）
 ├── cordis.patch.yml        # 插入 Host 行 trace-analyzer
 ├── index.js                # Host 半：数据桥 + Config
-├── client.js               # Client 半：注册 conversation.view「Hades Lab」+ React 树视图（内置建树逻辑副本）
+├── client.js               # Client 半：注册 conversation.view「Trace Lab」+ React 树视图（内置建树逻辑副本）
 ├── lib/                    # （实现时拆分）Host 聚合/转换纯函数（可单测）
 │   ├── aggregate.js        # 时间线分组 / token 汇总 / 耗时统计 / 异常判定
 │   └── types.js
@@ -288,7 +288,7 @@ dsh-trace-analyzer/
 ## 7. 实施顺序（里程碑）
 
 1. **M0 待确认清零** ✅：数据桥与视图注册写法已读源码定稿（§4.2/§4.3）。
-2. **M1 骨架** ✅：bundle + patch + locale + icon，主对话区 `conversation.view`「Hades Lab」注册并验证 `active`。
+2. **M1 骨架** ✅：bundle + patch + locale + icon，主对话区 `conversation.view`「Trace Lab」注册并验证 `active`。
 3. **M2 数据桥** ✅：`/api/trace-analyzer/*` 只读路由。
 4. **M3 执行树 + Token/耗时统计** ✅：run（一次指令，run0=系统提示词）→ step 树 + 10 单测。
 5. **M4 单视图「运行总览」** ✅：KPI 大卡片 + 可展开 run 表（按时间/按 Token 排序+FLIP + 点行就地展开 step→操作局部瀑布）。已去掉「血缘」tab（官方轨迹亦无此类目）。

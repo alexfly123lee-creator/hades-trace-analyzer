@@ -38,10 +38,10 @@
 ## 2. 视图与形态
 
 - **F01 视图注册**：注册主对话区视图（`ctx.slots.inject('conversation.view', () => ctx.slots.register({ name:'conversation.view', id:'hades-eye', order:11, locale:NS, label, inject:(sessionId)=>({ sessionId }) }, Body))`）。
-  - AC：对话区视图环（紧邻内置「轨迹」右侧）出现「Hades Lab」Tab（zh/en「Hades Lab」）；点击打开分析视图，标题走 locale。
+  - AC：对话区视图环（紧邻内置「轨迹」右侧）出现「Trace Lab」Tab（zh/en「Trace Lab」）；点击打开分析视图，标题走 locale。
 - **F02 作用域**：仅分析当前打开会话，跟随 session 切换。
   - AC：切换会话后 Tab 内容自动重建为对应会话数据，不残留上一会话。
-- **F03 打开入口**：视图环上的「Hades Lab」Tab 即入口，点击打开/切换。
+- **F03 打开入口**：视图环上的「Trace Lab」Tab 即入口，点击打开/切换。
   - AC：点击 Tab 打开视图；与「对话 / 轨迹」Tab 同排、互斥切换。
 - **F04 空态**：无会话/无事件时给出引导文案，不崩溃。
   - AC：空白会话打开 Tab 显示空态，不报错、无空白异常。
