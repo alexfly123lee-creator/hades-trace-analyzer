@@ -647,7 +647,15 @@
 - **验证**：`cdp:focus` 新增"点击后重新悬停同一列不得移动列表"断言；**并做了对照实验**——把 harness 里的定位锁去掉后，该断言与控制实验立刻变红：`leaving the matrix moved the list (3526 → 3375) · re-hovering the clicked column moved the list (3526 → 3375)`，说明这条断言确实能抓住本次回归。
 - **AC**：点击 → 行展开并停在顶部；鼠标移开矩阵 → **位置不变**；再悬停别的列 → 正常按焦点线滚动；`node mockup/regress.mjs` **ALL GREEN (8 checks)**；`check-served` 134/134；单测 43/43。
 
-## 58. 范围外（v1 不做）
+## 58. 定位保持（hold）+ 滚动诊断（F182）
+
+- **F182 背景**：F181 的定位锁只挡住了"重新悬停同一列"，但真实面板里**指针离开矩阵**后行仍会滑回中线。harness 复刻不出这一步（它没有真实 React 与真实宿主布局），所以这一轮做两件事：
+  1. **定位保持（hold）**：`locateRun` 把行停到顶部时，把目标 `scrollTop` 记进 `locatedHoldRef`。之后若**指针不在矩阵上**（`focusRun == null`）却有东西移动了列表，滚动监听把它**回滚一次**到定位位置，并丢弃 hold。真实用户输入（`wheel` / `pointerdown` / `keydown`）会先清掉 hold —— 绝不干扰用户自己滚动。
+  2. **滚动诊断**：`scrollLogRef` 环形缓冲记录每一次 `locate / glide / scrub / scroll / user-input`（含 `scrollTop`、`programmatic` 标记、当前焦点），控制台可用 **`__hadesScrollLog()`** 取最近 60 条。这是唯一能在真实宿主里看到"到底是谁动了列表"的手段。
+- **验证**：`cdp:focus` 新增"指针离开后**外部改动** `scrollTop` 必须被回滚"断言（harness 用 `__externalScroll` 触发），通过；`node mockup/regress.mjs` **ALL GREEN (8 checks)**；`check-served` 138/138；单测 43/43。
+- **诚实边界**：hold 是**症状级兜底**（保证"点击后行停住"），诊断日志用于定位**根因**；若旧问题复现，`__hadesScrollLog()` 的最后几条会直接指出触发者。
+
+## 59. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

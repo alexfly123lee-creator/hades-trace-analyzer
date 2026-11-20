@@ -391,6 +391,8 @@ dsh-trace-analyzer/
 
 53. **M52 点击定位后行被拉回中线（F181）** ✅：点击走 `locateRun`（行滚到**顶部**），但指针仍在该列上；指针一移动/离开，`beginScrub(idx)` 又按**悬停聚焦**语义把同一个 Run 滚回 **34% 焦点线** —— 两个锚点打架，行就被拉回中线。加**定位锁** `locatedRunRef`：`locateRun` 记下该 Run，`beginScrub` 遇到同一 Run 只更新高亮不滚动（并清锁），指针换到别的列才正常按焦点线滚。`cdp:focus` 新增"点击后重新悬停同一列不得移动列表"断言，并做**对照实验**：去掉定位锁后该断言立刻变红（`3526 → 3375`），证明它真能抓住本次回归。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V93、SPEC 57。
 
+54. **M53 定位保持 hold + 滚动诊断（F182）** ✅：F181 的定位锁只挡住"重新悬停同一列"，真实面板里**指针离开矩阵**后行仍会滑回中线；harness 复刻不出这一步（缺真实 React 与宿主布局），所以本轮：① **hold** —— `locateRun` 把行停到顶部时记下目标 `scrollTop`（`locatedHoldRef`），之后若**指针不在矩阵上**却有东西移动了列表，滚动监听**回滚一次**并丢弃 hold；真实用户输入（`wheel`/`pointerdown`/`keydown`）先清 hold，绝不干扰用户滚动。② **诊断** —— `scrollLogRef` 环形缓冲记录 `locate/glide/scrub/scroll/user-input`（含 scrollTop、programmatic、焦点），控制台 `__hadesScrollLog()` 取最近 60 条，这是真实宿主里唯一能定位"谁动了列表"的手段。`cdp:focus` 增加"指针离开后外部改动必须被回滚"断言。**诚实边界**：hold 是症状级兜底，根因待日志确认。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V94、SPEC 58。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
