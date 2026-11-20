@@ -1036,7 +1036,7 @@ window.__ModuleLoader__.load({
       // The header labels the *bar* column: the button covers just the track
       // (150px / 100px) and the label starts flush with the track's left edge,
       // so it sits over the bars instead of over the numbers (F132).
-      const sortCol = (key, text, tone) => {
+      const sortCol = (key, text, tone, barW) => {
         const active = !!sort && sort.key === key;
         const dir = active ? sort.dir : null;
         const hovered = hoverSort === key;
@@ -1051,7 +1051,7 @@ window.__ModuleLoader__.load({
           'aria-sort': dir === 'desc' ? 'descending' : dir === 'asc' ? 'ascending' : 'none',
           title: dir === 'desc' ? `${text} desc · click for asc` : dir === 'asc' ? `${text} asc · click to clear` : `sort by ${text}`,
           style: {
-            flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 0,
+            flex: `0 0 ${barW}px`, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 0,
             background: hovered ? T.sortHoverBg : 'transparent',
             border: 'none', borderBottom: '1px solid ' + (hovered ? T.sortHoverLine : 'transparent'),
             padding: '1px 0', borderRadius: '3px 3px 0 0', cursor: 'pointer',
@@ -1228,11 +1228,11 @@ window.__ModuleLoader__.load({
           h('span', { style: { flex: `0 0 ${RUN_IDX_W}px` } }),
           // Cells mirror the row cells exactly (bar slot + number slot) so the
           // bar-aligned labels land on the same x as the track below; the label
-          // itself only covers the track. F168: fractional, like MetricBar.
-          h('div', { key: 'h-time', style: { flex: '1 1 0', display: 'flex', alignItems: 'center', minWidth: 0 } },
-            sortCol('time', label('col.time', 'Time'), T.brand)),
-          h('div', { key: 'h-token', style: { flex: '1 1 0', display: 'flex', alignItems: 'center', minWidth: 0 } },
-            sortCol('token', label('col.token', 'Token'), T.token)),
+          // itself only covers the track. F169: fixed width, same as MetricBar.
+          h('div', { key: 'h-time', style: { flex: `0 0 ${METRIC_W + 6 + METRIC_NUM_W}px`, display: 'flex', alignItems: 'center', minWidth: 0 } },
+            sortCol('time', label('col.time', 'Time'), T.brand, METRIC_W)),
+          h('div', { key: 'h-token', style: { flex: `0 0 ${METRIC_W + 6 + METRIC_NUM_W}px`, display: 'flex', alignItems: 'center', minWidth: 0 } },
+            sortCol('token', label('col.token', 'Token'), T.token, METRIC_W)),
           sort ? sortClear() : null,
         ),
         h('div', { ref: listRef }, buildRows()),
@@ -1286,16 +1286,17 @@ window.__ModuleLoader__.load({
      * put), only the colored portion inside it reflects the value.
      */
     function MetricBar({ tone, fill, valueText, tip, width = METRIC_W, numWidth = METRIC_NUM_W }) {
-      // F168: the two metric columns are fractional (flex 1 1 0) so a narrow panel
-      // shrinks the tracks instead of overflowing; the number keeps a fixed gutter
-      // so digits stay aligned down the column.
+      // F169: back to a fixed track. Stretching the bar to the panel width gave the
+      // eye a 600px ruler to read a value that is only compared *within* its own
+      // column — the length added no information, so the original 150px track is
+      // restored (number keeps its own 70px gutter so digits stay aligned).
       return h('div', {
         title: tip,
-        style: { flex: '1 1 0', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 },
+        style: { flex: `0 0 ${width + numWidth + 6}px`, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 },
       },
         h('div', {
           style: {
-            position: 'relative', flex: '1 1 0', minWidth: Math.min(width, 96), height: 8, borderRadius: 99,
+            position: 'relative', flex: `0 0 ${width}px`, height: 8, borderRadius: 99,
             overflow: 'hidden', background: `color-mix(in srgb, ${tone} 12%, transparent)`,
           },
         }, fill),

@@ -519,14 +519,21 @@
   3. **色阶稳定**：rank 改为对**全会话** rows 计算并存成 `Map(idx → rank)`，滑块只裁剪 `shown`；拖动窗口不再重算 175×3 排名、也不再给同一个 Run 换颜色。
   4. **结构化读数**：头部读数只保留 `Run N · 1.9min · 691.2k tok · 33 steps` + error/slow 标记，**提示词摘要移出头部**（它属于数据，不属于 chrome）；拨动/方向键时临时显示 `Run N / M` 刻度（`data-hades-tick`，700ms 后消失）。
   5. **键盘可达**：矩阵卡 `tabIndex=0` + `role=group`，`←/→` 逐 Run 步进（与滚轮同一路径），`Enter` 定位；`focus-visible` 有 2px 品牌色外环。
-  6. **列表质感**：指标列由固定 150px 改为**分数列**（`flex: 1 1 0`，`min-width: 96px`），数字固定 70px `tabular-nums` 槽；行高 28px + 4px 内距落在 4px 栅格；提示词列用 `mask-image` **线性渐隐**而不是硬省略号。
+  6. **列表质感**：指标列由固定 150px 改为**分数列**（`flex: 1 1 0`，`min-width: 96px`，**已被 F169 撤销**，见 §46）、数字固定 70px `tabular-nums` 槽；行高 28px + 4px 内距落在 4px 栅格；提示词列用 `mask-image` **线性渐隐**而不是硬省略号。
   7. **首屏与空态**：`loading && !payload` 渲染 10 行 **shimmer 骨架**（`hades-skeleton`），空态/错误态改为居中卡片（图标 + 文案 + 错误态带 Retry）。
   8. **KPI 分簇**：三簇 + 1px 分隔（Runs·Steps·Events ｜ Tokens ｜ Errors·Slow ops·Abnormal·Slowest），padding 收到 `8/12` 并落在 4px 栅格。
   9. **动效统一 + reduced-motion 全链路**：`prefers-reduced-motion: reduce` 时 scrub 补间、locate glide、FLIP 全部瞬时到位（原先只有 Collapse 处理）；glide 由 `min(260, max(160, |Δ|×0.35))` 收口，长距离不再拖到 700ms。
   10. **滑块去冗余**：`12–N` 只在窗口态出现；芯片统一（`RowTag` 18px 高、4px 圆角，与图例 8px swatch 同一套）；`原文` 面板加 **Copy** 按钮与 11.5px/1.45 排版。
 - **AC**：矩阵 3 指标 + 顶部标记带；拖滑块颜色不变；四种状态（hover/focus/selected/open）不叠层；`←/→` 可移动、`Enter` 定位；首屏骨架、空/错卡片；`check-served` **120/120**（新增 `const DESIGN = {` / `const CSS_VARS = {` / `hades-lane` / `hades-prompt` / `hadesSkeleton` / `onMatrixKeyDown` / `ArrowLeft` / `Copy` / `data-hades-tick` / `const markerBg = (run) =>`，并把 `const EXPAND_MS/FOLLOW_MS` 断言改为 token 形式）；单测 43/43；设计稿 `mockup/optimized-preview.html`。
 
-## 46. 范围外（v1 不做）
+## 46. Time / Token 轨道回到固定 150px（F169）
+
+- **F169 撤销 F168 里的"分数列"**：把两条指标轨道拉到面板宽度后，一条 bar 有 600px 长，而它的信息只在**同列内部**做比较 —— 长出来的长度不携带任何信息，只增加扫读成本。
+- **改法**：`MetricBar` 回到 `flex: 0 0 (150 + 6 + 70)px`，轨道固定 150px、数字独占 70px `tabular-nums` 槽；表头的两个可排序槽位回到同样的固定宽度，`sortCol` 重新接收 `barW`，保证表头与行严格对齐；提示词列继续吃剩余宽度并保留 F168 的渐隐。
+- **保留的 F168 遗产**：4px 行栅格、`tabular-nums`、提示词渐隐、标记带、稳定色阶、键盘、骨架、token 表都不动。
+- **AC**：两条 bar 与改动前一样长（150px 轨道），表头 `Time`/`Token` 与轨道左边缘对齐；提示词列仍占剩余空间并在末端渐隐；`check-served` 120/120；单测 43/43；渲染 harness 通过（1 条标记带 / 每行渐隐类）。
+
+## 47. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
