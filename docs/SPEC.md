@@ -491,7 +491,17 @@
   3. **细节收敛**：图例 swatch 9→8px、图例项 10→12px 间距、指标组与异常组之间加 1px 竖分隔；行标签与图例统一 Title Case（Time / Token / Steps / Flags / Error / Slow，KPI 为 Runs / Steps / Events / Tokens / Errors / Slow ops / Abnormal runs / Slowest）；读数里 Run 号用品牌色加粗、数字 `tabular-nums`；网格行距 3→4px、异常行单独加 4px 间距；单元格圆角随列数自适应（>48 列用 1px，≤48 用 2px）；卡片内边距 8/12/7 → 10/12/10。
 - **AC**：界面无中文（trace 数据里的提示词/事件原文除外）；滑块有填充轨道、圆点拇指、hover/focus 反馈和 `all` 复位；图例在右上角且指标与异常分组；`check-served` 103/103（新增 `MATRIX_CSS` / `hades-range` / `const EN = {` / `zh: EN, en: EN`）；单测 43/43；设计稿 `mockup/matrix-f165.png`。
 
-## 43. 范围外（v1 不做）
+## 43. 在矩阵上滚动 = 逐 Run 拨动列表（F166）
+
+- **F166 交互**：指针在热力矩阵上滚轮，不再滚动页面/列表，而是**按 Run 逐格拨动**：
+  1. **一格一个 Run**：滚轮增量累加到 26px 触发一步（触控板不会一次飞过十几行），方向决定上/下一个；到首尾自动停住；步进时同步更新矩阵高亮带与选中胶囊；
+  2. **其余行变半透明**：拨动期间根节点加 `.hades-scrubbing`，Run 分组整体 `opacity: .22`，**只有焦点 Run 保持全不透明**，并带品牌色左侧轨 + 16% 底色 + Run 号为品牌色 —— 一眼看到"现在拨到哪一行"；
+  3. **"哒哒哒"的定档感**：列表用 **130ms + easeOutCubic** 短补间把焦点行顶到列表顶部（不是 260–700ms 的长滑行），每滚一格就是一次干脆的"咔哒"落位；停止拨动 700ms 后自动恢复全亮；
+  4. 滚轮**不会展开**该 Run（展开仍是点击），拨动只做"选中 + 定位"。
+- **实现要点**：`wheel` 用原生监听 + `passive: false` 才能 `preventDefault`；处理器只挂一次，靠 `selectedRef/hoverRef/shownRef` 读最新状态；行元素缓存（F162）把焦点也纳入条目有效性，所以一格只重建**新旧两行**。
+- **AC**：在矩阵上滚轮 → 列表逐行上/下拨动、页面与列表都不自由滚动；除焦点外全部变淡，焦点行有强调轨与底色；停止 700ms 后恢复；到首/尾停住不越界；点击仍照常展开；`check-served` 108/108（新增 `hades-scrubbing` / `wheelAcc` / `beginScrub` / `is-focus` / `const scrubTo = (idx) => {`）；单测 43/43；设计稿 `mockup/scrub-f166.png`。
+
+## 44. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

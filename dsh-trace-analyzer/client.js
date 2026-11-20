@@ -106,7 +106,13 @@ window.__ModuleLoader__.load({
       + '.hades-run-row.is-open,.hades-run-row.is-open:hover{background:var(--hades-sel-row)}'
       + '.hades-run-row .hades-idx{color:var(--hades-muted)}'
       + '.hades-run-row:hover .hades-idx,.hades-run-row.is-open .hades-idx{color:var(--hades-text)}'
-      + '.hades-run-row:hover .hades-caret,.hades-run-row.is-open .hades-caret{color:var(--hades-brand)}';
+      + '.hades-run-row:hover .hades-caret,.hades-run-row.is-open .hades-caret{color:var(--hades-brand)}'
+      // F166: wheel-scrub. The whole list fades and the focused Run steps forward.
+      + '.hades-run-group{transition:opacity 180ms ease}'
+      + '.hades-scrubbing .hades-run-group{opacity:.22}'
+      + '.hades-scrubbing .hades-run-group.is-focus{opacity:1}'
+      + '.hades-scrubbing .hades-run-group.is-focus .hades-run-row{background:var(--hades-focus-row)}'
+      + '.hades-scrubbing .hades-run-group.is-focus .hades-run-row .hades-idx{color:var(--hades-brand)}';
 
     // F165: matrix control styling. A native range input reads as a prototype —
     // we draw the track (filled up to the value via --fill), the thumb, the hover
@@ -448,7 +454,7 @@ window.__ModuleLoader__.load({
      * scrolls, it never shifts the list, and it cannot create a fixed-position
      * containing-block surprise.
      */
-    function OverviewBoard({ kpi, rows, label, onLocate }) {
+    function OverviewBoard({ kpi, rows, label, onLocate, onScrub }) {
       // F164: hover/selection are stored as Run idx (not column position), so they
       // survive a change of the visible window.
       const [hover, setHover] = useState(null);
@@ -457,6 +463,11 @@ window.__ModuleLoader__.load({
       const [selected, setSelected] = useState(null);
       // F164: how many of the most recent runs the matrix shows. null = all.
       const [windowN, setWindowN] = useState(null);
+      // F166: the wheel listener is attached once; it reads these.
+      const selectedRef = useRef(selected);
+      selectedRef.current = selected;
+      const hoverRef = useRef(hover);
+      hoverRef.current = hover;
       const wrapRef = useRef(null);
       const cardRef = useRef(null);
       // F156: the parent re-renders on every realtime tick, so a captured
@@ -464,6 +475,11 @@ window.__ModuleLoader__.load({
       // ref instead.
       const locateRef = useRef(onLocate);
       locateRef.current = onLocate;
+      // F166: a stable handle for the wheel handler (attached once, natively).
+      const scrubRef = useRef(onScrub);
+      scrubRef.current = onScrub;
+      const gridRef = useRef(null);
+      const wheelAcc = useRef(0);
       const total = rows.length;
       // A "window" is the newest N runs — where a session's dense tail lives, and
       // the part worth reading at 1 column per run.
@@ -579,6 +595,37 @@ window.__ModuleLoader__.load({
       }, h('i', {
         style: { width: 8, height: 8, borderRadius: 2, background: tone, display: 'inline-block', flex: '0 0 8px' },
       }), text);
+      // F166: wheel over the grid = scrub the list. One notch walks one Run, the
+      // list below dims to a single focused row and steps with a 130ms detent, so
+      // the motion reads as "tick · tick · tick" instead of free scrolling.
+      const shownRef = useRef(shown);
+      shownRef.current = shown;
+      const posOfRef = useRef(null);
+      posOfRef.current = (idx) => shownRef.current.findIndex((r) => r.idx === idx);
+      useEffect(() => {
+        const el = gridRef.current;
+        if (el == null) return undefined;
+        const onWheel = (event) => {
+          const list = shownRef.current;
+          if (list.length < 2) return;
+          event.preventDefault();
+          wheelAcc.current += event.deltaY;
+          if (Math.abs(wheelAcc.current) < 26) return;
+          const dir = wheelAcc.current > 0 ? 1 : -1;
+          wheelAcc.current = 0;
+          const current = posOfRef.current(selectedRef.current);
+          const base = current >= 0 ? current : posOfRef.current(hoverRef.current);
+          const from = base >= 0 ? base : 0;
+          const next = Math.max(0, Math.min(list.length - 1, from + dir));
+          const run = list[next];
+          if (run == null) return;
+          setSelected(run.idx);
+          if (scrubRef.current) scrubRef.current(run.idx);
+        };
+        el.addEventListener('wheel', onWheel, { passive: false });
+        return () => el.removeEventListener('wheel', onWheel);
+      }, []);
+
       // F164/F165: the card header carries the readout on the left and the legend
       // on the right. The legend is grouped — metric rows first, then a hairline
       // divider, then the two flag swatches — so "what the colours mean" reads as
@@ -711,7 +758,7 @@ window.__ModuleLoader__.load({
             onMouseLeave: () => setHover(null),
           },
             legendRow,
-            h('div', { style: { position: 'relative' } },
+            h('div', { ref: gridRef, style: { position: 'relative', overscrollBehavior: 'contain' } },
               grid,
               // F157: two distinct states, both readable at a glance —
               //   selected (clicked): 26% fill + 2px edges, stays after the
@@ -752,7 +799,7 @@ window.__ModuleLoader__.load({
     // stays a one-line change).
     const RUN_IDX_W = 78;
 
-    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, label, detailEpoch, instantRef }) {
+    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, label, detailEpoch, instantRef, focusRun }) {
       const listRef = useRef(null);
       const prevTops = useRef(new Map());
       const first = useRef(true);
@@ -914,7 +961,7 @@ window.__ModuleLoader__.load({
       // identity (a new closure every render).
       const langKey = label('col.time', 'Time') + '|' + label('col.token', 'Token') + '|' + sysLabel;
 
-      const buildRow = (r, open) => {
+      const buildRow = (r, open, focused) => {
         const tPct = (r.time / maxTime * 100).toFixed(1);
         const kPct = (r.token / maxToken * 100).toFixed(1);
         const abnormal = r.hasError;
@@ -946,6 +993,9 @@ window.__ModuleLoader__.load({
         return h('div', {
           key: r.idx,
           'data-run': String(r.idx),
+          // F166: the wheel-scrub focus lives on the group so its whole detail
+          // block dims with it, not just the header line.
+          className: 'hades-run-group' + (focused ? ' is-focus' : ''),
           style: isNewRow ? { ...groupStyle, animation: 'hadesRowIn .22s ease-out' } : groupStyle,
         },
           h('div', {
@@ -1010,10 +1060,11 @@ window.__ModuleLoader__.load({
         }
         return sorted.map((r) => {
           const open = expanded.has('run-' + r.idx);
+          const focused = focusRun === r.idx;
           const hit = c.map.get(r.idx);
-          if (hit && hit.open === open && (!open || hit.epoch === openEpoch)) return hit.el;
-          const el = buildRow(r, open);
-          c.map.set(r.idx, { open, epoch: openEpoch, el });
+          if (hit && hit.open === open && hit.focused === focused && (!open || hit.epoch === openEpoch)) return hit.el;
+          const el = buildRow(r, open, focused);
+          c.map.set(r.idx, { open, focused, epoch: openEpoch, el });
           return el;
         });
       };
@@ -1842,6 +1893,43 @@ window.__ModuleLoader__.load({
         };
       }, [sessionId, tick]);
 
+      // F166: scrub focus + the short detent tween the wheel handler drives.
+      const [focusRun, setFocusRun] = useState(null);
+      const scrubRaf = useRef(null);
+      const scrubTimer = useRef(null);
+      const scrubTo = (idx) => {
+        const host = scrollRef.current;
+        if (!host) return;
+        const el = host.querySelector('[data-run="' + idx + '"]');
+        if (!el) return;
+        const current = host.scrollTop;
+        const maxScroll = Math.max(0, host.scrollHeight - host.clientHeight);
+        const offset = el.getBoundingClientRect().top - host.getBoundingClientRect().top;
+        const target = Math.max(0, Math.min(maxScroll, current + offset - 2));
+        const delta = target - current;
+        if (Math.abs(delta) < 1) return;
+        if (typeof requestAnimationFrame !== 'function') { host.scrollTop = target; return; }
+        if (scrubRaf.current != null) cancelAnimationFrame(scrubRaf.current);
+        const duration = 130;
+        const t0 = performance.now();
+        const ease = (p) => 1 - Math.pow(1 - p, 3);
+        const tick = (now) => {
+          const p = Math.min(1, (now - t0) / duration);
+          host.scrollTop = current + delta * ease(p);
+          scrubRaf.current = p < 1 ? requestAnimationFrame(tick) : null;
+        };
+        scrubRaf.current = requestAnimationFrame(tick);
+      };
+      const beginScrub = (idx) => {
+        setFocusRun(idx);
+        scrubTo(idx);
+        if (scrubTimer.current != null) clearTimeout(scrubTimer.current);
+        scrubTimer.current = setTimeout(() => {
+          scrubTimer.current = null;
+          setFocusRun(null);
+        }, 700);
+      };
+
       const openRun = (idx) => {
         const runKey = 'run-' + idx;
         // F162: read the live Set. Cached row elements keep the closure they were
@@ -2129,6 +2217,7 @@ window.__ModuleLoader__.load({
           rows: payload.runs ?? [],
           label,
           onLocate: locateRun,
+          onScrub: beginScrub,
         });
       };
 
@@ -2150,6 +2239,7 @@ window.__ModuleLoader__.load({
             label,
             detailEpoch,
             instantRef: instantOpen,
+            focusRun,
           }),
           // F161: breathing room so the last Run can still be scrolled to the top.
           tailPad > 0 ? h('div', { key: 'tail', 'data-hades-tail': '1', style: { height: tailPad } }) : null,
@@ -2158,6 +2248,8 @@ window.__ModuleLoader__.load({
 
       return h('div', {
         ref: rootRef,
+        // F166: while scrubbing the list fades (see ROW_ANIM_CSS).
+        className: focusRun != null ? 'hades-scrubbing' : undefined,
         style: {
           height: shellH ? shellH + 'px' : '100%', minHeight: 0, display: 'flex', flexDirection: 'column',
           boxSizing: 'border-box', fontSize: 13, lineHeight: 1.6, color: T.text, fontFamily: T.font,
@@ -2169,6 +2261,7 @@ window.__ModuleLoader__.load({
           '--hades-brand': T.brand,
           // F165: matrix slider/surface tokens.
           '--hades-track': `color-mix(in srgb, ${T.text} 12%, transparent)`,
+          '--hades-focus-row': `color-mix(in srgb, ${T.brand} 16%, transparent)`,
           '--hades-surface': T.surface,
           '--hades-border': T.border,
         },

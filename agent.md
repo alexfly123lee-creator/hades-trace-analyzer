@@ -335,6 +335,8 @@ dsh-trace-analyzer/
 
 38. **M37 全英文 UI + 工业化滑块 + 细节收敛（F165）** ✅：① 界面文案全英文，`zh`/`en` 两个 locale 槽指向**同一张英文表**（中文系统语言下也不会半中半英）；只有 `TAG_MAP` 的**键**保留中文（匹配 trace 事件原文），值是英文 chip。② 滑块不再用原生外观：自绘轨道（`--fill` 画已填充段）+ 12px 圆点拇指（白底/1px 品牌描边/阴影）、hover 1.15×、focus 3px 柔光、左侧 `all/latest N of 175 runs`、右侧 `12–175` 与 `all` 复位胶囊、与网格之间 1px 分隔线。③ 细节：swatch 8px、图例项间距 12、指标组与异常组 1px 竖分隔、行标签与图例统一 Title Case、读数 Run 号品牌色加粗 + tabular-nums、行距 4px、异常行单独 4px、单元格圆角按列数自适应（>48 → 1px，否则 2px）、卡片内边距 10/12/10。验收：check-served 103/103（新增 MATRIX_CSS / hades-range / const EN / zh: EN, en: EN）；单测 43/43；设计稿 mockup/matrix-f165.png。见 TEST V78。
 
+39. **M38 矩阵滚轮 = 逐 Run 拨动列表（F166）** ✅：指针在热力矩阵上滚轮不再滚动，而是**一格一个 Run**地拨（增量累加 26px 触发一步，触控板不会飞）；拨动期间根节点加 `.hades-scrubbing`，Run 分组 `opacity:.22`、只有焦点行全不透明且带品牌色左轨 + 16% 底色 + Run 号品牌色；列表用 **130ms + easeOutCubic** 把焦点行顶到顶部（"哒哒哒"定档感，不是 260–700ms 长滑行），停手 700ms 后恢复；滚轮不展开（展开仍是点击）。实现：原生 `wheel` + `passive:false` 才能 preventDefault；处理器只挂一次，靠 `selectedRef/hoverRef/shownRef` 读最新值；行缓存把 focus 纳入条目有效性 → 一格只重建新旧两行。验收：check-served 108/108（新增 hades-scrubbing / wheelAcc / beginScrub / is-focus / scrubTo）；单测 43/43；设计稿 mockup/scrub-f166.png。见 TEST V79。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
