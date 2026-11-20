@@ -389,6 +389,8 @@ dsh-trace-analyzer/
 
 52. **M51 点击展开后行位置漂移（F180）** ✅：两处"列表自己动"的隐患——① `focusRun` 曾是 `DualBarChart` 的 prop 并参与**行缓存键**，指针离开矩阵时（`focusRun → null`）会**重建那一行**，展开中的行被重建会重挂 `Collapse` 子树、高度短暂变化 → 列表跳动；改成**直接操作 DOM**（`markFocusedRow` 给行节点加/去 `is-focus`，只有根节点的 `hades-scrubbing` 控制压暗），不再触发任何行重渲染，payload 刷新后由 `applyNow` 补标记。② 滚动位置由我们接管，但 Chrome **scroll anchoring** 会在视口上方内容变高时偷改 `scrollTop`（展开行 + 随后到达的 step 内容都会变高）→ 容器加 `overflow-anchor: none`。`cdp:focus` 新增完整回放（hover → 点击展开 → 详情增高 240px → 指针移出）+ 三条断言。**验证边界如实记录**：把 `overflow-anchor` 改回 `auto` 该 harness 同样通过（增高发生在视口顶部行内，锚定不触发），因此**无法证明锚定就是线上漂移的唯一原因**，需真实面板确认。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V92、SPEC 56。
 
+53. **M52 点击定位后行被拉回中线（F181）** ✅：点击走 `locateRun`（行滚到**顶部**），但指针仍在该列上；指针一移动/离开，`beginScrub(idx)` 又按**悬停聚焦**语义把同一个 Run 滚回 **34% 焦点线** —— 两个锚点打架，行就被拉回中线。加**定位锁** `locatedRunRef`：`locateRun` 记下该 Run，`beginScrub` 遇到同一 Run 只更新高亮不滚动（并清锁），指针换到别的列才正常按焦点线滚。`cdp:focus` 新增"点击后重新悬停同一列不得移动列表"断言，并做**对照实验**：去掉定位锁后该断言立刻变红（`3526 → 3375`），证明它真能抓住本次回归。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V93、SPEC 57。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

@@ -2252,6 +2252,8 @@ window.__ModuleLoader__.load({
       // no cache invalidation, no re-render of the row (which used to re-mount the
       // expanded Collapse and shift the list).
       const focusRunRef = useRef(null);
+      // F181: the Run a click parked at the top; its column no longer re-scrolls.
+      const locatedRunRef = useRef(null);
       const markFocusedRow = (idx) => {
         const host = scrollRef.current;
         focusRunRef.current = idx;
@@ -2271,6 +2273,12 @@ window.__ModuleLoader__.load({
         stopFollowing();
         setFocusRun(idx);
         markFocusedRow(idx);
+        // F181: a click-located Run lives at the TOP of the list. Re-scrolling it to
+        // the 34% focus line just because the pointer is still over its column is
+        // what made the row slide back to the middle when the pointer left the
+        // matrix. Leave it alone; the next column the pointer picks moves normally.
+        if (idx === locatedRunRef.current) return;
+        locatedRunRef.current = null;
         scrubTo(idx);
       };
 
@@ -2325,6 +2333,9 @@ window.__ModuleLoader__.load({
        */
       const locateRun = (idx) => {
         stopFollowing();
+        // F181: remember that this Run was parked at the TOP by a click; hovering
+        // its column must not drag it back down to the focus line.
+        locatedRunRef.current = idx;
         const wasOpen = expandedRef.current.has('run-' + idx);
         if (!wasOpen) { instantOpen.current.add(idx); openRun(idx); }
         const host = scrollRef.current;
