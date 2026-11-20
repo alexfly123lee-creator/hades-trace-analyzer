@@ -343,6 +343,8 @@ dsh-trace-analyzer/
 
 42. **M41 Time / Token 轨道回到固定 150px（F169）** ✅：F168 把两条指标轨道改成分数列后，一条 bar 有 600px 长，而它的信息只在同列内部比较 —— 长度不携带信息、只增加扫读成本。`MetricBar` 回到 `flex: 0 0 (150+6+70)px`（轨道 150px + 数字 70px `tabular-nums` 槽），表头两个可排序槽位回到同样固定宽度并让 `sortCol` 重新接收 `barW`，保证表头与行严格对齐；提示词列继续吃剩余宽度并保留渐隐。F168 的其余遗产（标记带、稳定色阶、键盘、骨架、token 表、4px 栅格）不动。验收：check-served 120/120；单测 43/43；渲染 harness 通过。见 TEST V82、SPEC 46。
 
+43. **M42 打开即落在实况边缘 + 实时跟随（F170）** ✅：打开面板直接落在**最新 Run**（底部），并默认"跟随"——流式期间 2s tick 每推新数据，视口自动贴底，矩阵光标（高亮带 + 读数）也骑到最后一列。状态机：`distanceToEdge ≤ 8px` 视为在边缘→跟随；跟随自身的滚动写 `programmatic` 标记让滚动监听忽略（避免自己把自己判成用户滚动）；点行/点矩阵/滚轮拨动都 `stopFollowing()` 交出控制权，新数据不再拽动位置；右下角 `↓ Latest`（`data-hades-latest`）平滑回到最新并恢复。落点用 `getBoundingClientRect` 差值换算内容坐标（**不用 `offsetTop`**：面板根是 relative，offsetTop 会带表头高度），因 F161 尾部留白 target 通常小于 maxScroll，不会停在空白。CDP 实测：初始贴边（distance −12）→ 推 3 条仍贴边 → 上滚 260px 后 `follow=false`、pill 出现、位置保留 → 再推 3 条位置不动 → 点 pill 回到底部、pill 消失。验收：check-served 126/126；单测 43/43。见 TEST V83、SPEC 47。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

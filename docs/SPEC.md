@@ -533,7 +533,20 @@
 - **保留的 F168 遗产**：4px 行栅格、`tabular-nums`、提示词渐隐、标记带、稳定色阶、键盘、骨架、token 表都不动。
 - **AC**：两条 bar 与改动前一样长（150px 轨道），表头 `Time`/`Token` 与轨道左边缘对齐；提示词列仍占剩余空间并在末端渐隐；`check-served` 120/120；单测 43/43；渲染 harness 通过（1 条标记带 / 每行渐隐类）。
 
-## 47. 范围外（v1 不做）
+## 47. 打开即落在实况边缘 + 实时跟随（F170）
+
+- **F170 打开面板的行为**：不再从第 0 个 Run 开始，而是**直接落在最新的 Run**（列表底部），并且默认处在"跟随"状态 —— 会话在流式进行时，2s tick 每推来新数据，视口自动贴着最新的 Run，矩阵光标（高亮带 + 读数）也一起骑到最后一列。
+- **跟随状态机**：
+  1. **判定**：`distanceToEdge = 最后一行底 − (scrollTop + clientHeight)`，≤ 8px 视为"在边缘"→ 跟随；否则退出跟随（不劫持用户的阅读位置）。
+  2. **程序化滚动豁免**：跟随自身的滚动会写 `programmatic` 标记，滚动监听据此忽略这些事件，避免"自己把自己判成用户滚动"。
+  3. **主动交互即交出控制权**：点行、点矩阵、滚轮拨动（`openRun` / `locateRun` / `beginScrub`）都调用 `stopFollowing()`；此后新数据只更新内容，**不动滚动位置**。
+  4. **回到实况**：用户滚回底部（判定自动恢复）或点右下角 **`↓ Latest`** 胶囊（`data-hades-latest`）→ 平滑滚到最新并恢复跟随。
+  5. **矩阵同步**：`OverviewBoard` 收到 `followLatest` 时用 effect 把 `selected` 设成最后一列，随新 Run 前进；用户一旦点击/拨动，父级关闭跟随，effect 随之失效。
+- **落点算法**：`target = lastRowBottom − clientHeight + 16`（内容坐标用 `getBoundingClientRect` 差值 + `scrollTop` 换算，**不用 `offsetTop`** —— 面板根是 `position: relative`，`offsetTop` 会带上表头高度）；因为有 F161 的尾部留白，target 通常小于 `maxScroll`，视口不会停在空白区。
+- **实测**（harness 复刻 + CDP）：初始 20 行 → `scrollTop = maxScroll`、`distanceToEdge = -12`、pill 隐藏；推 3 条 → 仍贴边缘、跟随保持；用户上滚 260px → `follow=false`、pill 出现、位置保留；此时再推 3 条 → **位置不动**（仍 356）、pill 仍在；点 pill → `scrollTop = maxScroll`、pill 隐藏、跟随恢复。
+- **AC**：打开面板即看到最新的 Run 与最新列高亮；流式期间视口自动贴底；上滚后不再被拉回，且出现 `↓ Latest`；`check-served` **126/126**（新增 `scrollToLatest` / `lastRowBottom` / `stopFollowing` / `followRef` / `data-hades-latest` / `mx.jumpLatest`）；单测 43/43；harness `mockup/follow-harness.html` + `cdp-follow-check.mjs`。
+
+## 48. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

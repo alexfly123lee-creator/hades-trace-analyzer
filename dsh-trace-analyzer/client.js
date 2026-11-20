@@ -541,7 +541,7 @@ window.__ModuleLoader__.load({
      * scrolls, it never shifts the list, and it cannot create a fixed-position
      * containing-block surprise.
      */
-    function OverviewBoard({ kpi, rows, label, onLocate, onScrub }) {
+    function OverviewBoard({ kpi, rows, label, onLocate, onScrub, followLatest }) {
       // F164: hover/selection are stored as Run idx (not column position), so they
       // survive a change of the visible window.
       const [hover, setHover] = useState(null);
@@ -717,6 +717,15 @@ window.__ModuleLoader__.load({
         flashTickRef.current();
         if (scrubRef.current) scrubRef.current(run.idx);
       };
+
+      // F170: while the panel follows the live edge, the matrix cursor rides the
+      // newest Run. It is a hook, so it must sit before the empty-table return.
+      useEffect(() => {
+        if (!followLatest) return;
+        const last = shownRef.current[shownRef.current.length - 1];
+        if (last == null) return;
+        setSelected((prev) => (prev === last.idx ? prev : last.idx));
+      }, [followLatest, rows, windowN]);
 
       if (n === 0) return null;
       const posOf = (idx) => (idx == null ? -1 : shown.findIndex((r) => r.idx === idx));
@@ -1922,6 +1931,11 @@ window.__ModuleLoader__.load({
           seqRef.current = json?.meta?.seq ?? null;
           appliedSig.current = payloadSig(json);
           setPayload(json); setLoading(false);
+          // F170: first paint lands on the live edge (newest Run at the bottom).
+          followRef.current = true;
+          if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => requestAnimationFrame(() => scrollToLatest(false)));
+          }
         }).catch((err) => {
           if (cancelled) return;
           if (err && err.name === 'AbortError') { setLoading(false); return; }
@@ -1954,6 +1968,11 @@ window.__ModuleLoader__.load({
       // scroll itself.
       const scrollAt = useRef(0);
       const pendingCommit = useRef(null);
+      // F170: live-edge following — "最新一 Run 始终在视口底部"。
+      const [follow, setFollow] = useState(true);
+      const followRef = useRef(true);
+      followRef.current = follow;
+      const programmatic = useRef(false);
 
       const commitRunsPayload = (json) => {
         seqRef.current = json?.meta?.seq ?? null;
@@ -1968,10 +1987,50 @@ window.__ModuleLoader__.load({
         return true;
       };
 
+      /**
+       * F170: open on the live edge. The panel starts "following" — the newest Run
+       * stays at the bottom of the viewport and the matrix cursor rides it as the
+       * conversation streams. Scrolling up (or clicking / scrubbing) hands control
+       * back to the user; the pill re-attaches.
+       */
+      const lastRowBottom = () => {
+        const host = scrollRef.current;
+        if (!host) return null;
+        const rows = host.querySelectorAll('[data-run]');
+        if (rows.length === 0) return null;
+        const last = rows[rows.length - 1];
+        // Content-space coordinate: offsetTop is relative to the nearest positioned
+        // ancestor (the panel root), which also holds the header — measuring via
+        // rects keeps the arithmetic in the scroller's own space.
+        return last.getBoundingClientRect().bottom - host.getBoundingClientRect().top + host.scrollTop;
+      };
+      const scrollToLatest = (smooth) => {
+        const host = scrollRef.current;
+        const bottom = lastRowBottom();
+        if (!host || bottom == null) return;
+        // Land the last Run just above the viewport edge; the tail padding below
+        // it stays out of frame so the list never looks "empty at the bottom".
+        const target = Math.max(0, bottom - host.clientHeight + DESIGN.space.md + 4);
+        if (Math.abs(target - host.scrollTop) < 2) return;
+        if (!smooth || motionReduced()) { host.scrollTop = target; return; }
+        programmatic.current = true;
+        host.scrollTo({ top: target, behavior: 'smooth' });
+        window.setTimeout(() => { programmatic.current = false; }, 320);
+      };
+
       useEffect(() => {
         const host = scrollRef.current;
         if (!host) return undefined;
-        const onScroll = () => { scrollAt.current = Date.now(); };
+        const onScroll = () => {
+          scrollAt.current = Date.now();
+          // Ignore the scroll events our own follow/glide produce.
+          if (programmatic.current) return;
+          const bottom = lastRowBottom();
+          if (bottom == null) return;
+          const atEdge = bottom - (host.scrollTop + host.clientHeight) <= DESIGN.space.sm;
+          setFollow((prev) => (prev === atEdge ? prev : atEdge));
+          followRef.current = atEdge;
+        };
         host.addEventListener('scroll', onScroll, { passive: true });
         return () => host.removeEventListener('scroll', onScroll);
       }, []);
@@ -2005,6 +2064,11 @@ window.__ModuleLoader__.load({
           const applyNow = async () => {
             pendingCommit.current = null;
             if (!commitRunsPayload(json)) return;
+            // F170: a new payload while following keeps the newest Run in view.
+            if (followRef.current) {
+              if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => scrollToLatest(false));
+              else scrollToLatest(false);
+            }
             const openKeys = [...expandedRef.current];
             for (const key of openKeys) {
               if (!key.startsWith('run-')) continue;
@@ -2104,7 +2168,17 @@ window.__ModuleLoader__.load({
         };
         scrubRaf.current = requestAnimationFrame(tick);
       };
+      // F170: any explicit navigation (wheel scrub, row click, matrix click) hands
+      // the scroll position back to the user — following stops until they return
+      // to the live edge (or press the pill).
+      const stopFollowing = () => {
+        if (!followRef.current) return;
+        followRef.current = false;
+        setFollow(false);
+      };
+
       const beginScrub = (idx) => {
+        stopFollowing();
         setFocusRun(idx);
         scrubTo(idx);
         if (scrubTimer.current != null) clearTimeout(scrubTimer.current);
@@ -2115,6 +2189,7 @@ window.__ModuleLoader__.load({
       };
 
       const openRun = (idx) => {
+        stopFollowing();
         const runKey = 'run-' + idx;
         // F162: read the live Set. Cached row elements keep the closure they were
         // built with, so a captured `expanded` would decide "open or close?" from
@@ -2163,6 +2238,7 @@ window.__ModuleLoader__.load({
        * a new click simply replaces the running animation.
        */
       const locateRun = (idx) => {
+        stopFollowing();
         const wasOpen = expandedRef.current.has('run-' + idx);
         if (!wasOpen) { instantOpen.current.add(idx); openRun(idx); }
         const host = scrollRef.current;
@@ -2404,6 +2480,7 @@ window.__ModuleLoader__.load({
           label,
           onLocate: locateRun,
           onScrub: beginScrub,
+          followLatest: follow,
         });
       };
 
@@ -2485,6 +2562,7 @@ window.__ModuleLoader__.load({
         style: {
           height: shellH ? shellH + 'px' : '100%', minHeight: 0, display: 'flex', flexDirection: 'column',
           boxSizing: 'border-box', fontSize: 13, lineHeight: 1.6, color: T.text, fontFamily: T.font,
+          position: 'relative',
           // F158: consumed by the injected hover rules (see ROW_ANIM_CSS).
           '--hades-hover-row': T.runHoverBg,
           '--hades-sel-row': T.runSelBg,
@@ -2520,6 +2598,30 @@ window.__ModuleLoader__.load({
         },
           renderList(),
         ),
+        // F170: while the user is reading history, this pill is the way back to
+        // the live edge (same affordance every log viewer has).
+        !follow && (payload?.runs?.length ?? 0) > 0 ? h('button', {
+          key: 'latest',
+          type: 'button',
+          'data-hades-latest': '1',
+          title: label('mx.jumpLatest', 'Jump to the latest Run'),
+          onClick: () => {
+            followRef.current = true;
+            setFollow(true);
+            scrollToLatest(true);
+          },
+          style: {
+            position: 'absolute', right: 20, bottom: 16, zIndex: 6,
+            display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 12px',
+            borderRadius: 999, cursor: 'pointer',
+            border: '1px solid ' + T.border, background: T.surface, color: T.text,
+            font: `11px/1 ${T.mono}`, letterSpacing: '.02em',
+            boxShadow: `0 6px 16px -8px color-mix(in srgb, ${T.text} 45%, transparent)`,
+          },
+        },
+          h('span', { style: { color: T.brand } }, '↓'),
+          label('mx.latest', 'Latest'),
+        ) : null,
       );
     }
 
@@ -2536,6 +2638,7 @@ window.__ModuleLoader__.load({
           'stat.errors': 'Errors', 'stat.slow': 'Slow ops', 'stat.abnormal': 'Abnormal runs', 'stat.slowest': 'Slowest',
           'mx.steps': 'Steps', 'mx.flags': 'Flags', 'mx.hint': 'hover a run · click to locate', 'mx.clearSel': 'Clear selection',
           'mx.showAll': 'all', 'mx.showRecent': 'latest', 'mx.runsUnit': 'runs',
+          'mx.latest': 'Latest', 'mx.jumpLatest': 'Jump to the latest Run',
           'mx.windowHint': 'Drag to choose how many of the latest runs the matrix shows',
           'mx.rampTime': 'darker = slower relative to the session',
           'mx.rampToken': 'darker = more tokens in the session',
