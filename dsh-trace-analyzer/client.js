@@ -504,8 +504,12 @@ window.__ModuleLoader__.load({
         key,
         style: Object.assign({ position: 'absolute', top: -2, bottom: -2, pointerEvents: 'none' }, style),
       });
-      const legendItem = (tone, text) => h('span', {
+      // F160: the legend explains "darker = higher rank" per row, through the
+      // tooltip — the unexplained gradient bar it used to have read like a stray
+      // progress bar, so it is gone.
+      const legendItem = (tone, text, title) => h('span', {
         key: 'lg-' + text,
+        title: title ?? text,
         style: { display: 'inline-flex', alignItems: 'center', gap: 4, color: T.muted },
       }, h('i', { style: { width: 9, height: 9, borderRadius: 2, background: tone, display: 'inline-block' } }), text);
       return h('div', {
@@ -552,16 +556,9 @@ window.__ModuleLoader__.load({
             h('div', {
               style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 7, font: `11px/1.2 ${T.mono}`, minHeight: 16 },
             },
-              legendItem(T.brand, label('col.time', 'Time')),
-              legendItem(T.token, label('col.token', 'Token')),
-              legendItem(T.success, label('mx.steps', '步数')),
-              h('span', {
-                title: label('mx.ramp', '颜色越深 = 该 Run 在全会话里的排位越高'),
-                style: {
-                  flex: '0 0 84px', height: 6, borderRadius: 3,
-                  background: `linear-gradient(90deg, color-mix(in srgb, ${T.brand} 8%, var(--dsw-alias-bg-layer-1)), color-mix(in srgb, ${T.brand} 88%, var(--dsw-alias-bg-layer-1)))`,
-                },
-              }),
+              legendItem(T.brand, label('col.time', 'Time'), label('mx.rampTime', '颜色越深 = 该 Run 的耗时在会话里的排位越高')),
+              legendItem(T.token, label('col.token', 'Token'), label('mx.rampToken', '颜色越深 = 该 Run 的 token 在会话里的排位越高')),
+              legendItem(T.success, label('mx.steps', '步数'), label('mx.rampSteps', '颜色越深 = 该 Run 的步数在会话里的排位越高')),
               legendItem(T.error, label('mx.error', '有错误')),
               legendItem(T.warn, label('mx.slow', '有慢操作')),
               // F157: an explicit selection chip, so "what is currently selected"
@@ -1967,7 +1964,9 @@ window.__ModuleLoader__.load({
             'stat.runs': 'Run（指令）', 'stat.steps': 'Step（迭代）', 'stat.events': '事件', 'stat.tokens': 'Token',
             'stat.errors': '错误', 'stat.slow': '慢操作', 'stat.abnormal': '异常 Run', 'stat.slowest': '最慢操作',
             'mx.steps': '步数', 'mx.flags': '异常', 'mx.hint': '悬停看这个 Run · 点击定位', 'mx.clearSel': '取消选中',
-            'mx.ramp': '颜色越深 = 该 Run 在全会话里的排位越高',
+            'mx.rampTime': '颜色越深 = 该 Run 的耗时在会话里的排位越高',
+            'mx.rampToken': '颜色越深 = 该 Run 的 token 在会话里的排位越高',
+            'mx.rampSteps': '颜色越深 = 该 Run 的步数在会话里的排位越高',
             'mx.error': '有错误', 'mx.slow': '有慢操作',
             'loadingDetail': '载入 Step…',
             'step.model': '模型', 'step.timing': '计时', 'step.tokens': 'Token', 'step.summary': '概述',
@@ -1991,7 +1990,9 @@ window.__ModuleLoader__.load({
             'stat.runs': 'Runs', 'stat.steps': 'Steps', 'stat.events': 'Events', 'stat.tokens': 'Tokens',
             'stat.errors': 'Errors', 'stat.slow': 'Slow ops', 'stat.abnormal': 'Abnormal runs', 'stat.slowest': 'Slowest',
             'mx.steps': 'Steps', 'mx.flags': 'Flags', 'mx.hint': 'hover a Run · click to locate', 'mx.clearSel': 'clear selection',
-            'mx.ramp': 'darker = higher rank within the session',
+            'mx.rampTime': 'darker = the Run is slower relative to the session',
+            'mx.rampToken': 'darker = the Run spends more tokens',
+            'mx.rampSteps': 'darker = the Run has more steps',
             'mx.error': 'has error', 'mx.slow': 'has slow op',
             'loadingDetail': 'loading Steps…',
             'step.model': 'model', 'step.timing': 'elapsed', 'step.tokens': 'tokens', 'step.summary': 'summary',

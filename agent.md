@@ -323,6 +323,8 @@ dsh-trace-analyzer/
 
 32. **M31 Step 明细卡重做：统计条 + 时间轴卡片（F159）** ✅：旧面板是一条灰色 meta 行 + 平铺行，所有行同样重（两条 `system-reminder` 注入和模型回答等权，工具参数/结果永远展开）。按选定的 B+E 方案重做：顶部一行统计条（模型/工具/上下文 · 计时 · in/out/cache，模型名挂在“模型”后），下面是**竖轴 + 类型圆点**的时间轴卡片——指令卡（USER + 字数，全文可滚动）、回复卡（REPLY + in/out）、工具卡（TOOL + 名称 + 耗时，args/result 各一行等宽省略）、注入卡（`CTX 注入 ×N` 虚线卡，**默认折叠**，点击展开，`ctxOpen`）、说明行（点线小卡）。`原文` 移到卡片右上角并在原卡内展开 JSON（`rawPanel`）。验收：check-served 87/87（ctxOpen / setCtxOpen / rawPanel / 注入 ×）；单测 43/43；设计稿 mockup/step-cards-final.png。见 TEST V72。
 
+33. **M32 删掉图例里没解释的渐变条（F160）** ✅：图例里那根 84×6 的低→高渐变条本来想说明"格子颜色越深 = 该 Run 排位越高"，但它没有刻度、没有文字、没有说明，夹在 `■ Time ■ Token ■ 步数` 后面读起来像一条跑偏的进度条。删掉它；把"颜色越深 = 排位越高"下沉到三个行色块的 tooltip，并按行说清楚（耗时 / token / 步数各自比较）。图例恢复为五个纯色块 + 文字。验收：check-served 90/90（新增 `mx.rampTime/Token/Steps`，并把 `'mx.ramp':` 加进 absent 断言）；单测 43/43。见 TEST V73。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
