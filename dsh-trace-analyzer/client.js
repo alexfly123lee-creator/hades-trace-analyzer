@@ -701,18 +701,16 @@ window.__ModuleLoader__.load({
           const dir = wheelAcc.current > 0 ? 1 : -1;
           wheelAcc.current = 0;
           const findPos = (idx) => shownRef.current.findIndex((r) => r.idx === idx);
-          const cur = findPos(selectedRef.current);
-          // F173: step FROM THE CURSOR. The pointer stays parked over one column
-          // while the wheel turns, so using hover as the base pinned every notch to
-          // "hover + 1" — the list advanced once and then never again.
-          // Hover is only the base when there is no usable cursor yet.
+          // F175: the wheel and the pointer share ONE focused Run — the wheel just
+          // moves it one column. The base is that focus (where the pointer is),
+          // falling back to the list's reading position.
           const at = baseRunRef.current ? findPos(baseRunRef.current()) : -1;
           const hov = findPos(hoverRef.current);
-          const from = cur >= 0 ? cur : at >= 0 ? at : hov >= 0 ? hov : 0;
+          const from = hov >= 0 ? hov : at >= 0 ? at : 0;
           const next = Math.max(0, Math.min(list.length - 1, from + dir));
           const run = list[next];
           if (run == null) return;
-          setSelected(run.idx);
+          setHover(run.idx);
           flashTickRef.current();
           if (scrubRef.current) scrubRef.current(run.idx);
         };
@@ -728,17 +726,20 @@ window.__ModuleLoader__.load({
         if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'Enter') return;
         event.preventDefault();
         if (key === 'Enter') {
-          if (selectedRef.current != null) locateRef.current(selectedRef.current);
+          // F175: Enter opens the focused Run (what a click does).
+          const target = hoverRef.current != null ? hoverRef.current : selectedRef.current;
+          if (target != null) locateRef.current(target);
           return;
         }
         const dir = key === 'ArrowRight' ? 1 : -1;
-        const cur = list.findIndex((r) => r.idx === selectedRef.current);
+        // F175: same focus the pointer/wheel use; Enter opens the focused Run.
+        const cur = list.findIndex((r) => r.idx === hoverRef.current);
         const at = baseRunRef.current ? list.findIndex((r) => r.idx === baseRunRef.current()) : -1;
         const from = cur >= 0 ? cur : at >= 0 ? at : 0;
         const next = Math.max(0, Math.min(list.length - 1, from + dir));
         const run = list[next];
         if (run == null) return;
-        setSelected(run.idx);
+        setHover(run.idx);
         flashTickRef.current();
         if (scrubRef.current) scrubRef.current(run.idx);
       };
@@ -935,11 +936,11 @@ window.__ModuleLoader__.load({
             },
           },
             legendRow,
-            // F171: ONE hover resolver for the whole grid. Cells only carry
-            // `data-idx`; pointer moves are mapped to a column here. The previous
-            // per-cell mouseenter relied on React's enter/leave emulation across
-            // 2400 siblings, and a fast sweep dropped events — the hover band then
-            // vanished mid-sweep.
+            // F175: ONE pointer→column resolver for the whole grid, and it drives the
+            // SAME focus as the wheel: hovering a column highlights that single Run
+            // in the list (everything else dims) and brings it to the anchor. Cells
+            // only carry `data-idx`; per-cell mouseenter dropped events on a fast
+            // sweep, which is why the band used to vanish.
             h('div', {
               onMouseMove: (event) => {
                 const target = event.target;
@@ -948,8 +949,12 @@ window.__ModuleLoader__.load({
                 const next = Number(cell.getAttribute('data-idx'));
                 if (!Number.isFinite(next) || next === hoverRef.current) return;
                 setHover(next);
+                if (scrubRef.current) scrubRef.current(next);
               },
-              onMouseLeave: () => setHover(null),
+              onMouseLeave: () => {
+                setHover(null);
+                if (scrubRef.current) scrubRef.current(null);
+              },
               style: { position: 'relative', overscrollBehavior: 'contain' },
             },
               grid,
@@ -2013,6 +2018,7 @@ window.__ModuleLoader__.load({
       const followRef = useRef(true);
       followRef.current = follow;
       const programmatic = useRef(false);
+      const programmaticTimer = useRef(null);
 
       const commitRunsPayload = (json) => {
         seqRef.current = json?.meta?.seq ?? null;
@@ -2044,6 +2050,18 @@ window.__ModuleLoader__.load({
         // rects keeps the arithmetic in the scroller's own space.
         return last.getBoundingClientRect().bottom - host.getBoundingClientRect().top + host.scrollTop;
       };
+      // F174: mark our own scroll writes. Without this the scroll listener read
+      // every tween frame as "the user scrolled", re-enabled following, and F170's
+      // "cursor rides the newest run" effect then yanked the cursor back — so the
+      // wheel advanced one Run and snapped back, forever.
+      const markProgrammatic = (ms = 260) => {
+        programmatic.current = true;
+        if (programmaticTimer.current != null) clearTimeout(programmaticTimer.current);
+        programmaticTimer.current = setTimeout(() => {
+          programmaticTimer.current = null;
+          programmatic.current = false;
+        }, ms);
+      };
       const scrollToLatest = (smooth) => {
         const host = scrollRef.current;
         const bottom = lastRowBottom();
@@ -2052,10 +2070,9 @@ window.__ModuleLoader__.load({
         // it stays out of frame so the list never looks "empty at the bottom".
         const target = Math.max(0, bottom - host.clientHeight + DESIGN.space.md + 4);
         if (Math.abs(target - host.scrollTop) < 2) return;
+        markProgrammatic(smooth && !motionReduced() ? 420 : 120);
         if (!smooth || motionReduced()) { host.scrollTop = target; return; }
-        programmatic.current = true;
         host.scrollTo({ top: target, behavior: 'smooth' });
-        window.setTimeout(() => { programmatic.current = false; }, 320);
       };
 
       useEffect(() => {
@@ -2067,7 +2084,13 @@ window.__ModuleLoader__.load({
           if (programmatic.current) return;
           const bottom = lastRowBottom();
           if (bottom == null) return;
-          const atEdge = bottom - (host.scrollTop + host.clientHeight) <= DESIGN.space.sm;
+          // F174: "at the live edge" means the newest Run is in view. F161's tail
+          // padding makes `bottom - (scrollTop + clientHeight)` hugely negative near
+          // the end, so the old test also answered "at the edge" while the user was
+          // scrubbing inside the tail — that is what flipped following back on.
+          const maxScroll = Math.max(0, host.scrollHeight - host.clientHeight);
+          const atEdge = host.scrollTop >= maxScroll - DESIGN.space.sm
+            || bottom - (host.scrollTop + host.clientHeight) <= DESIGN.space.sm;
           setFollow((prev) => (prev === atEdge ? prev : atEdge));
           followRef.current = atEdge;
         };
@@ -2213,6 +2236,8 @@ window.__ModuleLoader__.load({
         // F168: reduced motion turns every tween into an instant move.
         if (typeof requestAnimationFrame !== 'function' || motionReduced()) { host.scrollTop = target; return; }
         if (scrubRaf.current != null) cancelAnimationFrame(scrubRaf.current);
+        // F174: our own writes must not be read as "the user scrolled".
+        markProgrammatic(DESIGN.motion.fast + 160);
         if (Math.abs(from - current) >= 1) host.scrollTop = from; // skip ahead to the composed start
         const duration = DESIGN.motion.fast;
         const t0 = now;
@@ -2251,15 +2276,16 @@ window.__ModuleLoader__.load({
         return Number(rows[rows.length - 1].getAttribute('data-run'));
       };
 
+      // F175: one focus path for the pointer, the wheel and the arrow keys.
+      // `null` means "the pointer left the matrix" → un-dim.
       const beginScrub = (idx) => {
+        if (idx == null) {
+          setFocusRun(null);
+          return;
+        }
         stopFollowing();
         setFocusRun(idx);
         scrubTo(idx);
-        if (scrubTimer.current != null) clearTimeout(scrubTimer.current);
-        scrubTimer.current = setTimeout(() => {
-          scrubTimer.current = null;
-          setFocusRun(null);
-        }, 700);
       };
 
       const openRun = (idx) => {
@@ -2335,6 +2361,9 @@ window.__ModuleLoader__.load({
           const delta = target - current;
           if (Math.abs(delta) < 2) return;
           if (reduce || typeof requestAnimationFrame !== 'function') { host.scrollTop = target; return; }
+          // F174: same guard as scrubTo — a locate glide must not look like a user
+          // scroll, or following flips back on and the cursor gets yanked.
+          markProgrammatic(DESIGN.motion.glide + 200);
           // F168: one duration for every distance — the curve does the work, so a
           // long jump lands as crisply as a short one.
           const duration = Math.min(DESIGN.motion.glide, Math.max(DESIGN.motion.base, Math.abs(delta) * 0.35));

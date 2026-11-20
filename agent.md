@@ -377,6 +377,8 @@ dsh-trace-analyzer/
 
 46. **M45 滚轮"无法持续滚动"：hover 钉住步进基数（F173）** ✅：F172 把基数改成"指针列 → 顶部可见行 → 选中"，但滚轮时**指针一直停在同一列**，`hover` 恒定 → 每格都算成 `hover+1`，于是第一格之后就不动了。改为**光标优先**：`selected`（窗口内）→ 顶部可见行 → hover（无光标时兜底）；hover 只做预览，不决定步进起点。**并补上回归缺口**：上一轮 `cdp:wheel` harness 是简化复刻、没模拟"停靠指针"，所以绿灯漏掉了这个 bug；现在 harness 引入固定 `hovered=40` 并复刻产品规则，新增断言"停靠指针连拨 3 格 = +3"。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V86、SPEC 50。
 
+47. **M46 交互简化：悬停 = 滚轮 = 单 Run 聚焦，单击即打开（F175）** ✅：① 鼠标与滚轮合并成一条聚焦路径——悬停某列即把该 Run 设为唯一聚焦行（其余压暗 22%、焦点行全亮 + 3px 左轨 + 16% 底 + 滚到 34%），滚轮在此焦点上 ±1；移出矩阵清除聚焦；② 单击矩阵元素**直接打开**该 Run（展开 step + 滚到顶部），`selected` 只由单击写入，与"聚焦"语义分离；③ 顺带修掉"滚一格弹回"的真根因：尾部留白让边缘判定在末尾附近恒真，滚动监听把我们自己的补间误判成用户滚动 → 重新开启跟随 → F170 效果把光标拽回最后一行；现在所有程序化滚动都打 `markProgrammatic`，边缘判定加 `scrollTop >= maxScroll - 8`；④ **回归升级**：`mockup/integration-harness.html` 直接抽取 client.js 的 `onWheel/scrubTo/beginScrub/stopFollowing/topVisibleRunIdx` 源码在普通 DOM 跑，并镜像跟随/程序化滚动/tick，套件项改名 `cdp:focus`。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V87、SPEC 51。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
