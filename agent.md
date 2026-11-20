@@ -331,6 +331,8 @@ dsh-trace-analyzer/
 
 36. **M35 展开动画卡顿/反复的根因：一次展开跑了 3 个高度动画（F163）** ✅：`Collapse` 里三处叠加——① `useEffect(setVisible)` 让 `visible` 在布局副作用之后才变，而布局副作用依赖里带着 `visible` → 一次 open 跑两次布局副作用（第二次 cancel 重开，从 0 再来一遍）；② 详情异步，先挂"载入 step…"占位、detail 落地再由 follow 动画长到真实高度；③ WAAPI 对同一属性是**叠加**不是替换，两个 `height` 动画同时跑 = 抖动。改法：`visible` 改渲染期同步翻转、布局副作用只依赖 `[open, expandMs, collapseMs]`；`animRef` 记录在飞动画、新动画前 cancel，follow 在开启动画期间跳过；`openRun` 对未缓存 Run 改为 **fetch 成功后再 setExpanded**（详情与展开同批提交），面板出现即最终高度。harness 实测：旧路径一次展开 **3** 个高度动画，新路径 **1** 个。验收：check-served 99/99；单测 43/43。见 TEST V76。
 
+37. **M36 图例移到右上角 + 矩阵 Run 数量滑块（F164）** ✅：① 图例原来和悬停读数挤在矩阵**下方**同一行（把矩阵往下顶、右上角空着），现在卡片顶部一行：左边读数、右边选中胶囊 + 五色图例，矩阵紧接其下；② 1 列 1 个 Run 在 175 列时只有 ~4px，看不出差异 → 矩阵下方加 `type: range` 滑块（`data-hades-window`，12…全部，标注 `最近 N / 175 个 Run`，右侧 `全部` 复位），矩阵只渲染最新 N 个 Run，rank 按窗口内重算。连带把悬停/选中从"列位置"改为**存 Run idx**（拖滑块时选中列不跳位），读数/胶囊/高亮带按 idx 反查位置。验收：check-served 103/103（新增 type: 'range' / data-hades-window / mx.showRecent / windowN）；单测 43/43；设计稿 mockup/overview-window.png。见 TEST V77。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

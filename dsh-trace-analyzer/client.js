@@ -421,10 +421,14 @@ window.__ModuleLoader__.load({
      * containing-block surprise.
      */
     function OverviewBoard({ kpi, rows, label, onLocate }) {
+      // F164: hover/selection are stored as Run idx (not column position), so they
+      // survive a change of the visible window.
       const [hover, setHover] = useState(null);
       // F155: the clicked column stays highlighted, so "which Run did I pick?" is
       // answerable after the pointer leaves the matrix.
       const [selected, setSelected] = useState(null);
+      // F164: how many of the most recent runs the matrix shows. null = all.
+      const [windowN, setWindowN] = useState(null);
       const wrapRef = useRef(null);
       const cardRef = useRef(null);
       // F156: the parent re-renders on every realtime tick, so a captured
@@ -432,10 +436,17 @@ window.__ModuleLoader__.load({
       // ref instead.
       const locateRef = useRef(onLocate);
       locateRef.current = onLocate;
-      const n = rows.length;
+      const total = rows.length;
+      // A "window" is the newest N runs — where a session's dense tail lives, and
+      // the part worth reading at 1 column per run.
+      const shown = useMemo(() => {
+        if (windowN == null || windowN >= total) return rows;
+        return rows.slice(Math.max(0, total - windowN));
+      }, [rows, windowN, total]);
+      const n = shown.length;
       const ranks = useMemo(() => {
         const rank = (pick) => {
-          const order = rows.map((r, i) => [pick(r) ?? 0, i]).sort((a, b) => a[0] - b[0]);
+          const order = shown.map((r, i) => [pick(r) ?? 0, i]).sort((a, b) => a[0] - b[0]);
           const out = new Array(order.length);
           order.forEach(([, i], pos) => { out[i] = order.length > 1 ? pos / (order.length - 1) : 1; });
           return out;
@@ -445,7 +456,7 @@ window.__ModuleLoader__.load({
           token: rank((r) => r.token),
           steps: rank((r) => r.stepCount),
         };
-      }, [rows]);
+      }, [shown]);
       // 8% floor keeps the smallest run visible; 88% ceiling keeps the largest
       // from turning into a solid block.
       const shade = (tone, rank) => `color-mix(in srgb, ${tone} ${Math.round(8 + 80 * rank)}%, var(--dsw-alias-bg-layer-1))`;
@@ -471,10 +482,10 @@ window.__ModuleLoader__.load({
             style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
           }, row.text),
           h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
-            rows.map((r, i) => h('div', {
+            shown.map((r, i) => h('div', {
               key: r.idx,
-              onMouseEnter: () => setHover(i),
-              onClick: () => { setSelected(i); setTimeout(() => locateRef.current(r.idx), 0); },
+              onMouseEnter: () => setHover(r.idx),
+              onClick: () => { setSelected(r.idx); setTimeout(() => locateRef.current(r.idx), 0); },
               title: `Run ${r.idx}`,
               style: { height: 11, borderRadius: 1, cursor: 'pointer', background: shade(row.tone, row.values[i]) },
             })),
@@ -485,20 +496,25 @@ window.__ModuleLoader__.load({
             style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
           }, label('mx.flags', '异常')),
           h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
-            rows.map((r, i) => h('div', {
+            shown.map((r, i) => h('div', {
               key: 'flag-' + r.idx,
-              onMouseEnter: () => setHover(i),
-              onClick: () => { setSelected(i); setTimeout(() => locateRef.current(r.idx), 0); },
+              onMouseEnter: () => setHover(r.idx),
+              onClick: () => { setSelected(r.idx); setTimeout(() => locateRef.current(r.idx), 0); },
               title: `Run ${r.idx}`,
               style: { height: 11, borderRadius: 1, cursor: 'pointer', background: flagBg(r) },
             })),
           ),
         ),
         // Callbacks are stable through refs, so they stay out of the deps.
-      ], [rows, ranks, n, rowTexts]);
+      ], [shown, ranks, n, rowTexts]);
       if (n === 0) return null;
-      const active = hover == null ? selected : hover;
-      const hovered = active == null || rows[active] == null ? null : rows[active];
+      const posOf = (idx) => (idx == null ? -1 : shown.findIndex((r) => r.idx === idx));
+      const selectedPos = posOf(selected);
+      const hoverPos = posOf(hover);
+      // The column the readout describes: whatever the pointer is on, else the
+      // stored selection.
+      const activePos = hoverPos >= 0 ? hoverPos : selectedPos;
+      const hovered = activePos >= 0 ? shown[activePos] : null;
       const summary = hovered
         ? `Run ${hovered.idx} · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} 步`
           + (hovered.hasError ? ' · 有错误' : '') + (hovered.hasSlow ? ' · 有慢操作' : '')
@@ -526,8 +542,89 @@ window.__ModuleLoader__.load({
       const legendItem = (tone, text, title) => h('span', {
         key: 'lg-' + text,
         title: title ?? text,
-        style: { display: 'inline-flex', alignItems: 'center', gap: 4, color: T.muted },
+        style: { display: 'inline-flex', alignItems: 'center', gap: 4, color: T.muted, flex: '0 0 auto' },
       }, h('i', { style: { width: 9, height: 9, borderRadius: 2, background: tone, display: 'inline-block' } }), text);
+      // F164: the legend lives in the card's top-right corner, and the readout
+      // takes the free space on its left — formely both shared one line *below*
+      // the grid, which pushed the matrix down and left the corner empty.
+      const legendRow = h('div', {
+        key: 'legend',
+        style: {
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          font: `11px/1.2 ${T.mono}`, minHeight: 16, marginBottom: 6,
+        },
+      },
+        h('span', {
+          key: 'readout',
+          title: hovered ? summary : '',
+          style: {
+            minWidth: 0, flex: '1 1 auto', textAlign: 'left',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            color: hovered ? T.text : T.faint,
+          },
+        }, hovered ? summary : label('mx.hint', '悬停看这个 Run · 点击定位')),
+        // F157: an explicit selection chip, so "what is currently selected" is
+        // answered in words as well as by the 26%/2px column band.
+        selectedPos >= 0 && shown[selectedPos] ? h('span', {
+          key: 'sel-chip',
+          style: {
+            display: 'inline-flex', alignItems: 'center', gap: 5, flex: '0 0 auto',
+            height: 17, padding: '0 5px 0 6px', borderRadius: 4,
+            border: '1px solid ' + T.brand,
+            background: `color-mix(in srgb, ${T.brand} 10%, transparent)`,
+            color: T.brand, whiteSpace: 'nowrap',
+          },
+        },
+          `Run ${shown[selectedPos].idx}`,
+          h('button', {
+            type: 'button',
+            title: label('mx.clearSel', '取消选中'),
+            onClick: () => setSelected(null),
+            style: { border: 'none', background: 'transparent', color: T.brand, cursor: 'pointer', font: 'inherit', padding: 0, lineHeight: 1 },
+          }, '✕'),
+        ) : null,
+        h('span', { key: 'legend-items', style: { display: 'inline-flex', alignItems: 'center', gap: 10, flex: '0 0 auto' } },
+          legendItem(T.brand, label('col.time', 'Time'), label('mx.rampTime', '颜色越深 = 该 Run 的耗时在会话里的排位越高')),
+          legendItem(T.token, label('col.token', 'Token'), label('mx.rampToken', '颜色越深 = 该 Run 的 token 在会话里的排位越高')),
+          legendItem(T.success, label('mx.steps', '步数'), label('mx.rampSteps', '颜色越深 = 该 Run 的步数在会话里的排位越高')),
+          legendItem(T.error, label('mx.error', '有错误')),
+          legendItem(T.warn, label('mx.slow', '有慢操作')),
+        ),
+      );
+      // F164: window control. 1 column per run stops being readable past a few
+      // dozen runs, so the matrix can focus on the newest N instead of all of them.
+      const windowLabel = windowN == null || windowN >= total
+        ? `${label('mx.showAll', '全部')} ${total} ${label('mx.runsUnit', '个 Run')}`
+        : `${label('mx.showRecent', '最近')} ${n} / ${total} ${label('mx.runsUnit', '个 Run')}`;
+      const sliderRow = total > 12 ? h('div', {
+        key: 'window',
+        style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 7, font: `11px/1.2 ${T.mono}`, color: T.muted },
+      },
+        h('span', { key: 'wlabel', style: { flex: '0 0 auto' } }, windowLabel),
+        h('input', {
+          key: 'wrange',
+          type: 'range',
+          min: 12,
+          max: total,
+          step: 1,
+          value: n,
+          'data-hades-window': '1',
+          title: label('mx.windowHint', '拖动调节热力矩阵显示的 Run 数量（显示最新的一批）'),
+          onChange: (e) => {
+            const value = Number(e.target.value);
+            setWindowN(value >= total ? null : value);
+          },
+          style: { flex: '0 1 160px', minWidth: 96, height: 14, accentColor: T.brand, cursor: 'pointer' },
+        }),
+        windowN == null
+          ? null
+          : h('button', {
+            key: 'wall',
+            type: 'button',
+            onClick: () => setWindowN(null),
+            style: { flex: '0 0 auto', font: 'inherit', color: T.faint, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 },
+          }, label('mx.showAll', '全部')),
+      ) : null;
       return h('div', {
         ref: wrapRef,
         // F153: the wrapper paints the surface colour so the seam between the KPI
@@ -544,68 +641,31 @@ window.__ModuleLoader__.load({
             },
             onMouseLeave: () => setHover(null),
           },
+            legendRow,
             h('div', { style: { position: 'relative' } },
               grid,
               // F157: two distinct states, both readable at a glance —
               //   selected (clicked): 26% fill + 2px edges, stays after the
               //                       pointer leaves;
               //   hover:              18% fill + 1px edges, follows the pointer.
-              // Previously both used the same faint 14%/1px band, so hovering felt
-              // like nothing happened and a selection was indistinguishable.
-              selected != null ? bandLayer('sel-fill', {
-                left: bandAt(selected).left, width: bandAt(selected).width,
+              selectedPos >= 0 ? bandLayer('sel-fill', {
+                left: bandAt(selectedPos).left, width: bandAt(selectedPos).width,
                 background: `color-mix(in srgb, ${T.brand} 26%, transparent)`,
               }) : null,
-              selected != null ? bandLayer('sel-l', { left: bandAt(selected).left, width: 2, background: T.brand }) : null,
-              selected != null ? bandLayer('sel-r', {
-                left: `calc(${bandAt(selected).left} + (${bandAt(selected).width}) - 2px)`, width: 2, background: T.brand,
+              selectedPos >= 0 ? bandLayer('sel-l', { left: bandAt(selectedPos).left, width: 2, background: T.brand }) : null,
+              selectedPos >= 0 ? bandLayer('sel-r', {
+                left: `calc(${bandAt(selectedPos).left} + (${bandAt(selectedPos).width}) - 2px)`, width: 2, background: T.brand,
               }) : null,
-              hover != null && hover !== selected ? bandLayer('hov-fill', {
-                left: bandAt(hover).left, width: bandAt(hover).width,
+              hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-fill', {
+                left: bandAt(hoverPos).left, width: bandAt(hoverPos).width,
                 background: `color-mix(in srgb, ${T.brand} 18%, transparent)`,
               }) : null,
-              hover != null && hover !== selected ? bandLayer('hov-l', { left: bandAt(hover).left, width: 1, background: T.brand }) : null,
-              hover != null && hover !== selected ? bandLayer('hov-r', {
-                left: `calc(${bandAt(hover).left} + (${bandAt(hover).width}) - 1px)`, width: 1, background: T.brand,
+              hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-l', { left: bandAt(hoverPos).left, width: 1, background: T.brand }) : null,
+              hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-r', {
+                left: `calc(${bandAt(hoverPos).left} + (${bandAt(hoverPos).width}) - 1px)`, width: 1, background: T.brand,
               }) : null,
             ),
-            h('div', {
-              style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 7, font: `11px/1.2 ${T.mono}`, minHeight: 16 },
-            },
-              legendItem(T.brand, label('col.time', 'Time'), label('mx.rampTime', '颜色越深 = 该 Run 的耗时在会话里的排位越高')),
-              legendItem(T.token, label('col.token', 'Token'), label('mx.rampToken', '颜色越深 = 该 Run 的 token 在会话里的排位越高')),
-              legendItem(T.success, label('mx.steps', '步数'), label('mx.rampSteps', '颜色越深 = 该 Run 的步数在会话里的排位越高')),
-              legendItem(T.error, label('mx.error', '有错误')),
-              legendItem(T.warn, label('mx.slow', '有慢操作')),
-              // F157: an explicit selection chip, so "what is currently selected"
-              // is answered in words as well as by the 30%/2px column band.
-              selected != null && rows[selected] ? h('span', {
-                key: 'sel-chip',
-                style: {
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  height: 17, padding: '0 5px 0 6px', borderRadius: 4,
-                  border: '1px solid ' + T.brand,
-                  background: `color-mix(in srgb, ${T.brand} 10%, transparent)`,
-                  color: T.brand, whiteSpace: 'nowrap',
-                },
-              },
-                `Run ${rows[selected].idx}`,
-                h('button', {
-                  type: 'button',
-                  title: label('mx.clearSel', '取消选中'),
-                  onClick: () => setSelected(null),
-                  style: { border: 'none', background: 'transparent', color: T.brand, cursor: 'pointer', font: 'inherit', padding: 0, lineHeight: 1 },
-                }, '✕'),
-              ) : null,
-              h('span', {
-                title: hovered ? summary : '',
-                style: {
-                  marginLeft: 'auto', minWidth: 0, maxWidth: '46%', textAlign: 'right',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  color: hovered ? T.text : T.faint,
-                },
-              }, hovered ? summary : label('mx.hint', '悬停看这个 Run · 点击定位')),
-            ),
+            sliderRow,
           ),
         ),
       );
@@ -2074,6 +2134,8 @@ window.__ModuleLoader__.load({
             'stat.runs': 'Run（指令）', 'stat.steps': 'Step（迭代）', 'stat.events': '事件', 'stat.tokens': 'Token',
             'stat.errors': '错误', 'stat.slow': '慢操作', 'stat.abnormal': '异常 Run', 'stat.slowest': '最慢操作',
             'mx.steps': '步数', 'mx.flags': '异常', 'mx.hint': '悬停看这个 Run · 点击定位', 'mx.clearSel': '取消选中',
+            'mx.showAll': '全部', 'mx.showRecent': '最近', 'mx.runsUnit': '个 Run',
+            'mx.windowHint': '拖动调节热力矩阵显示的 Run 数量（显示最新的一批）',
             'mx.rampTime': '颜色越深 = 该 Run 的耗时在会话里的排位越高',
             'mx.rampToken': '颜色越深 = 该 Run 的 token 在会话里的排位越高',
             'mx.rampSteps': '颜色越深 = 该 Run 的步数在会话里的排位越高',
@@ -2100,6 +2162,8 @@ window.__ModuleLoader__.load({
             'stat.runs': 'Runs', 'stat.steps': 'Steps', 'stat.events': 'Events', 'stat.tokens': 'Tokens',
             'stat.errors': 'Errors', 'stat.slow': 'Slow ops', 'stat.abnormal': 'Abnormal runs', 'stat.slowest': 'Slowest',
             'mx.steps': 'Steps', 'mx.flags': 'Flags', 'mx.hint': 'hover a Run · click to locate', 'mx.clearSel': 'clear selection',
+            'mx.showAll': 'all', 'mx.showRecent': 'latest', 'mx.runsUnit': 'runs',
+            'mx.windowHint': 'Drag to choose how many of the latest runs the matrix shows',
             'mx.rampTime': 'darker = the Run is slower relative to the session',
             'mx.rampToken': 'darker = the Run spends more tokens',
             'mx.rampSteps': 'darker = the Run has more steps',
