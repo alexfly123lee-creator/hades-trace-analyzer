@@ -381,6 +381,8 @@ dsh-trace-analyzer/
 
 48. **M47 去掉矩阵滚轮 + 放慢聚焦滑行（F176）** ✅：① 删除整条滚轮链路（原生监听 / `deltaMode` 归一 / 累加器 / 拨动逻辑），矩阵只由指针驱动，滚轮回到浏览器默认行为（-2.3 KB）；② `scrubTo` 时长 120ms → **300ms**（`DESIGN.motion.focus`），缓动 `easeOutCubic` → **easeInOutCubic**，因为 120ms cubic-out 眼睛跟不上、"看不清挑了哪行"；③ 悬停/方向键仍走同一聚焦路径（压暗其余 + 滚到 34%），单击仍直接展开，跟随与 `↓ Latest` 不变；④ `cdp:focus` 新增两条断言：**滚轮不得移动焦点/列表**、**滑行在 ~90ms 时必须仍在途中**（防止把时长改回瞬时）。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V88、SPEC 52。
 
+49. **M48 矩阵卡置顶 + 去掉卡片阴影（F177）** ✅：① 置顶加两道保险——表头块 `position: sticky; top: 0; z-index: 4`（`data-hades-header`），即使宿主让页面滚动也贴视口顶部；shell 高度改用 **`ResizeObserver` 监听父容器**（原先只有 `window.resize` + 250ms 一次，侧栏/输入框高度变化时会留过期高度，导致页面接管滚动把矩阵带走）；② 删除矩阵卡的 `box-shadow`（只留 1px 描边）——它是固定在顶部的仪表盘而非浮层，阴影让它像悬浮卡片；`↓ Latest` 胶囊的投影保留（那确实是浮层）。验收：`node mockup/regress.mjs` **ALL GREEN (8 checks)**；`check-served` 128/128（新增 `data-hades-header`/`new ResizeObserver`，矩阵阴影进入 absent 断言防回潮）；单测 43/43。见 TEST V89、SPEC 53。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

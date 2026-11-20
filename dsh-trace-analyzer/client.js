@@ -885,7 +885,9 @@ window.__ModuleLoader__.load({
             style: {
               border: '1px solid ' + T.border, borderRadius: T.radiusMd,
               padding: '10px 12px 10px', background: T.surface,
-              boxShadow: `0 10px 18px -14px color-mix(in srgb, ${T.text} 55%, transparent)`,
+              // F177: no drop shadow. The matrix is a fixed instrument panel at the
+              // top of the view, not a floating card — the shadow made it read as
+              // something hovering over the list.
             },
           },
             legendRow,
@@ -1885,7 +1887,17 @@ window.__ModuleLoader__.load({
         window.addEventListener('resize', fit);
         // The slot may be laid out a frame or two after mount.
         const id = window.setTimeout(fit, 250);
+        // F177: the host can resize the slot without a window resize (side panels,
+        // the composer growing). Without this the shell kept a stale height and the
+        // page — not the list — started scrolling, which carried the matrix away.
+        let ro = null;
+        const parent = root.parentElement;
+        if (parent && typeof ResizeObserver === 'function') {
+          ro = new ResizeObserver(() => fit());
+          ro.observe(parent);
+        }
         return () => {
+          if (ro) ro.disconnect();
           window.removeEventListener('resize', fit);
           window.clearTimeout(id);
         };
@@ -2641,7 +2653,16 @@ window.__ModuleLoader__.load({
         // F151: no header bar — the "cache hit / server ms / live badge / refresh
         // button" chrome was developer telemetry sitting on top of the product,
         // and the 2 s realtime tick makes a manual refresh unnecessary.
-        h('div', { style: { flex: '0 0 auto', padding: '10px 12px 0', background: T.surface } }, renderHeader()),
+        // F177: the header block is a flex sibling above the scroller (F155), so it
+        // is already structurally pinned; `sticky` + z-index is the second belt for
+        // the case where the host lets the *page* scroll instead.
+        h('div', {
+          'data-hades-header': '1',
+          style: {
+            flex: '0 0 auto', position: 'sticky', top: 0, zIndex: 4,
+            padding: '10px 12px 0', background: T.surface,
+          },
+        }, renderHeader()),
         h('div', {
           ref: scrollRef,
           'data-hades-scroll': '1',
