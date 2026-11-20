@@ -511,7 +511,22 @@
 - **实测**（harness 复刻 + CDP 真实滚轮事件 `Input.dispatchMouseEvent`）：滚一格 → 选中 Run 前进 1（101→102→103），**40 行里 39 行被压到 22%**，页面 `scrollY` 恒为 0（滚轮被接管）；连续拨到第 12 行后 `rowTopInViewportPct = 34`。
 - **AC**：在矩阵卡上滚轮 → 逐 Run 拨动、其余行变淡、焦点行停在上方约 1/3 处；页面不滚动；`check-served` 110/110（新增 `const matrixEl = useCallback` / `host.clientHeight * 0.34`）；单测 43/43。
 
-## 45. 范围外（v1 不做）
+## 45. 工业级收敛：设计 token / 标记带 / 稳定色阶 / 键盘（F168）
+
+- **F168 一次性收敛面板的交互与视觉**，按设计计划落地：
+  1. **设计 token 底座**：新增 `DESIGN`（space 4/8/12/16 · motion 120/160/240/260 · ease out/in · alpha 浅深两套 · row 28/4）与 `CSS_VARS`，注入样式表里不再有魔法数字；`EXPAND_MS/COLLAPSE_MS/FOLLOW_MS`、scrub 时长、glide 上限全部改读 token；focus 底色也由 `applyThemePalette` 从 token 生成（`T.focusRow`）。
+  2. **Flags 退出指标网格**：error/slow 变成 Time 行**上方的一条 3px 标记带**（`hades-lane`），矩阵从"4 个等权行"变成"3 个指标 + 标记"；高亮带上探到 `-8px`，选中列连标记一起被框住。
+  3. **色阶稳定**：rank 改为对**全会话** rows 计算并存成 `Map(idx → rank)`，滑块只裁剪 `shown`；拖动窗口不再重算 175×3 排名、也不再给同一个 Run 换颜色。
+  4. **结构化读数**：头部读数只保留 `Run N · 1.9min · 691.2k tok · 33 steps` + error/slow 标记，**提示词摘要移出头部**（它属于数据，不属于 chrome）；拨动/方向键时临时显示 `Run N / M` 刻度（`data-hades-tick`，700ms 后消失）。
+  5. **键盘可达**：矩阵卡 `tabIndex=0` + `role=group`，`←/→` 逐 Run 步进（与滚轮同一路径），`Enter` 定位；`focus-visible` 有 2px 品牌色外环。
+  6. **列表质感**：指标列由固定 150px 改为**分数列**（`flex: 1 1 0`，`min-width: 96px`），数字固定 70px `tabular-nums` 槽；行高 28px + 4px 内距落在 4px 栅格；提示词列用 `mask-image` **线性渐隐**而不是硬省略号。
+  7. **首屏与空态**：`loading && !payload` 渲染 10 行 **shimmer 骨架**（`hades-skeleton`），空态/错误态改为居中卡片（图标 + 文案 + 错误态带 Retry）。
+  8. **KPI 分簇**：三簇 + 1px 分隔（Runs·Steps·Events ｜ Tokens ｜ Errors·Slow ops·Abnormal·Slowest），padding 收到 `8/12` 并落在 4px 栅格。
+  9. **动效统一 + reduced-motion 全链路**：`prefers-reduced-motion: reduce` 时 scrub 补间、locate glide、FLIP 全部瞬时到位（原先只有 Collapse 处理）；glide 由 `min(260, max(160, |Δ|×0.35))` 收口，长距离不再拖到 700ms。
+  10. **滑块去冗余**：`12–N` 只在窗口态出现；芯片统一（`RowTag` 18px 高、4px 圆角，与图例 8px swatch 同一套）；`原文` 面板加 **Copy** 按钮与 11.5px/1.45 排版。
+- **AC**：矩阵 3 指标 + 顶部标记带；拖滑块颜色不变；四种状态（hover/focus/selected/open）不叠层；`←/→` 可移动、`Enter` 定位；首屏骨架、空/错卡片；`check-served` **120/120**（新增 `const DESIGN = {` / `const CSS_VARS = {` / `hades-lane` / `hades-prompt` / `hadesSkeleton` / `onMatrixKeyDown` / `ArrowLeft` / `Copy` / `data-hades-tick` / `const markerBg = (run) =>`，并把 `const EXPAND_MS/FOLLOW_MS` 断言改为 token 形式）；单测 43/43；设计稿 `mockup/optimized-preview.html`。
+
+## 46. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

@@ -339,6 +339,8 @@ dsh-trace-analyzer/
 
 40. **M39 拨动修复 + 焦点行不再贴顶（F167）** ✅：上一版"没生效"两个真实原因——① 用 `useEffect(..., [])` 读 ref，矩阵卡首次渲染可能因提前 `return null`（数据未到/表格为空）而未提交，effect 只在挂载那次跑、ref 为 null 就直接放弃且永不重试 → 改成**回调 ref**（`useCallback` 稳定身份）在元素真正挂载时绑定、卸载时解绑；② 那段 effect 落在 `if (n === 0) return null;` **之后**，表格短暂为空时 hook 数变化 → 现在所有 hook 都在提前 return 之前。顺带把监听范围从网格盒子扩到**整张矩阵卡**。另外焦点行不再贴顶：锚点从"列表顶部 -2px"改成 **视口 34% 处**（贴顶时紧贴矩阵下边缘，读着累）；落位仍是 130ms easeOutCubic。CDP 实测（真实 `Input.dispatchMouseEvent` 滚轮）：一格一个 Run（101→102→103）、40 行里 39 行压到 22%、页面 scrollY 恒 0、连续拨到第 12 行后 `rowTopInViewportPct = 34`。验收：check-served 110/110；单测 43/43。见 TEST V80。
 
+41. **M40 工业级收敛：token / 标记带 / 稳定色阶 / 键盘（F168）** ✅：按设计计划一次落地 10 项——① `DESIGN` token 表（space 4/8/12/16、motion 120/160/240/260、两套 alpha、row 28/4）替代散落数字，`CSS_VARS` 供注入样式表使用；`EXPAND/COLLAPSE/FOLLOW`、scrub、glide 全部改读 token，focus 底色由 `applyThemePalette` 从 token 生成；② error/slow 从"第 4 个指标行"改为 Time 上方的 **3px 标记带**（`hades-lane`），高亮带上探 -8px；③ rank 改为全会话 `Map(idx→rank)`，滑块只裁剪 → 拖滑块不换色、少一次全格重算；④ 读数结构化、提示词移出头部，拨动时显示 `Run N / M` 刻度；⑤ 矩阵可聚焦 + `←/→/Enter`；⑥ 指标列改分数列、行高落 4px 栅格、提示词 `mask-image` 渐隐；⑦ 首屏 shimmer 骨架 + 空/错卡片；⑧ KPI 三簇 + 1px 分隔；⑨ reduced-motion 覆盖 scrub/glide/FLIP，glide 收口到 260ms；⑩ 滑块去冗余、芯片统一、原文加 Copy。验收：check-served **120/120**；单测 43/43。见 TEST V81、SPEC 45。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

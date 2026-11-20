@@ -42,6 +42,8 @@ window.__ModuleLoader__.load({
       // was tried and rejected as too heavy). Selection keeps a stronger fill
       // plus the left rail, so hover never outranks it.
       runHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 9%, var(--dsw-alias-bg-layer-1))',
+      // F168: scrub-focus fill (overwritten by applyThemePalette from the tokens).
+      focusRow: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 16%, transparent)',
       // Expanded Step row: strongest fill, container itself stays transparent.
       stepSelBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 22%, transparent)',
       stepHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 10%, transparent)',
@@ -60,12 +62,50 @@ window.__ModuleLoader__.load({
     // in place: the panel may live inside a shadow root, where a `body[...]`
     // descendant selector would never match.
     // ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // F168 design tokens. Everything tunable lives here: one edit changes the
+    // whole panel's rhythm instead of hunting inline numbers.
+    //   space  — 4px grid only (no more 3/5/6/7/10 one-offs)
+    //   motion — milliseconds; `glide` is the *cap*, distance no longer stretches it
+    //   ease   — two curves: settle (out) and dismiss (in)
+    //   alpha  — [light, dark] pairs for every tinted state
+    // ---------------------------------------------------------------------
+    const DESIGN = {
+      space: { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16 },
+      motion: { fast: 120, base: 160, slow: 240, glide: 260, dimHold: 700 },
+      ease: { out: 'cubic-bezier(.2,.7,.3,1)', in: 'cubic-bezier(.4,0,1,1)' },
+      alpha: {
+        hover: [9, 22],
+        selected: [12, 30],
+        focus: [16, 34],
+        stepHover: [10, 26],
+        stepSel: [22, 36],
+        sortHover: [14, 26],
+        sortLine: [80, 90],
+        bandSel: 26,
+        bandHover: 18,
+        scrubDim: 0.22,
+        marker: 0.85,
+      },
+      // Row rhythm: 28px rows on a 4px baseline grid.
+      row: { height: 28, pad: 4 },
+    };
+    const alphaOf = (pair, dark) => (Array.isArray(pair) ? pair[dark ? 1 : 0] : pair);
+
     const TINT_BASE = {
       run: 'var(--dsw-alias-bg-layer-1)',
       step: 'transparent',
     };
-    const LIGHT_TINT = { runHover: 9, runSel: 12, stepHover: 10, stepSel: 22, sortHover: 14, sortLine: 80 };
-    const DARK_TINT = { runHover: 22, runSel: 30, stepHover: 26, stepSel: 36, sortHover: 26, sortLine: 90 };
+    const LIGHT_TINT = {
+      runHover: DESIGN.alpha.hover[0], runSel: DESIGN.alpha.selected[0],
+      stepHover: DESIGN.alpha.stepHover[0], stepSel: DESIGN.alpha.stepSel[0],
+      sortHover: DESIGN.alpha.sortHover[0], sortLine: DESIGN.alpha.sortLine[0],
+    };
+    const DARK_TINT = {
+      runHover: DESIGN.alpha.hover[1], runSel: DESIGN.alpha.selected[1],
+      stepHover: DESIGN.alpha.stepHover[1], stepSel: DESIGN.alpha.stepSel[1],
+      sortHover: DESIGN.alpha.sortHover[1], sortLine: DESIGN.alpha.sortLine[1],
+    };
     const tintOf = (pct, base) => `color-mix(in srgb, var(--dsw-alias-trajectory-accent) ${pct}%, ${base})`;
 
     function darkThemeActive() {
@@ -86,6 +126,9 @@ window.__ModuleLoader__.load({
       T.stepSelBg = tintOf(p.stepSel, TINT_BASE.step);
       T.sortHoverBg = tintOf(p.sortHover, TINT_BASE.step);
       T.sortHoverLine = tintOf(p.sortLine, TINT_BASE.step);
+      // F168: scrub-focus fill comes from the token table too, so the focus tint
+      // scales with the theme like every other state.
+      T.focusRow = tintOf(alphaOf(DESIGN.alpha.focus, dark), TINT_BASE.run);
       return true;
     }
 
@@ -95,24 +138,44 @@ window.__ModuleLoader__.load({
     // F138: a run may hold 200+ steps; render them in pages so a single expand
     // cannot mount thousands of nodes at once.
     const STEP_PAGE = 80;
+    // F168: CSS variables carrying the token values, so the injected stylesheets
+    // (ROW_ANIM_CSS / MATRIX_CSS) stay free of magic numbers.
+    const CSS_VARS = {
+      '--hades-ms-fast': DESIGN.motion.fast + 'ms',
+      '--hades-ms-base': DESIGN.motion.base + 'ms',
+      '--hades-ms-slow': DESIGN.motion.slow + 'ms',
+      '--hades-ease-out': DESIGN.ease.out,
+      '--hades-ease-in': DESIGN.ease.in,
+      '--hades-dim': String(DESIGN.alpha.scrubDim),
+      '--hades-row-h': DESIGN.row.height + 'px',
+    };
+
     // F141: live-appended rows fade in instead of popping in.
     const ROW_ANIM_CSS = '@keyframes hadesRowIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}'
       // F158: run-row hover lives in CSS, not React state. Colours come from
       // variables set on the panel root (they are theme-dependent, see
       // applyThemePalette) — sweeping the pointer across 175 rows no longer
       // re-renders the list.
-      + '.hades-run-row{transition:background 120ms ease}'
+      + '.hades-run-row{transition:background var(--hades-ms-fast) var(--hades-ease-out)}'
       + '.hades-run-row:hover{background:var(--hades-hover-row)}'
       + '.hades-run-row.is-open,.hades-run-row.is-open:hover{background:var(--hades-sel-row)}'
       + '.hades-run-row .hades-idx{color:var(--hades-muted)}'
       + '.hades-run-row:hover .hades-idx,.hades-run-row.is-open .hades-idx{color:var(--hades-text)}'
       + '.hades-run-row:hover .hades-caret,.hades-run-row.is-open .hades-caret{color:var(--hades-brand)}'
       // F166: wheel-scrub. The whole list fades and the focused Run steps forward.
-      + '.hades-run-group{transition:opacity 180ms ease}'
-      + '.hades-scrubbing .hades-run-group{opacity:.22}'
+      + '.hades-run-group{transition:opacity var(--hades-ms-base) var(--hades-ease-out)}'
+      + '.hades-scrubbing .hades-run-group{opacity:var(--hades-dim)}'
       + '.hades-scrubbing .hades-run-group.is-focus{opacity:1}'
-      + '.hades-scrubbing .hades-run-group.is-focus .hades-run-row{background:var(--hades-focus-row)}'
-      + '.hades-scrubbing .hades-run-group.is-focus .hades-run-row .hades-idx{color:var(--hades-brand)}';
+      // F168 state precedence: focus wins over hover, open wins over focus — the
+      // later rule in this list is the louder one.
+      + '.hades-run-group.is-focus .hades-run-row{background:var(--hades-focus-row)}'
+      + '.hades-scrubbing .hades-run-group.is-focus .hades-run-row .hades-idx{color:var(--hades-brand)}'
+      + '.hades-scrubbing .hades-run-group.is-open .hades-run-row{background:var(--hades-sel-row)}'
+      // F168: long prompts fade out instead of being chopped by an ellipsis.
+      + '.hades-prompt{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}'
+      // F168: first-paint skeleton rows.
+      + '@keyframes hadesSkeleton{0%{opacity:.55}50%{opacity:1}100%{opacity:.55}}'
+      + '.hades-skeleton{animation:hadesSkeleton 1.2s ease-in-out infinite}';
 
     // F165: matrix control styling. A native range input reads as a prototype —
     // we draw the track (filled up to the value via --fill), the thumb, the hover
@@ -140,16 +203,21 @@ window.__ModuleLoader__.load({
       .hades-mx-reset{font:inherit;color:var(--hades-muted);background:transparent;border:1px solid var(--hades-border);border-radius:999px;padding:1px 8px;cursor:pointer;transition:color 120ms ease,border-color 120ms ease}
       .hades-mx-reset:hover{color:var(--hades-text);border-color:var(--hades-brand)}
       .hades-mx-reset:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--hades-brand) 22%,transparent)}
+      /* F168: the matrix is a control surface — it can take focus and be driven
+         by the arrow keys. */
+      .hades-matrix:focus{outline:none}
+      .hades-matrix:focus-visible{outline:2px solid color-mix(in srgb,var(--hades-brand) 38%,transparent);outline-offset:2px;border-radius:10px}
+      .hades-tick{font-variant-numeric:tabular-nums;color:var(--hades-brand)}
     `;
 
     // F144 expand motion (plan C, tightened): height + fade, one uniform curve,
     // no stagger. Opening is short enough to feel immediate (160ms); closing is
     // shorter still (120ms) so the list snaps back instead of lingering.
-    const EXPAND_MS = 160;
-    const COLLAPSE_MS = 120;
+    const EXPAND_MS = DESIGN.motion.base;
+    const COLLAPSE_MS = DESIGN.motion.fast;
     // Content that arrives *after* the open (the /step and /run fetches) must not
     // pop the panel taller — it follows at this short duration instead.
-    const FOLLOW_MS = 120;
+    const FOLLOW_MS = DESIGN.motion.fast;
     // A 200-step run is ~7k px tall; animating that height costs layout every
     // frame, so big runs fade in instead of measuring/growing.
     const BIG_RUN_STEPS = 60;
@@ -367,14 +435,16 @@ window.__ModuleLoader__.load({
      * two levels must read as a single tag system.
      */
     function RowTag({ text, color, background, title }) {
+      // F168: one chip geometry for the whole panel — the matrix legend swatch
+      // matches this height/radius, so tags and legend read as one system.
       return h('span', {
         title: title ?? text,
         style: {
           display: 'inline-flex', alignItems: 'center', flex: '0 0 auto',
-          height: 20, padding: '0 6px', boxSizing: 'border-box',
-          border: '1px solid transparent', borderRadius: 'var(--dsw-radius-xs)',
+          height: 18, padding: '0 6px', boxSizing: 'border-box',
+          border: '1px solid transparent', borderRadius: DESIGN.space.xs,
           color, background,
-          fontSize: 11, lineHeight: '17px', fontWeight: 650, letterSpacing: '0.035em',
+          fontSize: 11, lineHeight: '16px', fontWeight: 650, letterSpacing: '0.035em',
           userSelect: 'none', whiteSpace: 'nowrap',
         },
       }, text);
@@ -397,30 +467,47 @@ window.__ModuleLoader__.load({
     //   OverviewBoard  numbers + picture in ONE pinned block (F153): both stay
     //                  at the panel top while the run list scrolls underneath
     // ---------------------------------------------------------------------
+    // F168: eight numbers in one flat row read as a wall. They now sit in three
+    // clusters — volume · tokens · health — separated by hairlines, so the eye can
+    // stop at the group it cares about.
     function KpiSummary({ kpi, label }) {
-      const items = [
-        [String(kpi.runs), label('stat.runs', 'Runs')],
-        [String(kpi.steps), label('stat.steps', 'Steps')],
-        [String(kpi.events), label('stat.events', 'Events')],
-        [fmtK(kpi.tokenTotal), label('stat.tokens', 'Token')],
-        [String(kpi.errors), label('stat.errors', 'Errors'), T.error],
-        [String(kpi.slow), label('stat.slow', 'Slow ops'), T.warn],
-        [String(kpi.abnormal), label('stat.abnormal', 'Abnormal runs'), T.warn],
-        [kpi.slowest ? fmtMs(kpi.slowest.durationMs) : '—', label('stat.slowest', 'Slowest'), T.warn, kpi.slowest?.name],
-      ];
-      return h('div', {
-        style: {
-          display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap',
-          border: '1px solid ' + T.border, borderRadius: T.radiusMd,
-          padding: '9px 12px', background: T.surface, marginBottom: 10,
-        },
-      }, items.map(([num, lbl, tone, sub], i) => h('span', {
-        key: 'kpi-' + i, style: { display: 'inline-flex', alignItems: 'baseline', gap: 4, minWidth: 0 },
+      const item = (key, num, lbl, tone, sub) => h('span', {
+        key, style: { display: 'inline-flex', alignItems: 'baseline', gap: 4, minWidth: 0 },
       },
         h('b', { style: { fontSize: 15, fontWeight: 600, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums', color: tone ?? T.text, letterSpacing: '-.01em' } }, num),
         h('span', { style: { fontSize: 11, color: T.muted, whiteSpace: 'nowrap' } }, lbl),
         sub ? h('span', { style: { fontSize: 11, color: T.faint, fontFamily: T.mono } }, sub) : null,
-      )));
+      );
+      const grp = (key, children) => h('span', {
+        key, style: { display: 'inline-flex', alignItems: 'baseline', gap: DESIGN.space.sm + 2, minWidth: 0 },
+      }, children);
+      const rule = (key) => h('span', {
+        key, style: { width: 1, height: 14, alignSelf: 'center', background: T.border, flex: '0 0 1px' },
+      });
+      return h('div', {
+        style: {
+          display: 'flex', alignItems: 'baseline', gap: DESIGN.space.md, flexWrap: 'wrap',
+          border: '1px solid ' + T.border, borderRadius: T.radiusMd,
+          padding: `${DESIGN.space.sm}px ${DESIGN.space.md}px`, background: T.surface, marginBottom: DESIGN.space.sm,
+        },
+      },
+        grp('volume', [
+          item('runs', String(kpi.runs), label('stat.runs', 'Runs')),
+          item('steps', String(kpi.steps), label('stat.steps', 'Steps')),
+          item('events', String(kpi.events), label('stat.events', 'Events')),
+        ]),
+        rule('rule-1'),
+        grp('tokens', [
+          item('tokens', fmtK(kpi.tokenTotal), label('stat.tokens', 'Tokens')),
+        ]),
+        rule('rule-2'),
+        grp('health', [
+          item('errors', String(kpi.errors), label('stat.errors', 'Errors'), T.error),
+          item('slow', String(kpi.slow), label('stat.slow', 'Slow ops'), T.warn),
+          item('abnormal', String(kpi.abnormal), label('stat.abnormal', 'Abnormal'), T.warn),
+          item('slowest', kpi.slowest ? fmtMs(kpi.slowest.durationMs) : '—', label('stat.slowest', 'Slowest'), T.warn, kpi.slowest?.name),
+        ]),
+      );
     }
 
     // Matrix geometry: a fixed label column, then one track per run with 1px
@@ -463,6 +550,18 @@ window.__ModuleLoader__.load({
       const [selected, setSelected] = useState(null);
       // F164: how many of the most recent runs the matrix shows. null = all.
       const [windowN, setWindowN] = useState(null);
+      // F168: transient "Run 112 / 175" ticker while the wheel / arrow keys step
+      // through runs; it clears itself after DESIGN.motion.dimHold.
+      const [tick, setTick] = useState(false);
+      const tickTimer = useRef(null);
+      const flashTick = useCallback(() => {
+        setTick(true);
+        if (tickTimer.current != null) clearTimeout(tickTimer.current);
+        tickTimer.current = setTimeout(() => {
+          tickTimer.current = null;
+          setTick(false);
+        }, DESIGN.motion.dimHold);
+      }, []);
       const wrapRef = useRef(null);
       const cardRef = useRef(null);
       // F156: the parent re-renders on every realtime tick, so a captured
@@ -482,11 +581,16 @@ window.__ModuleLoader__.load({
         return rows.slice(Math.max(0, total - windowN));
       }, [rows, windowN, total]);
       const n = shown.length;
+      // F168: rank against the WHOLE session, not the visible window. Dragging the
+      // slider then only crops the picture — a Run never changes colour because
+      // you zoomed, and the matrix stops recomputing 175×3 ranks per drag step.
       const ranks = useMemo(() => {
         const rank = (pick) => {
-          const order = shown.map((r, i) => [pick(r) ?? 0, i]).sort((a, b) => a[0] - b[0]);
-          const out = new Array(order.length);
-          order.forEach(([, i], pos) => { out[i] = order.length > 1 ? pos / (order.length - 1) : 1; });
+          const order = rows.map((r, i) => [pick(r) ?? 0, i]).sort((a, b) => a[0] - b[0]);
+          const out = new Map();
+          order.forEach(([, i], pos) => {
+            out.set(rows[i].idx, order.length > 1 ? pos / (order.length - 1) : 1);
+          });
           return out;
         };
         return {
@@ -494,22 +598,22 @@ window.__ModuleLoader__.load({
           token: rank((r) => r.token),
           steps: rank((r) => r.stepCount),
         };
-      }, [shown]);
+      }, [rows]);
       // 8% floor keeps the smallest run visible; 88% ceiling keeps the largest
       // from turning into a solid block.
       const shade = (tone, rank) => `color-mix(in srgb, ${tone} ${Math.round(8 + 80 * rank)}%, var(--dsw-alias-bg-layer-1))`;
       const rowsDef = [
-        { key: 'time', text: label('col.time', 'Time'), tone: T.brand, values: ranks.time },
-        { key: 'token', text: label('col.token', 'Token'), tone: T.token, values: ranks.token },
-        { key: 'steps', text: label('mx.steps', 'Steps'), tone: T.success, values: ranks.steps },
+        { key: 'time', text: label('col.time', 'Time'), tone: T.brand, rankOf: (r) => ranks.time.get(r.idx) ?? 0 },
+        { key: 'token', text: label('col.token', 'Token'), tone: T.token, rankOf: (r) => ranks.token.get(r.idx) ?? 0 },
+        { key: 'steps', text: label('mx.steps', 'Steps'), tone: T.success, rankOf: (r) => ranks.steps.get(r.idx) ?? 0 },
       ];
-      // Flag lane: translucent red / amber — solid semantic colours on a 3px cell
-      // are far too loud next to the pastel metric rows (F152).
-      const flagBg = (run) => (run.hasError
-        ? `color-mix(in srgb, ${T.error} 58%, transparent)`
-        : run.hasSlow
-          ? `color-mix(in srgb, ${T.warn} 58%, transparent)`
-          : `color-mix(in srgb, ${T.muted} 10%, transparent)`);
+      // F168: errors and slow ops are MARKERS, not a fourth metric — a 3px lane
+      // above the grid, so the matrix reads as three comparable rows plus flags.
+      const markerBg = (run) => {
+        if (run.hasError) return T.error;
+        if (run.hasSlow) return T.warn;
+        return 'transparent';
+      };
       const rowTexts = rowsDef.map((row) => row.text).join(',');
       // F165: 4px columns can only carry a 1px radius; wide ones read as chips.
       const cellRadius = n > 48 ? 1 : 2;
@@ -517,34 +621,32 @@ window.__ModuleLoader__.load({
       // on hover/selection — only the overlay band does. Memoise them so a click
       // costs one band move instead of a full grid re-render.
       const grid = useMemo(() => [
+        h('div', { key: 'lane', className: 'hades-lane', style: { display: 'flex', alignItems: 'center', gap: MX_GAP, height: 4, marginBottom: 4 } },
+          h('span', { style: { flex: `0 0 ${MX_LABEL_W}px` } }),
+          h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
+            shown.map((r) => h('div', {
+              key: 'mk-' + r.idx,
+              onMouseEnter: () => setHover(r.idx),
+              onClick: () => { setSelected(r.idx); setTimeout(() => locateRef.current(r.idx), 0); },
+              title: `Run ${r.idx}${r.hasError ? ' · error' : r.hasSlow ? ' · slow op' : ''}`,
+              style: { height: 3, borderRadius: 1, cursor: 'pointer', background: markerBg(r) },
+            })),
+          ),
+        ),
         ...rowsDef.map((row) => h('div', { key: row.key, style: { display: 'flex', alignItems: 'center', gap: MX_GAP, marginBottom: 4 } },
           h('span', {
             style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
           }, row.text),
           h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
-            shown.map((r, i) => h('div', {
+            shown.map((r) => h('div', {
               key: r.idx,
               onMouseEnter: () => setHover(r.idx),
               onClick: () => { setSelected(r.idx); setTimeout(() => locateRef.current(r.idx), 0); },
               title: `Run ${r.idx}`,
-              style: { height: 11, borderRadius: cellRadius, cursor: 'pointer', background: shade(row.tone, row.values[i]) },
+              style: { height: 11, borderRadius: cellRadius, cursor: 'pointer', background: shade(row.tone, row.rankOf(r)) },
             })),
           ),
         )),
-        h('div', { key: 'flags', style: { display: 'flex', alignItems: 'center', gap: MX_GAP, marginTop: 4 } },
-          h('span', {
-            style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
-          }, label('mx.flags', 'Flags')),
-          h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
-            shown.map((r, i) => h('div', {
-              key: 'flag-' + r.idx,
-              onMouseEnter: () => setHover(r.idx),
-              onClick: () => { setSelected(r.idx); setTimeout(() => locateRef.current(r.idx), 0); },
-              title: `Run ${r.idx}`,
-              style: { height: 11, borderRadius: cellRadius, cursor: 'pointer', background: flagBg(r) },
-            })),
-          ),
-        ),
         // Callbacks are stable through refs, so they stay out of the deps.
       ], [shown, ranks, n, rowTexts, cellRadius]);
       // F167: wheel over the grid = scrub the list. One notch walks one Run and the
@@ -564,6 +666,8 @@ window.__ModuleLoader__.load({
       hoverRef.current = hover;
       const wheelAcc = useRef(0);
       const detachWheel = useRef(null);
+      const flashTickRef = useRef(flashTick);
+      flashTickRef.current = flashTick;
       const matrixEl = useCallback((el) => {
         if (detachWheel.current != null) { detachWheel.current(); detachWheel.current = null; }
         if (el == null) return;
@@ -585,11 +689,34 @@ window.__ModuleLoader__.load({
           const run = list[next];
           if (run == null) return;
           setSelected(run.idx);
+          flashTickRef.current();
           if (scrubRef.current) scrubRef.current(run.idx);
         };
         el.addEventListener('wheel', onWheel, { passive: false });
         detachWheel.current = () => el.removeEventListener('wheel', onWheel);
       }, []);
+
+      // F168: the matrix is a control surface — arrows step, Enter locates.
+      const onMatrixKeyDown = (event) => {
+        const list = shownRef.current;
+        if (!list.length) return;
+        const key = event.key;
+        if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'Enter') return;
+        event.preventDefault();
+        if (key === 'Enter') {
+          if (selectedRef.current != null) locateRef.current(selectedRef.current);
+          return;
+        }
+        const dir = key === 'ArrowRight' ? 1 : -1;
+        const cur = list.findIndex((r) => r.idx === selectedRef.current);
+        const from = cur >= 0 ? cur : 0;
+        const next = Math.max(0, Math.min(list.length - 1, from + dir));
+        const run = list[next];
+        if (run == null) return;
+        setSelected(run.idx);
+        flashTickRef.current();
+        if (scrubRef.current) scrubRef.current(run.idx);
+      };
 
       if (n === 0) return null;
       const posOf = (idx) => (idx == null ? -1 : shown.findIndex((r) => r.idx === idx));
@@ -599,10 +726,11 @@ window.__ModuleLoader__.load({
       // stored selection.
       const activePos = hoverPos >= 0 ? hoverPos : selectedPos;
       const hovered = activePos >= 0 ? shown[activePos] : null;
+      // F168: structured readout only — the prompt excerpt moved out of the header
+      // (it is data, not chrome; the row tooltip still carries it).
       const summary = hovered
         ? `Run ${hovered.idx} · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} steps`
           + (hovered.hasError ? ' · error' : '') + (hovered.hasSlow ? ' · slow' : '')
-          + (hovered.prompt ? ' — ' + String(hovered.prompt).replace(/\s+/g, ' ').slice(0, 56) : '')
         : '';
       const gaps = Math.max(0, n - 1);
       const track = `(100% - ${MX_LABEL_W + MX_GAP + gaps}px) / ${n}`;
@@ -617,8 +745,10 @@ window.__ModuleLoader__.load({
       // grows (the "梯形" artefact), while independent 1px lines stay crisp. They
       // are painted after the cells so the highlight reads as one column.
       const bandLayer = (key, style) => h('div', {
+        // F168: the band reaches up over the marker lane (top -8) so a selected
+        // column is framed from its flag down to its last metric row.
         key,
-        style: Object.assign({ position: 'absolute', top: -2, bottom: -2, pointerEvents: 'none' }, style),
+        style: Object.assign({ position: 'absolute', top: -8, bottom: -2, pointerEvents: 'none' }, style),
       });
       // F160: the legend explains "darker = higher rank" per row, through the
       // tooltip — the unexplained gradient bar it used to have read like a stray
@@ -653,14 +783,15 @@ window.__ModuleLoader__.load({
             fontVariantNumeric: 'tabular-nums',
             color: hovered ? T.text : T.faint,
           },
-        }, hovered
-          ? [
-            h('b', { key: 'rid', style: { fontWeight: 600, color: T.brand } }, `Run ${hovered.idx}`),
-            ` · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} steps`
-            + (hovered.hasError ? ' · error' : '') + (hovered.hasSlow ? ' · slow' : '')
-            + (hovered.prompt ? ' — ' + String(hovered.prompt).replace(/\s+/g, ' ').slice(0, 48) : ''),
-          ]
-          : label('mx.hint', 'hover a run · click to locate')),
+        }, tick && selected != null
+          ? h('span', { key: 'tick', className: 'hades-tick', 'data-hades-tick': '1' }, `Run ${selected} / ${total}`)
+          : hovered
+            ? [
+              h('b', { key: 'rid', style: { fontWeight: 600, color: T.brand } }, `Run ${hovered.idx}`),
+              ` · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} steps`
+              + (hovered.hasError ? ' · error' : '') + (hovered.hasSlow ? ' · slow' : ''),
+            ]
+            : label('mx.hint', 'hover a run · click to locate')),
         // F157: an explicit selection chip, so "what is currently selected" is
         // answered in words as well as by the 26%/2px column band.
         selectedPos >= 0 && shown[selectedPos] ? h('span', {
@@ -736,7 +867,7 @@ window.__ModuleLoader__.load({
         h('span', {
           key: 'wend',
           style: { flex: '0 0 auto', color: T.faint, fontVariantNumeric: 'tabular-nums' },
-        }, `12–${total}`),
+        }, windowN == null ? '' : `12–${total}`),
         windowN == null
           ? null
           : h('button', {
@@ -758,6 +889,11 @@ window.__ModuleLoader__.load({
           h(KpiSummary, { kpi, label }),
           h('div', {
             ref: matrixEl,
+            className: 'hades-matrix',
+            tabIndex: 0,
+            role: 'group',
+            'aria-label': 'run heat matrix',
+            onKeyDown: onMatrixKeyDown,
             style: {
               border: '1px solid ' + T.border, borderRadius: T.radiusMd,
               padding: '10px 12px 10px', background: T.surface,
@@ -768,13 +904,12 @@ window.__ModuleLoader__.load({
             legendRow,
             h('div', { style: { position: 'relative', overscrollBehavior: 'contain' } },
               grid,
-              // F157: two distinct states, both readable at a glance —
-              //   selected (clicked): 26% fill + 2px edges, stays after the
-              //                       pointer leaves;
-              //   hover:              18% fill + 1px edges, follows the pointer.
+              // F157/F168: two distinct states — selected (26% fill + 2px edges,
+              // stays) and hover (18% + 1px, follows). Fill strengths come from
+              // the DESIGN table so the two can never drift apart.
               selectedPos >= 0 ? bandLayer('sel-fill', {
                 left: bandAt(selectedPos).left, width: bandAt(selectedPos).width,
-                background: `color-mix(in srgb, ${T.brand} 26%, transparent)`,
+                background: `color-mix(in srgb, ${T.brand} ${DESIGN.alpha.bandSel}%, transparent)`,
               }) : null,
               selectedPos >= 0 ? bandLayer('sel-l', { left: bandAt(selectedPos).left, width: 2, background: T.brand }) : null,
               selectedPos >= 0 ? bandLayer('sel-r', {
@@ -782,7 +917,7 @@ window.__ModuleLoader__.load({
               }) : null,
               hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-fill', {
                 left: bandAt(hoverPos).left, width: bandAt(hoverPos).width,
-                background: `color-mix(in srgb, ${T.brand} 18%, transparent)`,
+                background: `color-mix(in srgb, ${T.brand} ${DESIGN.alpha.bandHover}%, transparent)`,
               }) : null,
               hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-l', { left: bandAt(hoverPos).left, width: 1, background: T.brand }) : null,
               hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-r', {
@@ -848,7 +983,7 @@ window.__ModuleLoader__.load({
             // (viewport-relative): scrolling between two measurements must not
             // read as "every row moved".
             const dy = prevTop - el.offsetTop;
-            if (Math.abs(dy) > 1) {
+            if (Math.abs(dy) > 1 && !motionReduced()) {
               // F158: promote the row only while it actually animates — a standing
               // `will-change` on 175 rows costs compositing memory and is a classic
               // scroll-jank source.
@@ -901,7 +1036,7 @@ window.__ModuleLoader__.load({
       // The header labels the *bar* column: the button covers just the track
       // (150px / 100px) and the label starts flush with the track's left edge,
       // so it sits over the bars instead of over the numbers (F132).
-      const sortCol = (key, text, tone, barW) => {
+      const sortCol = (key, text, tone) => {
         const active = !!sort && sort.key === key;
         const dir = active ? sort.dir : null;
         const hovered = hoverSort === key;
@@ -916,7 +1051,7 @@ window.__ModuleLoader__.load({
           'aria-sort': dir === 'desc' ? 'descending' : dir === 'asc' ? 'ascending' : 'none',
           title: dir === 'desc' ? `${text} desc · click for asc` : dir === 'asc' ? `${text} asc · click to clear` : `sort by ${text}`,
           style: {
-            flex: `0 0 ${barW}px`, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 0,
+            flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 0,
             background: hovered ? T.sortHoverBg : 'transparent',
             border: 'none', borderBottom: '1px solid ' + (hovered ? T.sortHoverLine : 'transparent'),
             padding: '1px 0', borderRadius: '3px 3px 0 0', cursor: 'pointer',
@@ -1012,8 +1147,8 @@ window.__ModuleLoader__.load({
             // across the list no longer re-renders 175 rows.
             className: 'hades-run-row' + (runSelected ? ' is-open' : ''),
             style: {
-              display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', minWidth: 0,
-              // No row separators: the outline look relies on the bracket + spacing.
+              display: 'flex', alignItems: 'center', gap: DESIGN.space.md, cursor: 'pointer', minWidth: 0,
+              minHeight: DESIGN.row.height, padding: `${DESIGN.row.pad}px 0`, boxSizing: 'border-box',
             },
           },
             h('span', {
@@ -1044,11 +1179,14 @@ window.__ModuleLoader__.load({
               tip: fmtK(r.token) + ' tok',
             }),
             h(RoleTag, { actor: r.actor, label }),
-            // F147: the whole prompt goes into the cell; the column clips it
-            // with CSS (`text-overflow: ellipsis`) instead of a character
-            // budget, so the cut always happens at the real width — and
-            // widening the window immediately reveals more of it.
-            h('span', { title: r.isSystemPrompt ? sysLabel : (r.prompt ?? ''), style: { flex: '1 1 auto', minWidth: 0, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, r.isSystemPrompt ? sysLabel : (r.prompt || '…')),
+            // F147/F168: the whole prompt goes into the cell and the column clips
+            // it at the real width; F168 adds a linear fade (`.hades-prompt`) so
+            // long prompts dissolve instead of ending in a hard ellipsis.
+            h('span', {
+              className: 'hades-prompt',
+              title: r.isSystemPrompt ? sysLabel : (r.prompt ?? ''),
+              style: { flex: '1 1 0', minWidth: 0, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontVariantNumeric: 'normal' },
+            }, r.isSystemPrompt ? sysLabel : (r.prompt || '…')),
             abnormal ? h('span', { style: { flex: '0 0 8px', width: 8, height: 8, borderRadius: '50%', background: T.error } }) : null,
           ),
           // F144: opening a run grows its bracket instead of snapping it in;
@@ -1082,19 +1220,19 @@ window.__ModuleLoader__.load({
         // visible, clicking a column sorts by it (desc → asc → off).
         h('div', {
           style: {
-            display: 'flex', alignItems: 'center', gap: 12,
+            display: 'flex', alignItems: 'center', gap: DESIGN.space.md,
             // 3px = the group's left border, so header and rows share x offsets.
-            padding: '0 0 3px 3px', borderBottom: '1px solid ' + T.border, marginBottom: 6,
+            padding: `0 0 ${DESIGN.space.xs}px 3px`, borderBottom: '1px solid ' + T.border, marginBottom: DESIGN.space.sm,
           },
         },
           h('span', { style: { flex: `0 0 ${RUN_IDX_W}px` } }),
           // Cells mirror the row cells exactly (bar slot + number slot) so the
           // bar-aligned labels land on the same x as the track below; the label
-          // itself only covers the track.
-          h('div', { key: 'h-time', style: { flex: `0 0 ${METRIC_W + 6 + METRIC_NUM_W}px`, display: 'flex', alignItems: 'center', minWidth: 0 } },
-            sortCol('time', label('col.time', 'Time'), T.brand, METRIC_W)),
-          h('div', { key: 'h-token', style: { flex: `0 0 ${METRIC_W + 6 + METRIC_NUM_W}px`, display: 'flex', alignItems: 'center', minWidth: 0 } },
-            sortCol('token', label('col.token', 'Token'), T.token, METRIC_W)),
+          // itself only covers the track. F168: fractional, like MetricBar.
+          h('div', { key: 'h-time', style: { flex: '1 1 0', display: 'flex', alignItems: 'center', minWidth: 0 } },
+            sortCol('time', label('col.time', 'Time'), T.brand)),
+          h('div', { key: 'h-token', style: { flex: '1 1 0', display: 'flex', alignItems: 'center', minWidth: 0 } },
+            sortCol('token', label('col.token', 'Token'), T.token)),
           sort ? sortClear() : null,
         ),
         h('div', { ref: listRef }, buildRows()),
@@ -1148,13 +1286,16 @@ window.__ModuleLoader__.load({
      * put), only the colored portion inside it reflects the value.
      */
     function MetricBar({ tone, fill, valueText, tip, width = METRIC_W, numWidth = METRIC_NUM_W }) {
+      // F168: the two metric columns are fractional (flex 1 1 0) so a narrow panel
+      // shrinks the tracks instead of overflowing; the number keeps a fixed gutter
+      // so digits stay aligned down the column.
       return h('div', {
         title: tip,
-        style: { flex: `0 0 ${width + numWidth + 6}px`, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 },
+        style: { flex: '1 1 0', display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 },
       },
         h('div', {
           style: {
-            position: 'relative', flex: `0 0 ${width}px`, height: 8, borderRadius: 99,
+            position: 'relative', flex: '1 1 0', minWidth: Math.min(width, 96), height: 8, borderRadius: 99,
             overflow: 'hidden', background: `color-mix(in srgb, ${tone} 12%, transparent)`,
           },
         }, fill),
@@ -1636,7 +1777,36 @@ window.__ModuleLoader__.load({
       if (state.error != null) return h('div', { style: { padding: '4px 0', fontSize: 12, color: T.error } }, state.error);
       let text;
       try { text = JSON.stringify(state.value, null, 2); } catch { text = String(state.value); }
-      return h('pre', { style: { margin: '4px 0 0 0', padding: '6px 10px', fontSize: 12, lineHeight: 1.4, fontFamily: T.mono, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflow: 'auto', background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm } }, text);
+      // F168: the raw payload can be large — a copy affordance is what makes it
+      // usable outside the panel (paste into an editor, diff two events, …).
+      const copy = (event) => {
+        event.stopPropagation();
+        const clip = typeof navigator !== 'undefined' ? navigator.clipboard : null;
+        if (!clip || typeof clip.writeText !== 'function') return;
+        clip.writeText(text).catch(() => {});
+      };
+      return h('div', { style: { marginTop: 4 } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: DESIGN.space.sm, marginBottom: DESIGN.space.xxs } },
+          h('span', { style: { font: `11px/1 ${T.mono}`, color: T.faint } }, `${text.length} chars`),
+          h('span', { style: { flex: '1 1 auto' } }),
+          h('button', {
+            type: 'button',
+            onClick: copy,
+            title: 'Copy raw JSON',
+            style: {
+              font: `11px/1 ${T.mono}`, color: T.muted, background: 'transparent',
+              border: '1px solid ' + T.border, borderRadius: 999, padding: '2px 8px', cursor: 'pointer',
+            },
+          }, 'Copy'),
+        ),
+        h('pre', {
+          style: {
+            margin: 0, padding: '6px 10px', fontSize: 11.5, lineHeight: 1.45, fontFamily: T.mono,
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflow: 'auto',
+            background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm,
+          },
+        }, text),
+      );
     }
 
     function Body({ sessionId, t }) {
@@ -1920,9 +2090,10 @@ window.__ModuleLoader__.load({
         const target = Math.max(0, Math.min(maxScroll, current + offset - anchor));
         const delta = target - current;
         if (Math.abs(delta) < 1) return;
-        if (typeof requestAnimationFrame !== 'function') { host.scrollTop = target; return; }
+        // F168: reduced motion turns every tween into an instant move.
+        if (typeof requestAnimationFrame !== 'function' || motionReduced()) { host.scrollTop = target; return; }
         if (scrubRaf.current != null) cancelAnimationFrame(scrubRaf.current);
-        const duration = 130;
+        const duration = DESIGN.motion.fast;
         const t0 = performance.now();
         const ease = (p) => 1 - Math.pow(1 - p, 3);
         const tick = (now) => {
@@ -2013,7 +2184,9 @@ window.__ModuleLoader__.load({
           const delta = target - current;
           if (Math.abs(delta) < 2) return;
           if (reduce || typeof requestAnimationFrame !== 'function') { host.scrollTop = target; return; }
-          const duration = Math.min(700, Math.max(260, Math.abs(delta) * 0.5));
+          // F168: one duration for every distance — the curve does the work, so a
+          // long jump lands as crisply as a short one.
+          const duration = Math.min(DESIGN.motion.glide, Math.max(DESIGN.motion.base, Math.abs(delta) * 0.35));
           const t0 = performance.now();
           const ease = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
           if (glideRaf.current != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(glideRaf.current);
@@ -2233,11 +2406,57 @@ window.__ModuleLoader__.load({
         });
       };
 
+      // F168: a bare "Loading…" line reads as a prototype. The first paint shows
+      // skeleton rows at the real row height, so the list never jumps when data
+      // lands. Empty and error states get the same centred card treatment.
+      const stateCard = (key, tone, text, extra) => h('div', {
+        key,
+        style: {
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: DESIGN.space.xs, padding: `${DESIGN.space.lg * 2}px ${DESIGN.space.md}px`,
+          minHeight: 160, color: tone, textAlign: 'center', fontSize: 12,
+        },
+      },
+        h('span', {
+          style: {
+            width: 28, height: 28, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            border: '1px solid ' + T.border, color: tone, font: `13px/1 ${T.mono}`,
+          },
+        }, key === 'err' ? '!' : '∅'),
+        h('span', null, text),
+        extra ?? null,
+      );
+
+      const skeleton = () => h('div', { key: 'skeleton', 'data-hades-skeleton': '1' },
+        Array.from({ length: 10 }).map((_, i) => h('div', {
+          key: 'sk-' + i,
+          className: 'hades-skeleton',
+          style: {
+            display: 'flex', alignItems: 'center', gap: DESIGN.space.md,
+            minHeight: DESIGN.row.height, padding: `${DESIGN.row.pad}px 0`, boxSizing: 'border-box',
+          },
+        },
+          h('span', { style: { flex: `0 0 ${RUN_IDX_W}px`, height: 9, borderRadius: 3, background: `color-mix(in srgb, ${T.text} 8%, transparent)` } }),
+          h('span', { style: { flex: '1 1 0', height: 8, borderRadius: 99, background: `color-mix(in srgb, ${T.text} 7%, transparent)` } }),
+          h('span', { style: { flex: '1 1 0', height: 8, borderRadius: 99, background: `color-mix(in srgb, ${T.text} 7%, transparent)` } }),
+          h('span', { style: { flex: '1 1 0', height: 9, borderRadius: 3, background: `color-mix(in srgb, ${T.text} 6%, transparent)` } }),
+        )),
+      );
+
       const renderList = () => {
-        if (error != null) return h('div', { style: { color: T.error } }, String(error));
-        if (loading && !payload) return h('div', { style: { color: T.muted } }, label('loading', 'Loading…'));
+        if (error != null) {
+          return stateCard('err', T.error, String(error), h('button', {
+            type: 'button',
+            onClick: () => load(true),
+            style: {
+              marginTop: DESIGN.space.xs, font: `11px/1 ${T.mono}`, color: T.text,
+              background: T.surface, border: '1px solid ' + T.border, borderRadius: 999, padding: '3px 10px', cursor: 'pointer',
+            },
+          }, label('step.retry', 'Retry')));
+        }
+        if (loading && !payload) return skeleton();
         if (!payload) return null;
-        if ((payload.counts?.events ?? 0) === 0) return h('div', { style: { color: T.muted } }, label('empty', 'No events in this session'));
+        if ((payload.counts?.events ?? 0) === 0) return stateCard('empty', T.muted, label('empty', 'No events in this session'));
         return h('div', null,
           h(DualBarChart, {
             rows: payload.runs ?? [],
@@ -2273,9 +2492,11 @@ window.__ModuleLoader__.load({
           '--hades-brand': T.brand,
           // F165: matrix slider/surface tokens.
           '--hades-track': `color-mix(in srgb, ${T.text} 12%, transparent)`,
-          '--hades-focus-row': `color-mix(in srgb, ${T.brand} 16%, transparent)`,
+          '--hades-focus-row': T.focusRow,
           '--hades-surface': T.surface,
           '--hades-border': T.border,
+          // F168: design tokens consumed by the injected stylesheets.
+          ...CSS_VARS,
         },
       },
         h('style', { key: 'hades-row-anim' }, ROW_ANIM_CSS),
