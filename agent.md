@@ -375,6 +375,8 @@ dsh-trace-analyzer/
 
 45. **M44 滚轮三处缺陷 + 回归套件（F172）** ✅：① **`deltaMode` 未归一**——行模式（`deltaY=3/格`）下 26px 阈值要 9 格才走一步，滚轮像没反应；现在 `deltaMode 1×16 / 2×400` 归一，任何模式一格一 Run；② **补间从半途重启**——快速连拨时每步在落后的 `scrollTop` 重启 ease，列表追不上选中；改用 `scrubTarget/scrubAt` 记住在飞目标，260ms 内新一步从上一目标续算并瞬时跳到起点；③ **从过期选中开始拨**——`selected` 可能在很远的位置，拨一格把列表瞬移；改为"指针所在列 → 列表顶部可见行（`topVisibleRunIdx`）→ 选中"的顺序解析基数；④ 累加器 400ms 无滚轮清零。**同时落地回归套件** `mockup/regress.mjs`（9 项：syntax/unit/smoke:load/smoke:render/served + cdp:scrub/wheel/hover/follow，每项自带断言、以退出码表态），并把"每次交付前必跑、绿项才回复、贴 summary"写进 §0.2/§0.4 与教训。本轮实际结果：**ALL GREEN (9 checks)**。见 TEST V85、SPEC 49。
 
+46. **M45 滚轮"无法持续滚动"：hover 钉住步进基数（F173）** ✅：F172 把基数改成"指针列 → 顶部可见行 → 选中"，但滚轮时**指针一直停在同一列**，`hover` 恒定 → 每格都算成 `hover+1`，于是第一格之后就不动了。改为**光标优先**：`selected`（窗口内）→ 顶部可见行 → hover（无光标时兜底）；hover 只做预览，不决定步进起点。**并补上回归缺口**：上一轮 `cdp:wheel` harness 是简化复刻、没模拟"停靠指针"，所以绿灯漏掉了这个 bug；现在 harness 引入固定 `hovered=40` 并复刻产品规则，新增断言"停靠指针连拨 3 格 = +3"。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V86、SPEC 50。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

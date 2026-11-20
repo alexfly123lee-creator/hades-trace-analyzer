@@ -702,11 +702,13 @@ window.__ModuleLoader__.load({
           wheelAcc.current = 0;
           const findPos = (idx) => shownRef.current.findIndex((r) => r.idx === idx);
           const cur = findPos(selectedRef.current);
-          const hov = findPos(hoverRef.current);
+          // F173: step FROM THE CURSOR. The pointer stays parked over one column
+          // while the wheel turns, so using hover as the base pinned every notch to
+          // "hover + 1" — the list advanced once and then never again.
+          // Hover is only the base when there is no usable cursor yet.
           const at = baseRunRef.current ? findPos(baseRunRef.current()) : -1;
-          // Pointer over a column wins; otherwise step from what the list is
-          // actually showing; the stored selection is only a last resort.
-          const from = hov >= 0 ? hov : at >= 0 ? at : cur >= 0 ? cur : 0;
+          const hov = findPos(hoverRef.current);
+          const from = cur >= 0 ? cur : at >= 0 ? at : hov >= 0 ? hov : 0;
           const next = Math.max(0, Math.min(list.length - 1, from + dir));
           const run = list[next];
           if (run == null) return;

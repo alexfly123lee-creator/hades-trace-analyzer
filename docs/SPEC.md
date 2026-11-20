@@ -568,7 +568,15 @@
 - **回归套件（本次同时落地）**：`node mockup/regress.mjs <GUI_URL>` 一条命令跑 9 项（syntax / unit / smoke:load / smoke:render / served / cdp:scrub / cdp:wheel / cdp:hover / cdp:follow），每项 harness 自带断言并以退出码表态；交付前必须 `ALL GREEN` 并把 summary 贴在回复里（规则写入 `agent.md` §0.2/§0.4）。
 - **AC**：一格一 Run（像素/行/页三种 deltaMode 均可）；快速连拨 10 格 → 选中 +10、落点 34%、滚动**单调不倒退**、页面不滚动；在列表中部拨动不会瞬移；`node mockup/regress.mjs` **ALL GREEN（9/9）**；`check-served` 128/128；单测 43/43。
 
-## 50. 范围外（v1 不做）
+## 50. 滚轮"无法持续滚动"的根因：hover 钉住了步进基数（F173）
+
+- **F173 现象**：在矩阵上滚动，**第一格能动，之后就不动了**（无法持续滚动）。
+- **根因**：F172 把步进基数改成"**指针所在列 → 列表顶部可见行 → 选中**"。但滚轮操作时**指针始终停在矩阵上某一列**，`hover` 每格都等于同一个值 → `from = hover` → `next = hover + 1` → **每一格都算到同一列**，于是卡在第一格之后不动。选择变了，但基数没变。
+- **改法**：步进基数改为**光标优先**——`selected`（可见窗口内）→ 列表顶部可见行（`topVisibleRunIdx`）→ 悬停列（仅在没有光标时兜底）。滚轮移动的是**光标**，hover 只负责预览（高亮带 + 读数），不再决定步进起点。
+- **回归补齐（关键）**：上一轮的 `cdp:wheel` harness 是**简化复刻**，它只用 `selected` 算基数、根本没模拟"指针停在某列"，所以这个 bug 在绿灯下漏到了线上。现在 harness 显式引入 `hovered = 40`（全程不动的停靠列）并复刻产品规则，新增断言：**指针停靠不动的情况下连拨 3 格必须前进 3 个 Run**。
+- **AC**：指针停在矩阵上不动，连续滚动可以一路拨到底（一格一 Run）；中途反向同样连续；`node mockup/regress.mjs` **ALL GREEN (9 checks)**；`check-served` 128/128；单测 43/43。
+
+## 51. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
