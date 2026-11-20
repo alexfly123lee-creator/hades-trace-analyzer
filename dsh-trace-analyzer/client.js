@@ -134,19 +134,28 @@ window.__ModuleLoader__.load({
     function Collapse({ open, children, expandMs = EXPAND_MS, collapseMs = COLLAPSE_MS }) {
       const ref = useRef(null);
       const [visible, setVisible] = useState(open);
+      // F163: flip `visible` during render instead of in an effect. The old
+      // `useEffect` round-trip changed a layout-effect dependency, so the open
+      // animation started twice in a row — that is the "expands, jumps, expands
+      // again" the user was seeing.
+      if (open && !visible) setVisible(true);
       // Closing must animate the content that is going away, so keep the last
       // open children around for the collapse.
       const lastChildren = useRef(children);
       if (open) lastChildren.current = children;
       // Height we last rendered at, used to follow async content smoothly.
       const heightRef = useRef(null);
-      useEffect(() => {
-        if (open) setVisible(true);
-        else heightRef.current = null;
-      }, [open]);
+      // The height animation currently in flight. A second WAAPI animation on the
+      // same property does not replace the first one — it composites with it —
+      // which is the other half of the "repeated/stuttering" look.
+      const animRef = useRef(null);
+      const cancelAnim = () => {
+        if (animRef.current != null) { animRef.current.cancel(); animRef.current = null; }
+      };
       useLayoutEffect(() => {
         const el = ref.current;
         if (el == null) return undefined;
+        cancelAnim();
         if (motionReduced()) {
           el.style.height = open ? 'auto' : '0px';
           el.style.opacity = open ? '1' : '0';
@@ -161,38 +170,45 @@ window.__ModuleLoader__.load({
             const fade = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'cubic-bezier(.2,.7,.3,1)' });
             return () => fade.cancel();
           }
+          // Measured once, from the real content — the panel opens already filled,
+          // so there is no second "grow into the loaded content" pass.
           const height = el.scrollHeight;
           el.style.height = 'auto';
+          el.style.opacity = '1';
           const anim = el.animate(
             [{ height: '0px', opacity: 0 }, { height: height + 'px', opacity: 1 }],
-            { duration: expandMs, easing: 'cubic-bezier(.2,.7,.3,1)' },
+            { duration: expandMs, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'none' },
           );
-          anim.onfinish = () => { el.style.height = 'auto'; el.style.opacity = '1'; };
+          animRef.current = anim;
+          anim.onfinish = () => { el.style.height = 'auto'; el.style.opacity = '1'; if (animRef.current === anim) animRef.current = null; };
           heightRef.current = height;
-          return () => anim.cancel();
+          return () => { anim.cancel(); if (animRef.current === anim) animRef.current = null; };
         }
         if (!visible) return undefined;
         const height = el.scrollHeight;
         heightRef.current = null;
         const anim = el.animate(
           [{ height: height + 'px', opacity: 1 }, { height: '0px', opacity: 0 }],
-          { duration: collapseMs, easing: 'cubic-bezier(.4,0,1,1)' },
+          { duration: collapseMs, easing: 'cubic-bezier(.4,0,1,1)', fill: 'none' },
         );
-        anim.onfinish = () => setVisible(false);
-        return () => anim.cancel();
-      }, [open, visible, expandMs, collapseMs]);
-      // F144: the step/run detail arrives asynchronously. When it lands while the
-      // panel is open, grow/shrink into the new height instead of jumping.
+        animRef.current = anim;
+        anim.onfinish = () => { if (animRef.current === anim) animRef.current = null; setVisible(false); };
+        return () => { anim.cancel(); if (animRef.current === anim) animRef.current = null; };
+      }, [open, expandMs, collapseMs]);
+      // F144/F163: the step/run detail arrives asynchronously. When it lands while
+      // the panel is open, grow/shrink into the new height instead of jumping —
+      // but never on top of the open animation.
       useLayoutEffect(() => {
         const el = ref.current;
-        if (el == null || !open || !visible) return undefined;
+        if (el == null || !open || !visible || animRef.current != null) return undefined;
         const height = el.scrollHeight;
         const prev = heightRef.current;
         heightRef.current = height;
         if (prev == null || motionReduced() || expandMs <= 0 || Math.abs(height - prev) < 8) return undefined;
-        const anim = el.animate([{ height: prev + 'px' }, { height: height + 'px' }], { duration: FOLLOW_MS, easing: 'cubic-bezier(.2,.7,.3,1)' });
-        anim.onfinish = () => { el.style.height = 'auto'; };
-        return () => anim.cancel();
+        const anim = el.animate([{ height: prev + 'px' }, { height: height + 'px' }], { duration: FOLLOW_MS, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'none' });
+        animRef.current = anim;
+        anim.onfinish = () => { el.style.height = 'auto'; if (animRef.current === anim) animRef.current = null; };
+        return () => { anim.cancel(); if (animRef.current === anim) animRef.current = null; };
       }, [children, open, visible, expandMs]);
       if (!visible) return null;
       return h('div', { ref, style: { overflow: 'hidden', height: open ? 'auto' : 0, opacity: open ? 1 : 0 } },
@@ -1513,6 +1529,10 @@ window.__ModuleLoader__.load({
       const tickBusy = useRef(false);
       const expandedRef = useRef(expanded);
       expandedRef.current = expanded;
+      // F163: same reason as expandedRef — cached rows and async callbacks must
+      // read the live detail map, not the snapshot their closure captured.
+      const detailsRef = useRef(details);
+      detailsRef.current = details;
       // step key -> counter; bumping it makes an open StepContent refetch.
       const [stepTokens, setStepTokens] = useState(() => ({}));
 
@@ -1699,18 +1719,30 @@ window.__ModuleLoader__.load({
         // built with, so a captured `expanded` would decide "open or close?" from
         // a stale snapshot.
         const willOpen = !expandedRef.current.has(runKey);
-        setExpanded((prev) => { const n = new Set(prev); if (n.has(runKey)) n.delete(runKey); else n.add(runKey); return n; });
-        if (!willOpen || !sessionId) return;
-        const key = sessionId + '::' + idx;
-        if (cache.run.has(key)) {
-          const hit = cache.run.get(key);
-          setDetails((prev) => new Map(prev).set(idx, hit));
+        if (!willOpen || !sessionId) {
+          setExpanded((prev) => { const n = new Set(prev); n.delete(runKey); return n; });
           return;
         }
+        const key = sessionId + '::' + idx;
+        // F163: a cached detail can open right away — the panel mounts already
+        // filled, so its height animation is a single clean pass.
+        if (cache.run.has(key) || detailsRef.current.has(idx)) {
+          if (cache.run.has(key)) {
+            const hit = cache.run.get(key);
+            setDetails((prev) => (prev.has(idx) ? prev : new Map(prev).set(idx, hit)));
+          }
+          setExpanded((prev) => { const n = new Set(prev); n.add(runKey); return n; });
+          return;
+        }
+        // F163: when the detail still has to be fetched, fetch FIRST and open with
+        // the content already in place. Opening first showed a one-line "载入 step…"
+        // placeholder that then grew into the real panel — that double growth is
+        // the "expands, then expands again" stutter.
         setDetailLoading((prev) => new Set(prev).add(idx));
         fetchPayload('run', { sessionId, idx }).then(({ json }) => {
           cacheSet(cache.run, key, json, CACHE_MAX.run);
           setDetails((prev) => new Map(prev).set(idx, json));
+          setExpanded((prev) => { const n = new Set(prev); n.add(runKey); return n; });
         }).catch((err) => {
           setDetailErrors((prev) => new Map(prev).set(idx, String((err && err.message) || err)));
         }).finally(() => {

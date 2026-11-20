@@ -329,6 +329,8 @@ dsh-trace-analyzer/
 
 35. **M34 点击矩阵不再整表重建、不再等 200ms（F162）** ✅：点击还剩两处真实开销——① 每次点击（改 expanded + detail 落地）都把 175 行**重新构建**一遍（≈2100 元素 + 逐节点 diff）；② F156 为了避开高度动画加的**固定 200ms 延迟**，本身就是"点了不动"的卡顿感。改法：`buildRows()` 行元素缓存（整表按 rows/sort/语言签名/首帧校验，打开状态按 `detailEpoch` 单独校验；命中的行复用同一批元素对象，React 整棵子树跳过）→ 点击只重建被点的那一行；`openRun`/`locateRun` 改读 `expandedRef.current`，避免缓存行携带旧快照；定位不再等固定 200ms（详情已缓存 → 下一帧滚；未缓存 → detail 一到就滚，`pendingLocate` 效应 + 400ms 兜底）；定位的那一行用 `instantOpen` 跳过高度动画。验收：check-served 92/92；单测 43/43。见 TEST V75。
 
+36. **M35 展开动画卡顿/反复的根因：一次展开跑了 3 个高度动画（F163）** ✅：`Collapse` 里三处叠加——① `useEffect(setVisible)` 让 `visible` 在布局副作用之后才变，而布局副作用依赖里带着 `visible` → 一次 open 跑两次布局副作用（第二次 cancel 重开，从 0 再来一遍）；② 详情异步，先挂"载入 step…"占位、detail 落地再由 follow 动画长到真实高度；③ WAAPI 对同一属性是**叠加**不是替换，两个 `height` 动画同时跑 = 抖动。改法：`visible` 改渲染期同步翻转、布局副作用只依赖 `[open, expandMs, collapseMs]`；`animRef` 记录在飞动画、新动画前 cancel，follow 在开启动画期间跳过；`openRun` 对未缓存 Run 改为 **fetch 成功后再 setExpanded**（详情与展开同批提交），面板出现即最终高度。harness 实测：旧路径一次展开 **3** 个高度动画，新路径 **1** 个。验收：check-served 99/99；单测 43/43。见 TEST V76。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

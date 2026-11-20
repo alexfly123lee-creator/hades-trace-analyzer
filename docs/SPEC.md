@@ -461,7 +461,21 @@
   - **定位的那一行不做高度动画**（`instantOpen`），展开高度瞬时就位，不与补间打架。
 - **AC**：点矩阵任一列 → 高亮立刻出现、列表**立刻**开始滚动（首次点未加载过的 Run 时最多等一次 `/run` 请求）；React DevTools 高亮更新时只有被点的那一行闪烁，其余 174 行不动；`check-served` 92/92（`buildRows` / `detailEpoch` / `pendingLocate` / `instantOpen` 均在 bundle 内）；单测 43/43。
 
-## 40. 范围外（v1 不做）
+## 40. 展开动画不丝滑的根因：一次展开跑了 3 个高度动画（F163）
+
+- **F163 现象**：点开一个 Run/Step，面板"展开 → 跳一下 → 再展开"，很卡。
+- **根因**（`Collapse` 组件的三处叠加）：
+  1. `useEffect(() => setVisible(true), [open])` 让 `visible` 在**布局副作用之后**才变，而布局副作用依赖里带着 `visible` → **一次 open 触发两次布局副作用**：第一次开启动画起在占位内容高度上，第二次 cleanup 取消它、又从 0 重新起一遍 —— 这就是"跳一下再展开"。
+  2. 详情是异步的：打开时先挂一行"载入 step…"占位，detail 落地后再由"follow"动画从占位高度长到真实高度 —— 第二次生长。
+  3. 第二次动画**不是替换**第一次，WAAPI 对同一属性是**叠加**的，两个 `height` 动画同时跑，视觉上就是抖动。
+- **改法**：
+  - `visible` 改成**渲染期同步**翻转（`if (open && !visible) setVisible(true)`），布局副作用只依赖 `[open, expandMs, collapseMs]`，一次展开只跑**一个**高度动画；
+  - 维护 `animRef` 记录在飞的动画，新动画前先 `cancel`，"follow" 动画在开启动画进行中直接跳过；
+  - **先取数据再展开**：`openRun` 对未缓存的 Run 改为 fetch 成功后才 `setExpanded`（详情与展开同一批提交），面板一出现就是最终高度，不再有"占位→真内容"的第二次生长；已缓存/已在展开的直接立刻打开。
+- **实测**（harness 复刻两条路径，统计 `Element.prototype.animate`）：**旧路径一次展开 = 3 个高度动画，新路径 = 1 个**。
+- **AC**：点开一个 Run，面板从 0 一次性长到最终高度，无回跳、无二次生长；关闭同理只有一个动画；`check-served` 99/99（新增 `const cancelAnim = () => {` / `if (open && !visible) setVisible(true);` / `const detailsRef = useRef(details)`）；单测 43/43。
+
+## 41. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
