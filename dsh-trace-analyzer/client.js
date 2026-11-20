@@ -277,8 +277,16 @@ window.__ModuleLoader__.load({
           const height = el.scrollHeight;
           el.style.height = 'auto';
           el.style.opacity = '1';
+          // F188: when this effect re-runs on a panel that is ALREADY open (content
+          // arrived, expandMs changed), grow from the current height instead of
+          // collapsing to 0 first — that collapse-then-grow is the visible "jump"
+          // when steps are opened out of order.
+          const from = heightRef.current != null ? Math.max(0, Math.min(heightRef.current, height)) : 0;
+          const frames = from > 0
+            ? [{ height: from + 'px' }, { height: height + 'px' }]
+            : [{ height: '0px', opacity: 0 }, { height: height + 'px', opacity: 1 }];
           const anim = el.animate(
-            [{ height: '0px', opacity: 0 }, { height: height + 'px', opacity: 1 }],
+            frames,
             { duration: expandMs, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'none' },
           );
           animRef.current = anim;
@@ -306,6 +314,18 @@ window.__ModuleLoader__.load({
         const height = el.scrollHeight;
         const prev = heightRef.current;
         heightRef.current = height;
+        // F188: a descendant Collapse (the Step panel) animating its own height is
+        // the reason this box used to jump when steps were opened out of order: the
+        // outer panel then animated from a stale `prev` to a target the inner
+        // animation was still moving. Let the inner animation own the geometry —
+        // only the async-data case below animates the outer box.
+        const innerRunning = typeof el.getAnimations === 'function'
+          && el.getAnimations({ subtree: true }).some((a) => {
+            if (a === animRef.current || a.playState !== 'running') return false;
+            const frames = a.effect && typeof a.effect.getKeyframes === 'function' ? a.effect.getKeyframes() : [];
+            return frames.some((frame) => frame.height != null);
+          });
+        if (innerRunning) return undefined;
         if (prev == null || motionReduced() || expandMs <= 0 || Math.abs(height - prev) < 8) return undefined;
         const anim = el.animate([{ height: prev + 'px' }, { height: height + 'px' }], { duration: FOLLOW_MS, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'none' });
         animRef.current = anim;

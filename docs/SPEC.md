@@ -707,7 +707,19 @@
 - **回归**：`smoke:render` 不再渲染被删组件；`check-served` 增加**反向断言**（`function KpiSummary` / `stat.runs` / `stat.slowest` 不得再出现在产物里），并在标记表里加 F186/F187 的新字符串。`node mockup/regress.mjs` **ALL GREEN (8 checks)**；`check-served` 143/143；单测 43/43。
 - **AC**：面板顶部只剩热力矩阵；列表可用高度增加；`node mockup/regress.mjs` 全绿。
 
-## 64. 范围外（v1 不做）
+## 64. Step 打开的跳动（尤其乱序打开）：Collapse 的两条竞态（F188）
+
+- **F188 现象**：F186 之后，Step 打开**仍会**跳动，而且**乱序打开**（先开后面再开前面、保留另一个已展开的 Step）时最明显。
+- **两个成因都在 `Collapse` 里**：
+  1. **外层面板跟着内层动画一起动**：Run 面板的"内容增高跟随"效果以 `children` 为依赖，每次渲染都会跑；当内层 Step 正在做高度动画时，外层拿**过期的 `prev`** 去 animate 到当前 `scrollHeight`，两个高度动画互相拉扯 → 盒子先跳一下再跟上。
+  2. **重跑打开效果时从 0 开始**：`expandMs` 变化（占位符→内容、或 `instant` 标记变化）会让打开效果重跑，而它的首帧恒为 `height: 0` → 盒子瞬间塌到 0，再长回去。
+- **改法**：
+  1. 外层跟随动画前先检查**子树里是否已有 height 动画在跑**（`el.getAnimations({subtree:true})` 过滤出关键帧含 `height` 且 `running` 的动画），有就跳过并把高度基线刷新到当前值；
+  2. 打开效果改为**从当前高度起算**：`from = min(heightRef.current ?? 0, height)`，`from > 0` 时用 `[from, height]` 两帧（不再带着 `opacity: 0` 的第一帧），首次打开仍是 `[0, height]`。
+- **回归（新增 `collapse` 检查）**：`mockup/check-collapse.mjs` **直接抽取 client.js 里两个 `useLayoutEffect` 的函数体**，在 Node 里用假元素跑 4 个场景：①子树有 height 动画在跑时外层**不得**再动画；②没有内部动画时异步增高仍要动画（200→400）；③已打开面板重跑时必须**从当前高度**起算；④首次打开仍从 0 起算。**对照实验**（`mockup/control-f188.mjs` 把两处修复回退）会立刻变红：`outer panel animated while a descendant height animation was running` / `re-open must start at the current height`。
+- **AC**：任意顺序打开/关闭 Step（含已有一个展开时打开另一个）**不再出现先塌后胀**；`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
+
+## 65. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

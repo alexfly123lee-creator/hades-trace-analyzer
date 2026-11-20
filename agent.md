@@ -403,6 +403,8 @@ dsh-trace-analyzer/
 
 59. **M58 去掉顶层统计指标面板（F187）** ✅：按需求移除矩阵上方的 Runs/Steps/Events · Tokens · Errors/Slow/Abnormal/Slowest 面板。① `OverviewBoard` 不再渲染 `KpiSummary`，矩阵卡成为列表上方唯一卡片；② **删除组件本体**（~40 行）+ 配套 `kpi` useMemo（不再计算无人消费的汇总）+ 只被它用的 8 个 `stat.*` 文案键；③ 注释同步（顶部结构说明 / `renderHeader` / app-shell 的"KPI + matrix"措辞）。保留：矩阵图例、悬停读数、滑块窗口、跟随与 `↓ Latest`。回归：`smoke:render` 去掉被删组件；`check-served` 加**反向断言**（`function KpiSummary` / `stat.runs` / `stat.slowest` 不得再出现）。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V99、SPEC 63。
 
+60. **M59 Step 乱序打开的跳动：Collapse 两条竞态（F188）** ✅：① **外层面板跟着内层动画一起动** —— Run 面板的"内容增高跟随"以 `children` 为依赖，每次渲染都跑；内层 Step 正在做高度动画时，外层拿过期 `prev` 去 animate 到当前 `scrollHeight`，两个高度动画互相拉扯 → 先跳再跟上。改为**先检查子树里是否已有 height 动画在跑**（`getAnimations({subtree:true})` 过滤关键帧含 `height` 且 running），有就跳过并刷新基线。② **重跑打开效果从 0 开始** —— `expandMs` 变化会让打开效果重跑，首帧恒为 `height: 0` → 塌到 0 再长回。改为 `from = min(heightRef.current ?? 0, height)` 起算，首次打开仍是 `[0, height]`。**回归新增 `collapse` 检查**：直接抽取 client.js 两个 `useLayoutEffect` 的函数体，在 Node 里用假元素跑 4 个场景；对照实验（`control-f188.mjs` 回退修复）立刻变红。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V100、SPEC 64。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
