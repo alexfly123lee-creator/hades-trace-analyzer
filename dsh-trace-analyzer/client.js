@@ -607,7 +607,7 @@ window.__ModuleLoader__.load({
     // stays a one-line change).
     const RUN_IDX_W = 78;
 
-    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, label }) {
+    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, label, detailEpoch, instantRef }) {
       const listRef = useRef(null);
       const prevTops = useRef(new Map());
       const first = useRef(true);
@@ -754,6 +754,125 @@ window.__ModuleLoader__.load({
         );
       };
 
+      // F162: cache the built row elements. A click used to rebuild all 175 rows
+      // twice — once for `expanded`, once when the fetched detail landed. React
+      // skips a subtree entirely when its element object is identical, so caching
+      // the element makes a click rebuild exactly the one row that changed.
+      const rowCache = useRef({ rows: null, sort: null, langKey: null, firstDone: null, map: new Map() });
+      // An open row's content also depends on its detail payload and on which
+      // Steps are open; those change without the run table changing, so they get
+      // their own epoch that only open rows check. It is computed by the parent
+      // (it owns details/stepTokens) and handed down as a stable object.
+      const openEpoch = detailEpoch;
+      // Language is carried by closures, not by data: derive a cheap signature so
+      // a locale switch invalidates the cache without depending on `label`'s
+      // identity (a new closure every render).
+      const langKey = label('col.time', 'Time') + '|' + label('col.token', 'Token') + '|' + sysLabel;
+
+      const buildRow = (r, open) => {
+        const tPct = (r.time / maxTime * 100).toFixed(1);
+        const kPct = (r.token / maxToken * 100).toFixed(1);
+        const abnormal = r.hasError;
+        // Highlight follows expansion (SPEC F128): an open Run keeps its row lit
+        // while its group is open, and an open Step keeps its own row lit.
+        const runSelected = open;
+        // Bracket outline unchanged (1px accent ring + 3px rail + radius); only
+        // the fill is gone. Collapsed rows keep transparent borders, so
+        // expanding never shifts content sideways.
+        const groupStyle = {
+          borderTop: '1px solid ' + (open ? T.groupRing : 'transparent'),
+          borderRight: '1px solid ' + (open ? T.groupRing : 'transparent'),
+          borderBottom: open ? '1px solid ' + T.groupRing : 'none',
+          borderLeft: '3px solid ' + (open ? T.rail : 'transparent'),
+          padding: open ? '0 0 6px' : '6px 0',
+          // F158: no standing `will-change` — 175 permanently promoted layers
+          // are a scroll-jank source. FLIP adds it only while animating.
+          borderRadius: T.radiusMd,
+          overflow: open ? 'hidden' : 'visible',
+          background: 'transparent',
+        };
+        // F141: a row that appears after the first paint is a live addition — fade
+        // it in so "a new run arrived" reads as growth, not as a repaint.
+        const isNewRow = !first.current && !seenRuns.current.has(r.idx);
+        if (isNewRow) seenRuns.current.add(r.idx);
+        // F144: animate the height only when the step index is already loaded.
+        const detailReady = hasDetail ? hasDetail(r.idx) : false;
+        const instant = !!(instantRef && instantRef.current && instantRef.current.has(r.idx));
+        return h('div', {
+          key: r.idx,
+          'data-run': String(r.idx),
+          style: isNewRow ? { ...groupStyle, animation: 'hadesRowIn .22s ease-out' } : groupStyle,
+        },
+          h('div', {
+            onClick: () => onToggleRun(r.idx),
+            // F158: hover is CSS (:hover) — no React state, so moving the pointer
+            // across the list no longer re-renders 175 rows.
+            className: 'hades-run-row' + (runSelected ? ' is-open' : ''),
+            style: {
+              display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', minWidth: 0,
+              // No row separators: the outline look relies on the bracket + spacing.
+            },
+          },
+            h('span', {
+              className: 'hades-idx',
+              style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : undefined, fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 },
+            },
+              r.stepCount ? h(Caret, { key: 'caret', open }) : null,
+              `Run ${r.idx}`),
+            // F145: both columns are the same slice (left 0, width = share of the
+            // session max); only `tone` differs.
+            h(MetricBar, {
+              width: METRIC_W,
+              numWidth: METRIC_NUM_W,
+              tone: T.brand,
+              fill: h(SliceFill, { tone: T.brand, left: 0, width: Number(tPct), tip: fmtMs(r.time) }),
+              valueText: fmtMs(r.time),
+              tip: fmtMs(r.time),
+            }),
+            // F142 (corrected): the run row keeps the plain magnitude bar; the
+            // *distribution* lives on the step rows, where each step's track is
+            // the run's total and the steps fill it cumulatively in order.
+            h(MetricBar, {
+              width: METRIC_W,
+              numWidth: METRIC_NUM_W,
+              tone: T.token,
+              fill: h(SliceFill, { tone: T.token, left: 0, width: Number(kPct), tip: fmtK(r.token) + ' tok' }),
+              valueText: fmtK(r.token),
+              tip: fmtK(r.token) + ' tok',
+            }),
+            h(RoleTag, { actor: r.actor, label }),
+            // F147: the whole prompt goes into the cell; the column clips it
+            // with CSS (`text-overflow: ellipsis`) instead of a character
+            // budget, so the cut always happens at the real width — and
+            // widening the window immediately reveals more of it.
+            h('span', { title: r.isSystemPrompt ? sysLabel : (r.prompt ?? ''), style: { flex: '1 1 auto', minWidth: 0, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, r.isSystemPrompt ? sysLabel : (r.prompt || '…')),
+            abnormal ? h('span', { style: { flex: '0 0 8px', width: 8, height: 8, borderRadius: '50%', background: T.error } }) : null,
+          ),
+          // F144: opening a run grows its bracket instead of snapping it in;
+          // a very long run (200+ steps, ~7k px) fades instead of animating
+          // height, which would relayout every frame.
+          // F158: build the step list ONLY while the row is open.
+          h(Collapse, { open, expandMs: !instant && detailReady && (r.stepCount ?? 0) <= BIG_RUN_STEPS ? EXPAND_MS : 0 }, open ? renderDetail(r) : null),
+        );
+      };
+
+      const buildRows = () => {
+        const c = rowCache.current;
+        const firstDone = !first.current;
+        if (c.rows !== rows || c.sort !== sort || c.langKey !== langKey || c.firstDone !== firstDone) {
+          c.map.clear();
+          c.rows = rows; c.sort = sort; c.langKey = langKey; c.firstDone = firstDone;
+        }
+        return sorted.map((r) => {
+          const open = expanded.has('run-' + r.idx);
+          const hit = c.map.get(r.idx);
+          if (hit && hit.open === open && (!open || hit.epoch === openEpoch)) return hit.el;
+          const el = buildRow(r, open);
+          c.map.set(r.idx, { open, epoch: openEpoch, el });
+          return el;
+        });
+      };
+
       return h('div', null,
         // Header doubles as the sort control: both metric columns are always
         // visible, clicking a column sorts by it (desc → asc → off).
@@ -774,99 +893,7 @@ window.__ModuleLoader__.load({
             sortCol('token', label('col.token', 'Token'), T.token, METRIC_W)),
           sort ? sortClear() : null,
         ),
-        h('div', { ref: listRef }, sorted.map((r) => {
-          const tPct = (r.time / maxTime * 100).toFixed(1);
-          const kPct = (r.token / maxToken * 100).toFixed(1);
-          const runKey = 'run-' + r.idx;
-          const open = expanded.has(runKey);
-          const abnormal = r.hasError;
-          // Highlight follows expansion (SPEC F128): an open Run keeps its row lit
-          // while its group is open, and an open Step keeps its own row lit.
-          const runSelected = open;
-          // Bracket outline unchanged (1px accent ring + 3px rail + radius); only
-          // the fill is gone. Collapsed rows keep transparent borders, so
-          // expanding never shifts content sideways.
-          const groupStyle = {
-            borderTop: '1px solid ' + (open ? T.groupRing : 'transparent'),
-            borderRight: '1px solid ' + (open ? T.groupRing : 'transparent'),
-            borderBottom: open ? '1px solid ' + T.groupRing : 'none',
-            borderLeft: '3px solid ' + (open ? T.rail : 'transparent'),
-            padding: open ? '0 0 6px' : '6px 0',
-            // F158: no standing `will-change` — 175 permanently promoted layers
-            // are a scroll-jank source. FLIP adds it only while animating.
-            borderRadius: T.radiusMd,
-            overflow: open ? 'hidden' : 'visible',
-            background: 'transparent',
-          };
-          // F141: a row that appears after the first paint is a live addition —
-          // fade it in so "a new run arrived" reads as growth, not as a repaint.
-          const isNewRow = !first.current && !seenRuns.current.has(r.idx);
-          if (isNewRow) seenRuns.current.add(r.idx);
-          // F144: animate the height only when the step index is already loaded.
-          // A first open would otherwise animate a one-line "载入 step…" placeholder
-          // and then grow again when the data lands — that double growth is what
-          // reads as "slow". Uncached expands appear at once and follow the data.
-          const detailReady = hasDetail ? hasDetail(r.idx) : false;
-          return h('div', {
-            key: r.idx,
-            'data-run': String(r.idx),
-            style: isNewRow ? { ...groupStyle, animation: 'hadesRowIn .22s ease-out' } : groupStyle,
-          },
-            h('div', {
-              onClick: () => onToggleRun(r.idx),
-              // F158: hover is CSS (:hover) — no React state, so moving the
-              // pointer across the list no longer re-renders 175 rows.
-              className: 'hades-run-row' + (runSelected ? ' is-open' : ''),
-              style: {
-                display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', minWidth: 0,
-                // No row separators: the outline look relies on the bracket + spacing.
-              },
-            },
-              h('span', {
-                className: 'hades-idx',
-                style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : undefined, fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 },
-              },
-                r.stepCount ? h(Caret, { key: 'caret', open }) : null,
-                `Run ${r.idx}`),
-              // F145: both columns are the same slice (left 0, width = share of
-              // the session max); only `tone` differs.
-              h(MetricBar, {
-                width: METRIC_W,
-                numWidth: METRIC_NUM_W,
-                tone: T.brand,
-                fill: h(SliceFill, { tone: T.brand, left: 0, width: Number(tPct), tip: fmtMs(r.time) }),
-                valueText: fmtMs(r.time),
-                tip: fmtMs(r.time),
-              }),
-              // F142 (corrected): the run row keeps the plain magnitude bar; the
-              // *distribution* lives on the step rows, where each step's track is
-              // the run's total and the steps fill it cumulatively in order.
-              h(MetricBar, {
-                width: METRIC_W,
-                numWidth: METRIC_NUM_W,
-                tone: T.token,
-                fill: h(SliceFill, { tone: T.token, left: 0, width: Number(kPct), tip: fmtK(r.token) + ' tok' }),
-                valueText: fmtK(r.token),
-                tip: fmtK(r.token) + ' tok',
-              }),
-              h(RoleTag, { actor: r.actor, label }),
-              // F147: the whole prompt goes into the cell; the column clips it
-              // with CSS (`text-overflow: ellipsis`) instead of a character
-              // budget, so the cut always happens at the real width — and
-              // widening the window immediately reveals more of it.
-              h('span', { title: r.isSystemPrompt ? sysLabel : (r.prompt ?? ''), style: { flex: '1 1 auto', minWidth: 0, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, r.isSystemPrompt ? sysLabel : (r.prompt || '…')),
-              abnormal ? h('span', { style: { flex: '0 0 8px', width: 8, height: 8, borderRadius: '50%', background: T.error } }) : null,
-            ),
-            // F144: opening a run grows its bracket instead of snapping it in;
-            // a very long run (200+ steps, ~7k px) fades instead of animating
-            // height, which would relayout every frame.
-            // F158: build the step list ONLY while the row is open. `renderDetail`
-            // was being called for all 175 rows on every render — for an expanded
-            // 80-step run that built 80 step rows per row per render, which is the
-            // single most expensive thing a re-render could do.
-            h(Collapse, { open, expandMs: detailReady && (r.stepCount ?? 0) <= BIG_RUN_STEPS ? EXPAND_MS : 0 }, open ? renderDetail(r) : null),
-          );
-        })),
+        h('div', { ref: listRef }, buildRows()),
       );
     }
 
@@ -1446,10 +1473,14 @@ window.__ModuleLoader__.load({
       const [details, setDetails] = useState(() => new Map());
       const [detailLoading, setDetailLoading] = useState(() => new Set());
       const [detailErrors, setDetailErrors] = useState(() => new Map());
-      // Handle of the running "glide to this run" tween (F151) and of the delay
-      // that waits for a just-opened run's height animation (F156).
+      // F162: a locate that is waiting for its run detail to arrive, plus the
+      // tween handle and the safety timer.
+      const pendingLocate = useRef(null);
       const glideRaf = useRef(null);
       const glideTimer = useRef(null);
+      // F162: runs opened by a matrix click expand without a height animation, so
+      // the locate tween never fights it.
+      const instantOpen = useRef(new Set());
       useEffect(() => {
         const root = rootRef.current;
         if (!root || typeof window === 'undefined') return undefined;
@@ -1664,7 +1695,10 @@ window.__ModuleLoader__.load({
 
       const openRun = (idx) => {
         const runKey = 'run-' + idx;
-        const willOpen = !expanded.has(runKey);
+        // F162: read the live Set. Cached row elements keep the closure they were
+        // built with, so a captured `expanded` would decide "open or close?" from
+        // a stale snapshot.
+        const willOpen = !expandedRef.current.has(runKey);
         setExpanded((prev) => { const n = new Set(prev); if (n.has(runKey)) n.delete(runKey); else n.add(runKey); return n; });
         if (!willOpen || !sessionId) return;
         const key = sessionId + '::' + idx;
@@ -1696,8 +1730,8 @@ window.__ModuleLoader__.load({
        * a new click simply replaces the running animation.
        */
       const locateRun = (idx) => {
-        const wasOpen = expanded.has('run-' + idx);
-        if (!wasOpen) openRun(idx);
+        const wasOpen = expandedRef.current.has('run-' + idx);
+        if (!wasOpen) { instantOpen.current.add(idx); openRun(idx); }
         const host = scrollRef.current;
         if (!host) return;
         const reduce = typeof window !== 'undefined' && window.matchMedia
@@ -1729,17 +1763,39 @@ window.__ModuleLoader__.load({
           };
           glideRaf.current = requestAnimationFrame(step);
         };
-        // F156: when the run still has to open, its 160ms height animation and
-        // the scroll tween compete for the main thread — and the list keeps
-        // growing underneath the tween. Let the expansion land first, then glide.
+        // F162: start moving as early as the layout allows, instead of sitting on
+        // a fixed 200 ms timer — that timer was the "click feels laggy" part.
+        //  - run already open (or its detail cached): the layout is final → glide
+        //    on the next frame;
+        //  - run still loading: glide as soon as its detail lands (pendingLocate
+        //    effect), with a timer as the safety net if the fetch never answers.
         const kick = () => {
           if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(glide));
           else glide();
         };
-        if (wasOpen) { kick(); return; }
-        if (glideTimer.current != null) clearTimeout(glideTimer.current);
-        glideTimer.current = setTimeout(() => { glideTimer.current = null; kick(); }, 200);
+        if (glideTimer.current != null) { clearTimeout(glideTimer.current); glideTimer.current = null; }
+        // A cached detail is applied in this same batch, so the layout is final.
+        const detailCached = cache.run.has(sessionId + '::' + idx);
+        if (wasOpen || detailCached) { kick(); return; }
+        pendingLocate.current = idx;
+        glideTimer.current = setTimeout(() => {
+          glideTimer.current = null;
+          if (pendingLocate.current === idx) pendingLocate.current = null;
+          kick();
+        }, 400);
       };
+
+      /**
+       * F162: when the detail for a pending locate lands, glide immediately —
+       * the list height is final at that point, so the target is exact.
+       */
+      useEffect(() => {
+        const idx = pendingLocate.current;
+        if (idx == null || !details.has(idx)) return;
+        pendingLocate.current = null;
+        if (glideTimer.current != null) { clearTimeout(glideTimer.current); glideTimer.current = null; }
+        locateRun(idx);
+      }, [details]);
 
       /** Toggle one Step's panel; its row highlight follows the open state. */
       const selectStep = (runIdx, stepIdx) => {
@@ -1752,6 +1808,11 @@ window.__ModuleLoader__.load({
       };
 
       const label = (k, fb) => (t ? t(k) : fb);
+
+      // F162: identity token for everything an OPEN row's content depends on
+      // (its detail payload, which Steps are open, live step refreshes). Closed
+      // rows ignore it, so a click no longer rebuilds the whole list.
+      const detailEpoch = useMemo(() => ({}), [details, detailLoading, detailErrors, stepTokens, expanded]);
 
       const kpi = useMemo(() => {
         if (!payload) return null;
@@ -1926,6 +1987,8 @@ window.__ModuleLoader__.load({
             renderDetail,
             hasDetail: (idx) => details.has(idx),
             label,
+            detailEpoch,
+            instantRef: instantOpen,
           }),
           // F161: breathing room so the last Run can still be scrolled to the top.
           tailPad > 0 ? h('div', { key: 'tail', 'data-hades-tail': '1', style: { height: tailPad } }) : null,

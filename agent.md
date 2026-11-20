@@ -327,6 +327,8 @@ dsh-trace-analyzer/
 
 34. **M33 点矩阵后选中行滚到列表顶部（F161）** ✅：F155 之后表头已在滚动区外，但 `locateRun` 的落点还留着旧算法（`max(视口×0.32, 矩阵高+16)`，上限 `视口×0.6`），选中的 Run 落在列表中部。现在落点固定为列表顶部（`target = scrollTop + 行相对偏移 − 2`）；并且因为列表到底就结束、最后几屏的行数学上无法贴顶，所以在列表末尾加 `tailPad = 列表视口高 − 40px` 的留白（`data-hades-tail`），让每行都能贴顶。CDP 实测（shadow + 无界父容器）：抽测第 8/20/30/34 列，`rowTopInList` 全部 = **2px**（改之前 30/34 分别是 124/240，因为贴底），`boardTop` 恒为 103。验收：check-served 92/92（新增 data-hades-tail / tailPad）；单测 43/43。见 TEST V74。
 
+35. **M34 点击矩阵不再整表重建、不再等 200ms（F162）** ✅：点击还剩两处真实开销——① 每次点击（改 expanded + detail 落地）都把 175 行**重新构建**一遍（≈2100 元素 + 逐节点 diff）；② F156 为了避开高度动画加的**固定 200ms 延迟**，本身就是"点了不动"的卡顿感。改法：`buildRows()` 行元素缓存（整表按 rows/sort/语言签名/首帧校验，打开状态按 `detailEpoch` 单独校验；命中的行复用同一批元素对象，React 整棵子树跳过）→ 点击只重建被点的那一行；`openRun`/`locateRun` 改读 `expandedRef.current`，避免缓存行携带旧快照；定位不再等固定 200ms（详情已缓存 → 下一帧滚；未缓存 → detail 一到就滚，`pendingLocate` 效应 + 400ms 兜底）；定位的那一行用 `instantOpen` 跳过高度动画。验收：check-served 92/92；单测 43/43。见 TEST V75。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
