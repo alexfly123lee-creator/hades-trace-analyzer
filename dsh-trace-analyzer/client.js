@@ -2182,16 +2182,13 @@ window.__ModuleLoader__.load({
         const maxScroll = Math.max(0, host.scrollHeight - host.clientHeight);
         const offset = el.getBoundingClientRect().top - host.getBoundingClientRect().top;
         const viewH = host.clientHeight;
-        // F178: RELATIVE highlight instead of row-jumping. The list only moves when
-        // the focused Run would fall outside a comfort band — and then just far
-        // enough to bring it back in. Re-anchoring every column to 34% made the
-        // rows leap around under the pointer, which read as "the list is jumping".
-        const bandTop = Math.round(viewH * 0.12);
-        const bandBottom = Math.round(viewH * 0.78);
-        const rowBottom = offset + (el.offsetHeight || DESIGN.row.height);
-        let target = current;
-        if (offset < bandTop) target = current + offset - bandTop;
-        else if (rowBottom > bandBottom) target = current + rowBottom - bandBottom;
+        // F179: a fixed FOCUS LINE. The highlighted Run always sits at 34% of the
+        // viewport; the rows scroll underneath it, so sweeping the matrix reads as
+        // "the list is moving", not "the highlight is jumping between rows".
+        // (F178 tried minimal band scrolling — the highlight then travelled up and
+        // down the viewport, which is the opposite of what a scanner line should do.)
+        const anchor = Math.round(viewH * 0.34);
+        let target = current + offset - anchor;
         target = Math.max(0, Math.min(maxScroll, Math.round(target)));
         const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
         // Compose with the tween in flight: start from its target instead of the

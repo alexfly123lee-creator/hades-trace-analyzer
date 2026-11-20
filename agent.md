@@ -385,6 +385,8 @@ dsh-trace-analyzer/
 
 50. **M49 相对位置高亮：悬停不再让行乱跳（F178）** ✅：每换一列就把该 Run 重新锚定到 34%，扫过 175 列 = 175 次滚动，视觉上就是"行疯狂跳动"。改为**舒适带最小滚动**：`bandTop/bandBottom = 12%/78%`；焦点行**已在带内 → 完全不滚**（高亮跟指针走、列表不动，这才是"相对位置高亮"）；只有要离开带时才滚，且只滚**刚好**把它带回带内（回 12% / 推 78%），不再拉 34%。`cdp:focus` 新增"带内悬停不得改变 scrollTop"与"落点须在 0–80% 带内"两条断言，并把断言基线改成紧邻状态（原先对比更早状态会误报）。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V90、SPEC 54。
 
+51. **M50 固定焦点线：行在滚、高亮不动（F179）** ✅：F178 的"舒适带最小滚动"让高亮在视口里上下移动，方向反了。改为**固定焦点线**：焦点行恒定落在视口 **34%**（`anchor = viewH × 0.34`），悬停不同列时由**列表移动**把该行送到这条线上 —— 眼睛看到"列表在滚、高亮不动"；连续悬停用 `scrubTarget/scrubAt` 合成位移（260ms 内从上一目标续算），扫过一串列是一次连贯滑动而非逐格跳；300ms easeInOutCubic 与 `markProgrammatic` 保留。`cdp:focus` 改为断言"焦点行必须落在 34%±6%"+"悬停线外行确实滚动列表"，并修掉测试里两处标识符/基线错误。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V91、SPEC 55。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
