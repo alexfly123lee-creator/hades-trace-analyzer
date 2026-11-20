@@ -501,7 +501,17 @@
 - **实现要点**：`wheel` 用原生监听 + `passive: false` 才能 `preventDefault`；处理器只挂一次，靠 `selectedRef/hoverRef/shownRef` 读最新状态；行元素缓存（F162）把焦点也纳入条目有效性，所以一格只重建**新旧两行**。
 - **AC**：在矩阵上滚轮 → 列表逐行上/下拨动、页面与列表都不自由滚动；除焦点外全部变淡，焦点行有强调轨与底色；停止 700ms 后恢复；到首/尾停住不越界；点击仍照常展开；`check-served` 108/108（新增 `hades-scrubbing` / `wheelAcc` / `beginScrub` / `is-focus` / `const scrubTo = (idx) => {`）；单测 43/43；设计稿 `mockup/scrub-f166.png`。
 
-## 44. 范围外（v1 不做）
+## 44. 拨动修复 + 焦点行不再贴顶（F167）
+
+- **F167 上一版"没生效"的两个真实原因**：
+  1. **监听器没挂上**：用 `useEffect(..., [])` 去读 `ret`，但矩阵卡第一次渲染可能还没提交（列表空/数据未到时会提前 `return null`），effect 只在挂载后的那一次跑，ref 为 `null` 就直接放弃了 —— 之后再也不会重试。改成**回调 ref**（`useCallback` 稳定身份）在元素真正挂载时 `addEventListener`、卸载时 `removeEventListener`，与渲染时序无关。
+  2. **hook 顺序被打断**：那段 effect 落 `if (n === 0) return null;` **之后**，一旦表格短暂为空，hook 数量就会变化（React 会报错/行为异常）。现在所有 hook 都在提前 return 之前。
+  - 顺带把监听范围从"网格盒子"扩大到**整张矩阵卡**（图例/读数也能触发），命中更容易。
+- **焦点行不再贴顶**：拨动定位的锚点从"列表顶部 -2px"改成 **视口高度的 34%** —— 贴顶时那一行紧贴矩阵卡下边缘，眼睛要来回扫；留出上方约 1/3 的上下文读起来才舒服。落位仍是 **130ms + easeOutCubic** 的定档补间（F166）。
+- **实测**（harness 复刻 + CDP 真实滚轮事件 `Input.dispatchMouseEvent`）：滚一格 → 选中 Run 前进 1（101→102→103），**40 行里 39 行被压到 22%**，页面 `scrollY` 恒为 0（滚轮被接管）；连续拨到第 12 行后 `rowTopInViewportPct = 34`。
+- **AC**：在矩阵卡上滚轮 → 逐 Run 拨动、其余行变淡、焦点行停在上方约 1/3 处；页面不滚动；`check-served` 110/110（新增 `const matrixEl = useCallback` / `host.clientHeight * 0.34`）；单测 43/43。
+
+## 45. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

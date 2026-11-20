@@ -463,11 +463,6 @@ window.__ModuleLoader__.load({
       const [selected, setSelected] = useState(null);
       // F164: how many of the most recent runs the matrix shows. null = all.
       const [windowN, setWindowN] = useState(null);
-      // F166: the wheel listener is attached once; it reads these.
-      const selectedRef = useRef(selected);
-      selectedRef.current = selected;
-      const hoverRef = useRef(hover);
-      hoverRef.current = hover;
       const wrapRef = useRef(null);
       const cardRef = useRef(null);
       // F156: the parent re-renders on every realtime tick, so a captured
@@ -478,8 +473,7 @@ window.__ModuleLoader__.load({
       // F166: a stable handle for the wheel handler (attached once, natively).
       const scrubRef = useRef(onScrub);
       scrubRef.current = onScrub;
-      const gridRef = useRef(null);
-      const wheelAcc = useRef(0);
+
       const total = rows.length;
       // A "window" is the newest N runs — where a session's dense tail lives, and
       // the part worth reading at 1 column per run.
@@ -553,6 +547,50 @@ window.__ModuleLoader__.load({
         ),
         // Callbacks are stable through refs, so they stay out of the deps.
       ], [shown, ranks, n, rowTexts, cellRadius]);
+      // F167: wheel over the grid = scrub the list. One notch walks one Run and the
+      // list below dims to a single focused row.
+      //
+      // Two fixes over the first cut:
+      //  * the listener is attached by a CALLBACK REF, not a mount effect — an
+      //    effect with [] deps silently did nothing when the matrix mounted on a
+      //    later render (the ref was still null on its only run);
+      //  * the effect used to sit AFTER the `n === 0` early return, which breaks
+      //    the hook order as soon as the run table is empty once.
+      const shownRef = useRef(shown);
+      shownRef.current = shown;
+      const selectedRef = useRef(selected);
+      selectedRef.current = selected;
+      const hoverRef = useRef(hover);
+      hoverRef.current = hover;
+      const wheelAcc = useRef(0);
+      const detachWheel = useRef(null);
+      const matrixEl = useCallback((el) => {
+        if (detachWheel.current != null) { detachWheel.current(); detachWheel.current = null; }
+        if (el == null) return;
+        const onWheel = (event) => {
+          const list = shownRef.current;
+          if (list.length < 2) return;
+          // Take the gesture: over the matrix the wheel steers Runs, it does not
+          // scroll the page. Passive listeners cannot do this — hence the native one.
+          event.preventDefault();
+          wheelAcc.current += event.deltaY;
+          if (Math.abs(wheelAcc.current) < 26) return;
+          const dir = wheelAcc.current > 0 ? 1 : -1;
+          wheelAcc.current = 0;
+          const findPos = (idx) => shownRef.current.findIndex((r) => r.idx === idx);
+          const cur = findPos(selectedRef.current);
+          const base = cur >= 0 ? cur : findPos(hoverRef.current);
+          const from = base >= 0 ? base : 0;
+          const next = Math.max(0, Math.min(list.length - 1, from + dir));
+          const run = list[next];
+          if (run == null) return;
+          setSelected(run.idx);
+          if (scrubRef.current) scrubRef.current(run.idx);
+        };
+        el.addEventListener('wheel', onWheel, { passive: false });
+        detachWheel.current = () => el.removeEventListener('wheel', onWheel);
+      }, []);
+
       if (n === 0) return null;
       const posOf = (idx) => (idx == null ? -1 : shown.findIndex((r) => r.idx === idx));
       const selectedPos = posOf(selected);
@@ -595,37 +633,6 @@ window.__ModuleLoader__.load({
       }, h('i', {
         style: { width: 8, height: 8, borderRadius: 2, background: tone, display: 'inline-block', flex: '0 0 8px' },
       }), text);
-      // F166: wheel over the grid = scrub the list. One notch walks one Run, the
-      // list below dims to a single focused row and steps with a 130ms detent, so
-      // the motion reads as "tick · tick · tick" instead of free scrolling.
-      const shownRef = useRef(shown);
-      shownRef.current = shown;
-      const posOfRef = useRef(null);
-      posOfRef.current = (idx) => shownRef.current.findIndex((r) => r.idx === idx);
-      useEffect(() => {
-        const el = gridRef.current;
-        if (el == null) return undefined;
-        const onWheel = (event) => {
-          const list = shownRef.current;
-          if (list.length < 2) return;
-          event.preventDefault();
-          wheelAcc.current += event.deltaY;
-          if (Math.abs(wheelAcc.current) < 26) return;
-          const dir = wheelAcc.current > 0 ? 1 : -1;
-          wheelAcc.current = 0;
-          const current = posOfRef.current(selectedRef.current);
-          const base = current >= 0 ? current : posOfRef.current(hoverRef.current);
-          const from = base >= 0 ? base : 0;
-          const next = Math.max(0, Math.min(list.length - 1, from + dir));
-          const run = list[next];
-          if (run == null) return;
-          setSelected(run.idx);
-          if (scrubRef.current) scrubRef.current(run.idx);
-        };
-        el.addEventListener('wheel', onWheel, { passive: false });
-        return () => el.removeEventListener('wheel', onWheel);
-      }, []);
-
       // F164/F165: the card header carries the readout on the left and the legend
       // on the right. The legend is grouped — metric rows first, then a hairline
       // divider, then the two flag swatches — so "what the colours mean" reads as
@@ -750,6 +757,7 @@ window.__ModuleLoader__.load({
         h('div', { ref: cardRef, 'data-hades-board': '1', style: { zIndex: 3 } },
           h(KpiSummary, { kpi, label }),
           h('div', {
+            ref: matrixEl,
             style: {
               border: '1px solid ' + T.border, borderRadius: T.radiusMd,
               padding: '10px 12px 10px', background: T.surface,
@@ -758,7 +766,7 @@ window.__ModuleLoader__.load({
             onMouseLeave: () => setHover(null),
           },
             legendRow,
-            h('div', { ref: gridRef, style: { position: 'relative', overscrollBehavior: 'contain' } },
+            h('div', { style: { position: 'relative', overscrollBehavior: 'contain' } },
               grid,
               // F157: two distinct states, both readable at a glance —
               //   selected (clicked): 26% fill + 2px edges, stays after the
@@ -1905,7 +1913,11 @@ window.__ModuleLoader__.load({
         const current = host.scrollTop;
         const maxScroll = Math.max(0, host.scrollHeight - host.clientHeight);
         const offset = el.getBoundingClientRect().top - host.getBoundingClientRect().top;
-        const target = Math.max(0, Math.min(maxScroll, current + offset - 2));
+        // F167: park the focused Run about a third down the viewport. Pinned to the
+        // top edge it sat right under the matrix border and was tiring to read —
+        // some context above it is what makes the scrub comfortable.
+        const anchor = Math.round(host.clientHeight * 0.34);
+        const target = Math.max(0, Math.min(maxScroll, current + offset - anchor));
         const delta = target - current;
         if (Math.abs(delta) < 1) return;
         if (typeof requestAnimationFrame !== 'function') { host.scrollTop = target; return; }

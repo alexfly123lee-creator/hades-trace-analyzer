@@ -337,6 +337,8 @@ dsh-trace-analyzer/
 
 39. **M38 矩阵滚轮 = 逐 Run 拨动列表（F166）** ✅：指针在热力矩阵上滚轮不再滚动，而是**一格一个 Run**地拨（增量累加 26px 触发一步，触控板不会飞）；拨动期间根节点加 `.hades-scrubbing`，Run 分组 `opacity:.22`、只有焦点行全不透明且带品牌色左轨 + 16% 底色 + Run 号品牌色；列表用 **130ms + easeOutCubic** 把焦点行顶到顶部（"哒哒哒"定档感，不是 260–700ms 长滑行），停手 700ms 后恢复；滚轮不展开（展开仍是点击）。实现：原生 `wheel` + `passive:false` 才能 preventDefault；处理器只挂一次，靠 `selectedRef/hoverRef/shownRef` 读最新值；行缓存把 focus 纳入条目有效性 → 一格只重建新旧两行。验收：check-served 108/108（新增 hades-scrubbing / wheelAcc / beginScrub / is-focus / scrubTo）；单测 43/43；设计稿 mockup/scrub-f166.png。见 TEST V79。
 
+40. **M39 拨动修复 + 焦点行不再贴顶（F167）** ✅：上一版"没生效"两个真实原因——① 用 `useEffect(..., [])` 读 ref，矩阵卡首次渲染可能因提前 `return null`（数据未到/表格为空）而未提交，effect 只在挂载那次跑、ref 为 null 就直接放弃且永不重试 → 改成**回调 ref**（`useCallback` 稳定身份）在元素真正挂载时绑定、卸载时解绑；② 那段 effect 落在 `if (n === 0) return null;` **之后**，表格短暂为空时 hook 数变化 → 现在所有 hook 都在提前 return 之前。顺带把监听范围从网格盒子扩到**整张矩阵卡**。另外焦点行不再贴顶：锚点从"列表顶部 -2px"改成 **视口 34% 处**（贴顶时紧贴矩阵下边缘，读着累）；落位仍是 130ms easeOutCubic。CDP 实测（真实 `Input.dispatchMouseEvent` 滚轮）：一格一个 Run（101→102→103）、40 行里 39 行压到 22%、页面 scrollY 恒 0、连续拨到第 12 行后 `rowTopInViewportPct = 34`。验收：check-served 110/110；单测 43/43。见 TEST V80。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
