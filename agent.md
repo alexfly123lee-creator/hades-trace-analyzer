@@ -397,6 +397,8 @@ dsh-trace-analyzer/
 
 56. **M55 撤掉 hold 兜底 + 日志增强（F184）** ✅：日志证明真凶是"点击后扫邻列触发悬停聚焦"（F183 已修），而 F182 的 **hold 一次性回滚** 反而成了新的可见位移源（指针离开矩阵时把列表"补回"定位位置 = 每次挪下来错动几行）。有真因后兜底必须退场：删掉 `locatedHoldRef` 与回滚分支，user-input 监听改为纯日志。日志增强：每条带 `top`/`sh`（区分"滚动"还是"内容变高"），焦点变化记 `focus` 事件，环形缓冲扩到 80 条。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V96、SPEC 60。
 
+57. **M56 矩阵点击面：整块可点、整块手形（F185）** ✅：点击只挂在**格子节点**上（3px 标记带 / 11px 指标行），而格子间有 1px gap、行间 4px margin、左边 46px 标签栏 —— 指针落进缝里时 `closest('[data-idx]')` 返回 `null`，点击被吞、光标仍是箭头（用户："经常不进入点击态"）。改法：① 新增 `columnAt(event, container)` 按几何换算列索引（先 `closest`，取不到就用 x/宽度 比例），`clickColumn` 统一处理（含 F183 悬停锁与 locate）；② 点击改挂**容器**（标记带 1 个 + 三条指标行各 1 个，`data-hades-lane-grid` / `data-hades-row-grid`），删掉 2400 个格子级 onClick；③ 绘图区包装器/容器/网格都 `cursor: pointer`。附带修复：三条指标行的点击原先**没有**设 F183 悬停锁，点进去后指针一动又把行拉回焦点线。`smoke:render` 新增结构断言（1 个标记带容器 + 3 个指标行容器 + 手形光标 ≥4）。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V97、SPEC 61。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

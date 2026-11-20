@@ -630,10 +630,40 @@ window.__ModuleLoader__.load({
       // F156: 700 cells are expensive to rebuild, and nothing about them changes
       // on hover/selection — only the overlay band does. Memoise them so a click
       // costs one band move instead of a full grid re-render.
+      // F185: the click target is the column under the pointer, not the 3–11px
+      // cell node. Over a 1px gap / 4px row margin the cell lookup returns null and
+      // the click used to be swallowed (and the cursor stayed an arrow).
+      const columnAt = (event, container) => {
+        const cell = event.target && event.target.closest ? event.target.closest('[data-idx]') : null;
+        if (cell != null) {
+          const fromCell = Number(cell.getAttribute('data-idx'));
+          if (Number.isFinite(fromCell)) return fromCell;
+        }
+        const rect = container.getBoundingClientRect();
+        const list = shownRef.current;
+        if (rect.width <= 0 || list.length === 0) return null;
+        const ratio = (event.clientX - rect.left) / rect.width;
+        const pos = Math.max(0, Math.min(list.length - 1, Math.floor(ratio * list.length)));
+        return list[pos] == null ? null : list[pos].idx;
+      };
+      const clickColumn = (event, container) => {
+        const idx = columnAt(event, container);
+        if (idx == null) return;
+        // F183: the click parks this Run at the top; keep it there while the
+        // pointer moves around the matrix.
+        hoverLock.current = true;
+        setSelected(idx);
+        setTimeout(() => locateRef.current(idx), 0);
+      };
+
       const grid = useMemo(() => [
         h('div', { key: 'lane', className: 'hades-lane', style: { display: 'flex', alignItems: 'center', gap: MX_GAP, height: 4, marginBottom: 4 } },
           h('span', { style: { flex: `0 0 ${MX_LABEL_W}px` } }),
-          h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
+          h('div', {
+            'data-hades-lane-grid': '1',
+            onClick: (event) => clickColumn(event, event.currentTarget),
+            style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1, cursor: 'pointer' },
+          },
             shown.map((r) => h('div', {
               key: 'mk-' + r.idx,
               // F171: hover is resolved by the grid wrapper from `data-idx` — per
@@ -642,13 +672,6 @@ window.__ModuleLoader__.load({
               // fire while sweeping and the tooltip window steals mouseover, which
               // is the other half of "the hover band vanishes".
               'data-idx': r.idx,
-              onClick: () => {
-              // F183: the click parks this Run at the top; keep it there while the
-              // pointer moves around the matrix.
-              hoverLock.current = true;
-              setSelected(r.idx);
-              setTimeout(() => locateRef.current(r.idx), 0);
-            },
               style: { height: 3, borderRadius: 1, cursor: 'pointer', background: markerBg(r) },
             })),
           ),
@@ -657,11 +680,14 @@ window.__ModuleLoader__.load({
           h('span', {
             style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
           }, row.text),
-          h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
+          h('div', {
+            'data-hades-row-grid': '1',
+            onClick: (event) => clickColumn(event, event.currentTarget),
+            style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1, cursor: 'pointer' },
+          },
             shown.map((r) => h('div', {
               key: r.idx,
               'data-idx': r.idx,
-              onClick: () => { setSelected(r.idx); setTimeout(() => locateRef.current(r.idx), 0); },
               style: { height: 11, borderRadius: cellRadius, cursor: 'pointer', background: shade(row.tone, row.rankOf(r)) },
             })),
           ),
@@ -924,7 +950,9 @@ window.__ModuleLoader__.load({
                 setHover(null);
                 if (scrubRef.current) scrubRef.current(null);
               },
-              style: { position: 'relative', overscrollBehavior: 'contain' },
+              // F185: the whole plot area is clickable — hand cursor everywhere,
+              // including the 1px gaps and the 4px row margins.
+              style: { position: 'relative', overscrollBehavior: 'contain', cursor: 'pointer' },
             },
               grid,
               // F157/F168: two distinct states — selected (26% fill + 2px edges,
