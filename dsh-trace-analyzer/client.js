@@ -1433,6 +1433,11 @@ window.__ModuleLoader__.load({
       // Give the shell the viewport space below its own top edge, capped by the
       // parent's visible box, so the list gets a real scrollport of its own.
       const [shellH, setShellH] = useState(null);
+      // F161: how much empty space to keep under the last row. Without it the
+      // list simply ends, so a Run in the last screenful can never be scrolled to
+      // the top — "click a cell, the row comes to the top" would be true only for
+      // the first rows. One viewport of tail space makes it true for every row.
+      const [tailPad, setTailPad] = useState(0);
       const [payload, setPayload] = useState(null);
       const [error, setError] = useState(null);
       const [loading, setLoading] = useState(false);
@@ -1456,6 +1461,12 @@ window.__ModuleLoader__.load({
           const availParent = parentRect ? Math.max(0, parentRect.bottom - rootTop) : availView;
           const h = Math.max(320, Math.min(availView, availParent || availView));
           setShellH((prev) => (prev != null && Math.abs(prev - h) < 2 ? prev : Math.round(h)));
+          const sc = scrollRef.current;
+          if (sc) {
+            // One row (≈ 40px) of slack so even the last Run can reach the top.
+            const pad = Math.max(0, sc.clientHeight - 40);
+            setTailPad((prev) => (Math.abs(prev - pad) < 2 ? prev : Math.round(pad)));
+          }
         };
         fit();
         window.addEventListener('resize', fit);
@@ -1696,14 +1707,14 @@ window.__ModuleLoader__.load({
           if (!el) return;
           // F155: the list box is the only scroller now (the header block is a
           // flex sibling above it), so this is plain scrollTop arithmetic.
-          const viewH = host.clientHeight;
           const current = host.scrollTop;
           const maxScroll = Math.max(0, host.scrollHeight - host.clientHeight);
-          const board = rootRef.current ? rootRef.current.querySelector('[data-hades-board]') : null;
-          const boardH = board ? board.offsetHeight : 0;
-          const anchor = Math.min(viewH * 0.6, Math.max(viewH * 0.32, boardH + 16));
+          // F161: land the selected Run at the TOP of the list, not somewhere in
+          // the middle — the header is outside the scroller, so nothing can cover
+          // the row any more, and putting it at the top leaves the whole expanded
+          // detail below it (the reason the old 32–60% anchor existed is gone).
           const offset = el.getBoundingClientRect().top - host.getBoundingClientRect().top;
-          const target = Math.max(0, Math.min(maxScroll, current + offset - anchor));
+          const target = Math.max(0, Math.min(maxScroll, current + offset - 2));
           const delta = target - current;
           if (Math.abs(delta) < 2) return;
           if (reduce || typeof requestAnimationFrame !== 'function') { host.scrollTop = target; return; }
@@ -1904,17 +1915,21 @@ window.__ModuleLoader__.load({
         if (loading && !payload) return h('div', { style: { color: T.muted } }, label('loading', '加载中…'));
         if (!payload) return null;
         if ((payload.counts?.events ?? 0) === 0) return h('div', { style: { color: T.muted } }, label('empty', '该会话暂无事件'));
-        return h(DualBarChart, {
-          rows: payload.runs ?? [],
-          sort,
-          onSort: setSort,
-          sysLabel: label('system', '系统提示词'),
-          expanded,
-          onToggleRun: openRun,
-          renderDetail,
-          hasDetail: (idx) => details.has(idx),
-          label,
-        });
+        return h('div', null,
+          h(DualBarChart, {
+            rows: payload.runs ?? [],
+            sort,
+            onSort: setSort,
+            sysLabel: label('system', '系统提示词'),
+            expanded,
+            onToggleRun: openRun,
+            renderDetail,
+            hasDetail: (idx) => details.has(idx),
+            label,
+          }),
+          // F161: breathing room so the last Run can still be scrolled to the top.
+          tailPad > 0 ? h('div', { key: 'tail', 'data-hades-tail': '1', style: { height: tailPad } }) : null,
+        );
       };
 
       return h('div', {

@@ -325,6 +325,8 @@ dsh-trace-analyzer/
 
 33. **M32 删掉图例里没解释的渐变条（F160）** ✅：图例里那根 84×6 的低→高渐变条本来想说明"格子颜色越深 = 该 Run 排位越高"，但它没有刻度、没有文字、没有说明，夹在 `■ Time ■ Token ■ 步数` 后面读起来像一条跑偏的进度条。删掉它；把"颜色越深 = 排位越高"下沉到三个行色块的 tooltip，并按行说清楚（耗时 / token / 步数各自比较）。图例恢复为五个纯色块 + 文字。验收：check-served 90/90（新增 `mx.rampTime/Token/Steps`，并把 `'mx.ramp':` 加进 absent 断言）；单测 43/43。见 TEST V73。
 
+34. **M33 点矩阵后选中行滚到列表顶部（F161）** ✅：F155 之后表头已在滚动区外，但 `locateRun` 的落点还留着旧算法（`max(视口×0.32, 矩阵高+16)`，上限 `视口×0.6`），选中的 Run 落在列表中部。现在落点固定为列表顶部（`target = scrollTop + 行相对偏移 − 2`）；并且因为列表到底就结束、最后几屏的行数学上无法贴顶，所以在列表末尾加 `tailPad = 列表视口高 − 40px` 的留白（`data-hades-tail`），让每行都能贴顶。CDP 实测（shadow + 无界父容器）：抽测第 8/20/30/34 列，`rowTopInList` 全部 = **2px**（改之前 30/34 分别是 124/240，因为贴底），`boardTop` 恒为 103。验收：check-served 92/92（新增 data-hades-tail / tailPad）；单测 43/43。见 TEST V74。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
