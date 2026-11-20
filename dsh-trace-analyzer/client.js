@@ -108,6 +108,34 @@ window.__ModuleLoader__.load({
       + '.hades-run-row:hover .hades-idx,.hades-run-row.is-open .hades-idx{color:var(--hades-text)}'
       + '.hades-run-row:hover .hades-caret,.hades-run-row.is-open .hades-caret{color:var(--hades-brand)}';
 
+    // F165: matrix control styling. A native range input reads as a prototype —
+    // we draw the track (filled up to the value via --fill), the thumb, the hover
+    // and focus states ourselves. Only colours vary by theme; geometry is fixed.
+    const MATRIX_CSS = `
+      .hades-range{-webkit-appearance:none;appearance:none;background:transparent;height:18px;margin:0 6px 0 0;padding:0;cursor:pointer}
+      .hades-range:focus{outline:none}
+      .hades-range::-webkit-slider-runnable-track{
+        height:3px;border-radius:999px;
+        background:linear-gradient(90deg,var(--hades-brand) 0,var(--hades-brand) var(--fill,100%),var(--hades-track) var(--fill,100%),var(--hades-track) 100%);
+      }
+      .hades-range::-webkit-slider-thumb{
+        -webkit-appearance:none;appearance:none;width:12px;height:12px;margin-top:-4.5px;
+        border-radius:999px;background:var(--hades-surface);
+        border:1.5px solid var(--hades-brand);
+        box-shadow:0 1px 2px color-mix(in srgb,var(--hades-text) 22%,transparent);
+        transition:transform 120ms ease,box-shadow 120ms ease;
+      }
+      .hades-range:hover::-webkit-slider-thumb{transform:scale(1.15)}
+      .hades-range:active::-webkit-slider-thumb{transform:scale(1.05)}
+      .hades-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color-mix(in srgb,var(--hades-brand) 22%,transparent)}
+      .hades-range::-moz-range-track{height:3px;border-radius:999px;background:var(--hades-track)}
+      .hades-range::-moz-range-progress{height:3px;border-radius:999px;background:var(--hades-brand)}
+      .hades-range::-moz-range-thumb{width:12px;height:12px;border-radius:999px;background:var(--hades-surface);border:1.5px solid var(--hades-brand);box-shadow:0 1px 2px color-mix(in srgb,var(--hades-text) 22%,transparent)}
+      .hades-mx-reset{font:inherit;color:var(--hades-muted);background:transparent;border:1px solid var(--hades-border);border-radius:999px;padding:1px 8px;cursor:pointer;transition:color 120ms ease,border-color 120ms ease}
+      .hades-mx-reset:hover{color:var(--hades-text);border-color:var(--hades-brand)}
+      .hades-mx-reset:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--hades-brand) 22%,transparent)}
+    `;
+
     // F144 expand motion (plan C, tightened): height + fade, one uniform curve,
     // no stagger. Opening is short enough to feel immediate (160ms); closing is
     // shorter still (120ms) so the list snaps back instead of lingering.
@@ -231,7 +259,7 @@ window.__ModuleLoader__.load({
 
     // Short tag for the explanation-only rows a step panel gained in F23.2
     // (compaction / retry / file changes / slash commands / approvals …).
-    const NOTE_TAG = { compact: '压缩', retry: '重试', fail: '失败', workspace: '变更', command: '命令', plan: '计划', todo: '清单', deliver: '交付', approval: '审批', note: '事件' };
+    const NOTE_TAG = { compact: 'compact', retry: 'retry', fail: 'fail', workspace: 'files', command: 'command', plan: 'plan', todo: 'todo', deliver: 'deliver', approval: 'approval', note: 'events' };
     // Same English vocabulary as the step/role tags (F136); Chinese stays in the tooltip.
     const NOTE_TAG_EN = { compact: 'COMPACT', retry: 'RETRY', fail: 'FAIL', workspace: 'FILES', command: 'CMD', plan: 'PLAN', todo: 'TODO', deliver: 'DELIVER', approval: 'APPROVAL', note: 'EVENT' };
 
@@ -300,27 +328,27 @@ window.__ModuleLoader__.load({
     // same kind vocabulary, same labels, same colors and tag geometry.
     const ROLE = {
       user: {
-        key: 'role.user', fallback: '用户',
+        key: 'role.user', fallback: 'user',
         color: 'var(--dsw-alias-state-business-primary)',
         background: 'var(--dsw-alias-state-business-tertiary)',
       },
       assistant: {
-        key: 'role.assistant', fallback: '助手',
+        key: 'role.assistant', fallback: 'assistant',
         color: 'color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 60%, var(--dsw-alias-state-error-secondary))',
         background: 'color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 55%, var(--dsw-alias-state-error-secondary)) 15%, var(--dsw-alias-bg-layer-1))',
       },
       context: {
-        key: 'role.context', fallback: '上下文',
+        key: 'role.context', fallback: 'context',
         color: 'color-mix(in srgb, var(--dsw-alias-state-success-primary) 68%, var(--dsw-alias-label-secondary))',
         background: 'var(--dsw-alias-state-success-tertiary)',
       },
       system: {
-        key: 'role.system', fallback: '系统',
+        key: 'role.system', fallback: 'system',
         color: 'var(--dsw-alias-label-secondary)',
         background: 'var(--dsw-alias-bg-module-platform)',
       },
       tool: {
-        key: 'role.tool', fallback: '工具',
+        key: 'role.tool', fallback: 'tools',
         color: 'var(--dsw-alias-state-warn-label)',
         background: 'var(--dsw-alias-state-warn-tertiary)',
       },
@@ -365,14 +393,14 @@ window.__ModuleLoader__.load({
     // ---------------------------------------------------------------------
     function KpiSummary({ kpi, label }) {
       const items = [
-        [String(kpi.runs), label('stat.runs', 'Run（指令）')],
-        [String(kpi.steps), label('stat.steps', 'Step（迭代）')],
-        [String(kpi.events), label('stat.events', '事件')],
+        [String(kpi.runs), label('stat.runs', 'Runs')],
+        [String(kpi.steps), label('stat.steps', 'Steps')],
+        [String(kpi.events), label('stat.events', 'Events')],
         [fmtK(kpi.tokenTotal), label('stat.tokens', 'Token')],
-        [String(kpi.errors), label('stat.errors', '错误'), T.error],
-        [String(kpi.slow), label('stat.slow', '慢操作'), T.warn],
-        [String(kpi.abnormal), label('stat.abnormal', '异常 Run'), T.warn],
-        [kpi.slowest ? fmtMs(kpi.slowest.durationMs) : '—', label('stat.slowest', '最慢操作'), T.warn, kpi.slowest?.name],
+        [String(kpi.errors), label('stat.errors', 'Errors'), T.error],
+        [String(kpi.slow), label('stat.slow', 'Slow ops'), T.warn],
+        [String(kpi.abnormal), label('stat.abnormal', 'Abnormal runs'), T.warn],
+        [kpi.slowest ? fmtMs(kpi.slowest.durationMs) : '—', label('stat.slowest', 'Slowest'), T.warn, kpi.slowest?.name],
       ];
       return h('div', {
         style: {
@@ -463,7 +491,7 @@ window.__ModuleLoader__.load({
       const rowsDef = [
         { key: 'time', text: label('col.time', 'Time'), tone: T.brand, values: ranks.time },
         { key: 'token', text: label('col.token', 'Token'), tone: T.token, values: ranks.token },
-        { key: 'steps', text: label('mx.steps', '步数'), tone: T.success, values: ranks.steps },
+        { key: 'steps', text: label('mx.steps', 'Steps'), tone: T.success, values: ranks.steps },
       ];
       // Flag lane: translucent red / amber — solid semantic colours on a 3px cell
       // are far too loud next to the pastel metric rows (F152).
@@ -473,11 +501,13 @@ window.__ModuleLoader__.load({
           ? `color-mix(in srgb, ${T.warn} 58%, transparent)`
           : `color-mix(in srgb, ${T.muted} 10%, transparent)`);
       const rowTexts = rowsDef.map((row) => row.text).join(',');
+      // F165: 4px columns can only carry a 1px radius; wide ones read as chips.
+      const cellRadius = n > 48 ? 1 : 2;
       // F156: 700 cells are expensive to rebuild, and nothing about them changes
       // on hover/selection — only the overlay band does. Memoise them so a click
       // costs one band move instead of a full grid re-render.
       const grid = useMemo(() => [
-        ...rowsDef.map((row) => h('div', { key: row.key, style: { display: 'flex', alignItems: 'center', gap: MX_GAP, marginBottom: 3 } },
+        ...rowsDef.map((row) => h('div', { key: row.key, style: { display: 'flex', alignItems: 'center', gap: MX_GAP, marginBottom: 4 } },
           h('span', {
             style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
           }, row.text),
@@ -487,26 +517,26 @@ window.__ModuleLoader__.load({
               onMouseEnter: () => setHover(r.idx),
               onClick: () => { setSelected(r.idx); setTimeout(() => locateRef.current(r.idx), 0); },
               title: `Run ${r.idx}`,
-              style: { height: 11, borderRadius: 1, cursor: 'pointer', background: shade(row.tone, row.values[i]) },
+              style: { height: 11, borderRadius: cellRadius, cursor: 'pointer', background: shade(row.tone, row.values[i]) },
             })),
           ),
         )),
-        h('div', { key: 'flags', style: { display: 'flex', alignItems: 'center', gap: MX_GAP } },
+        h('div', { key: 'flags', style: { display: 'flex', alignItems: 'center', gap: MX_GAP, marginTop: 4 } },
           h('span', {
             style: { flex: `0 0 ${MX_LABEL_W}px`, textAlign: 'right', font: `11px/1 ${T.mono}`, color: T.muted },
-          }, label('mx.flags', '异常')),
+          }, label('mx.flags', 'Flags')),
           h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
             shown.map((r, i) => h('div', {
               key: 'flag-' + r.idx,
               onMouseEnter: () => setHover(r.idx),
               onClick: () => { setSelected(r.idx); setTimeout(() => locateRef.current(r.idx), 0); },
               title: `Run ${r.idx}`,
-              style: { height: 11, borderRadius: 1, cursor: 'pointer', background: flagBg(r) },
+              style: { height: 11, borderRadius: cellRadius, cursor: 'pointer', background: flagBg(r) },
             })),
           ),
         ),
         // Callbacks are stable through refs, so they stay out of the deps.
-      ], [shown, ranks, n, rowTexts]);
+      ], [shown, ranks, n, rowTexts, cellRadius]);
       if (n === 0) return null;
       const posOf = (idx) => (idx == null ? -1 : shown.findIndex((r) => r.idx === idx));
       const selectedPos = posOf(selected);
@@ -516,8 +546,8 @@ window.__ModuleLoader__.load({
       const activePos = hoverPos >= 0 ? hoverPos : selectedPos;
       const hovered = activePos >= 0 ? shown[activePos] : null;
       const summary = hovered
-        ? `Run ${hovered.idx} · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} 步`
-          + (hovered.hasError ? ' · 有错误' : '') + (hovered.hasSlow ? ' · 有慢操作' : '')
+        ? `Run ${hovered.idx} · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} steps`
+          + (hovered.hasError ? ' · error' : '') + (hovered.hasSlow ? ' · slow' : '')
           + (hovered.prompt ? ' — ' + String(hovered.prompt).replace(/\s+/g, ' ').slice(0, 56) : '')
         : '';
       const gaps = Math.max(0, n - 1);
@@ -542,16 +572,22 @@ window.__ModuleLoader__.load({
       const legendItem = (tone, text, title) => h('span', {
         key: 'lg-' + text,
         title: title ?? text,
-        style: { display: 'inline-flex', alignItems: 'center', gap: 4, color: T.muted, flex: '0 0 auto' },
-      }, h('i', { style: { width: 9, height: 9, borderRadius: 2, background: tone, display: 'inline-block' } }), text);
-      // F164: the legend lives in the card's top-right corner, and the readout
-      // takes the free space on its left — formely both shared one line *below*
-      // the grid, which pushed the matrix down and left the corner empty.
+        style: {
+          display: 'inline-flex', alignItems: 'center', gap: 5, flex: '0 0 auto',
+          color: T.muted, fontSize: 11, lineHeight: '16px', letterSpacing: '.01em',
+        },
+      }, h('i', {
+        style: { width: 8, height: 8, borderRadius: 2, background: tone, display: 'inline-block', flex: '0 0 8px' },
+      }), text);
+      // F164/F165: the card header carries the readout on the left and the legend
+      // on the right. The legend is grouped — metric rows first, then a hairline
+      // divider, then the two flag swatches — so "what the colours mean" reads as
+      // two sets instead of five loose chips.
       const legendRow = h('div', {
         key: 'legend',
         style: {
-          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-          font: `11px/1.2 ${T.mono}`, minHeight: 16, marginBottom: 6,
+          display: 'flex', alignItems: 'center', gap: 10,
+          font: `11px/1.2 ${T.mono}`, minHeight: 18, marginBottom: 8,
         },
       },
         h('span', {
@@ -560,70 +596,101 @@ window.__ModuleLoader__.load({
           style: {
             minWidth: 0, flex: '1 1 auto', textAlign: 'left',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            fontVariantNumeric: 'tabular-nums',
             color: hovered ? T.text : T.faint,
           },
-        }, hovered ? summary : label('mx.hint', '悬停看这个 Run · 点击定位')),
+        }, hovered
+          ? [
+            h('b', { key: 'rid', style: { fontWeight: 600, color: T.brand } }, `Run ${hovered.idx}`),
+            ` · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} steps`
+            + (hovered.hasError ? ' · error' : '') + (hovered.hasSlow ? ' · slow' : '')
+            + (hovered.prompt ? ' — ' + String(hovered.prompt).replace(/\s+/g, ' ').slice(0, 48) : ''),
+          ]
+          : label('mx.hint', 'hover a run · click to locate')),
         // F157: an explicit selection chip, so "what is currently selected" is
         // answered in words as well as by the 26%/2px column band.
         selectedPos >= 0 && shown[selectedPos] ? h('span', {
           key: 'sel-chip',
           style: {
-            display: 'inline-flex', alignItems: 'center', gap: 5, flex: '0 0 auto',
-            height: 17, padding: '0 5px 0 6px', borderRadius: 4,
+            display: 'inline-flex', alignItems: 'center', gap: 4, flex: '0 0 auto',
+            height: 18, padding: '0 4px 0 7px', borderRadius: 999,
             border: '1px solid ' + T.brand,
-            background: `color-mix(in srgb, ${T.brand} 10%, transparent)`,
-            color: T.brand, whiteSpace: 'nowrap',
+            background: `color-mix(in srgb, ${T.brand} 9%, transparent)`,
+            color: T.brand, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
           },
         },
           `Run ${shown[selectedPos].idx}`,
           h('button', {
             type: 'button',
-            title: label('mx.clearSel', '取消选中'),
+            title: label('mx.clearSel', 'clear selection'),
             onClick: () => setSelected(null),
-            style: { border: 'none', background: 'transparent', color: T.brand, cursor: 'pointer', font: 'inherit', padding: 0, lineHeight: 1 },
+            style: {
+              border: 'none', background: 'transparent', color: T.brand, cursor: 'pointer',
+              font: 'inherit', fontSize: 11, lineHeight: 1, padding: '0 2px', borderRadius: 999,
+            },
           }, '✕'),
         ) : null,
-        h('span', { key: 'legend-items', style: { display: 'inline-flex', alignItems: 'center', gap: 10, flex: '0 0 auto' } },
-          legendItem(T.brand, label('col.time', 'Time'), label('mx.rampTime', '颜色越深 = 该 Run 的耗时在会话里的排位越高')),
-          legendItem(T.token, label('col.token', 'Token'), label('mx.rampToken', '颜色越深 = 该 Run 的 token 在会话里的排位越高')),
-          legendItem(T.success, label('mx.steps', '步数'), label('mx.rampSteps', '颜色越深 = 该 Run 的步数在会话里的排位越高')),
-          legendItem(T.error, label('mx.error', '有错误')),
-          legendItem(T.warn, label('mx.slow', '有慢操作')),
+        h('span', { key: 'legend-items', style: { display: 'inline-flex', alignItems: 'center', gap: 12, flex: '0 0 auto' } },
+          legendItem(T.brand, label('col.time', 'Time'), label('mx.rampTime', 'darker = slower relative to the session')),
+          legendItem(T.token, label('col.token', 'Token'), label('mx.rampToken', 'darker = more tokens in the session')),
+          legendItem(T.success, label('mx.steps', 'Steps'), label('mx.rampSteps', 'darker = more steps in the session')),
+          h('span', {
+            key: 'lg-sep',
+            style: { width: 1, height: 11, background: T.border, flex: '0 0 1px' },
+          }),
+          legendItem(T.error, label('mx.error', 'Error')),
+          legendItem(T.warn, label('mx.slow', 'Slow')),
         ),
       );
-      // F164: window control. 1 column per run stops being readable past a few
-      // dozen runs, so the matrix can focus on the newest N instead of all of them.
+      // F164/F165: window control. 1 column per run stops being readable past a few
+      // dozen runs, so the matrix can focus on the newest N. Drawn as a product
+      // control — own track/thumb (.hades-range), value on the left, reset pill on
+      // the right — instead of a stock <input type=range>.
+      const windowPct = total > 12 ? Math.round(((n - 12) / Math.max(1, total - 12)) * 100) : 100;
       const windowLabel = windowN == null || windowN >= total
-        ? `${label('mx.showAll', '全部')} ${total} ${label('mx.runsUnit', '个 Run')}`
-        : `${label('mx.showRecent', '最近')} ${n} / ${total} ${label('mx.runsUnit', '个 Run')}`;
+        ? `${label('mx.showAll', 'all')} ${total} ${label('mx.runsUnit', 'runs')}`
+        : `${label('mx.showRecent', 'latest')} ${n} / ${total} ${label('mx.runsUnit', 'runs')}`;
       const sliderRow = total > 12 ? h('div', {
         key: 'window',
-        style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 7, font: `11px/1.2 ${T.mono}`, color: T.muted },
+        style: {
+          display: 'flex', alignItems: 'center', gap: 10,
+          marginTop: 8, paddingTop: 8, borderTop: '1px solid ' + T.border,
+          font: `11px/1.2 ${T.mono}`, color: T.muted,
+        },
       },
-        h('span', { key: 'wlabel', style: { flex: '0 0 auto' } }, windowLabel),
+        h('span', {
+          key: 'wlabel',
+          style: { flex: '0 0 auto', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', letterSpacing: '.01em' },
+        }, windowLabel),
         h('input', {
           key: 'wrange',
           type: 'range',
+          className: 'hades-range',
           min: 12,
           max: total,
           step: 1,
           value: n,
           'data-hades-window': '1',
-          title: label('mx.windowHint', '拖动调节热力矩阵显示的 Run 数量（显示最新的一批）'),
+          'aria-label': label('mx.windowHint', 'Drag to choose how many of the latest runs the matrix shows'),
+          title: label('mx.windowHint', 'Drag to choose how many of the latest runs the matrix shows'),
           onChange: (e) => {
             const value = Number(e.target.value);
             setWindowN(value >= total ? null : value);
           },
-          style: { flex: '0 1 160px', minWidth: 96, height: 14, accentColor: T.brand, cursor: 'pointer' },
+          style: { flex: '1 1 auto', maxWidth: 220, minWidth: 80, '--fill': windowPct + '%' },
         }),
+        h('span', {
+          key: 'wend',
+          style: { flex: '0 0 auto', color: T.faint, fontVariantNumeric: 'tabular-nums' },
+        }, `12–${total}`),
         windowN == null
           ? null
           : h('button', {
             key: 'wall',
             type: 'button',
+            className: 'hades-mx-reset',
             onClick: () => setWindowN(null),
-            style: { flex: '0 0 auto', font: 'inherit', color: T.faint, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 },
-          }, label('mx.showAll', '全部')),
+          }, label('mx.showAll', 'all')),
       ) : null;
       return h('div', {
         ref: wrapRef,
@@ -631,12 +698,14 @@ window.__ModuleLoader__.load({
         // card and the matrix card never shows the list behind it.
         style: { marginBottom: 12, background: T.surface },
       },
+        // F165: the custom range styling lives with the card, not the page shell.
+        h('style', { key: 'mx-css' }, MATRIX_CSS),
         h('div', { ref: cardRef, 'data-hades-board': '1', style: { zIndex: 3 } },
           h(KpiSummary, { kpi, label }),
           h('div', {
             style: {
               border: '1px solid ' + T.border, borderRadius: T.radiusMd,
-              padding: '8px 12px 7px', background: T.surface,
+              padding: '10px 12px 10px', background: T.surface,
               boxShadow: `0 10px 18px -14px color-mix(in srgb, ${T.text} 55%, transparent)`,
             },
             onMouseLeave: () => setHover(null),
@@ -790,7 +859,7 @@ window.__ModuleLoader__.load({
           onFocus: () => setHoverSort(key),
           onBlur: () => setHoverSort((prev) => (prev === key ? null : prev)),
           'aria-sort': dir === 'desc' ? 'descending' : dir === 'asc' ? 'ascending' : 'none',
-          title: dir === 'desc' ? `${text} 降序 · 再点改升序` : dir === 'asc' ? `${text} 升序 · 再点取消排序` : `按 ${text} 排序`,
+          title: dir === 'desc' ? `${text} desc · click for asc` : dir === 'asc' ? `${text} asc · click to clear` : `sort by ${text}`,
           style: {
             flex: `0 0 ${barW}px`, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 0,
             background: hovered ? T.sortHoverBg : 'transparent',
@@ -818,12 +887,12 @@ window.__ModuleLoader__.load({
             fontSize: 11, lineHeight: '1', fontFamily: T.mono, letterSpacing: '.04em', color: T.muted,
           },
         },
-          label('sort.by', '已按'),
+          label('sort.by', 'sorted by'),
           h('b', { style: { fontWeight: 400, color: tone } }, `${text} ${sort.dir === 'asc' ? '↑' : '↓'}`),
-          label('sort.on', '排序'),
+          label('sort.on', 'sort'),
           h('button', {
             type: 'button',
-            title: label('sort.clear', '清除排序'),
+            title: label('sort.clear', 'clear sort'),
             onClick: () => onSort(null),
             style: { flex: '0 0 auto', border: 'none', background: 'transparent', color: T.faint, cursor: 'pointer', font: 'inherit', padding: 0, lineHeight: 1 },
           }, '✕'),
@@ -1083,13 +1152,13 @@ window.__ModuleLoader__.load({
      */
     function StepTag({ tag, count, overflow, label }) {
       const role = STEP_TAG_ROLE[tag];
-      const palette = tag === '失败'
+      const palette = tag === 'fail'
         ? STEP_TAG_ERROR
         : overflow
           ? { color: T.faint, background: `color-mix(in srgb, ${T.muted} 9%, transparent)` }
           : (ROLE[role] ?? ROLE.tool);
       const text = overflow ? tag : (STEP_TAG_EN[tag] ?? tag) + (count > 1 ? ' ×' + count : '');
-      const zh = overflow ? `${count} 个动作未显示` : `${tag}${count > 1 ? ' ×' + count : ''}${label ? ' · ' + label : ''}`;
+      const zh = overflow ? `${count} actions hidden` : `${tag}${count > 1 ? ' ×' + count : ''}${label ? ' · ' + label : ''}`;
       return h(RowTag, { text, color: palette.color, background: palette.background, title: zh });
     }
     function StepRow({ step, selected, open, onSelect, idxWidth, timeMetric, tokenMetric, text, title, tag, tags, marks, waitMs, hasError, content, contentReady }) {
@@ -1229,7 +1298,7 @@ window.__ModuleLoader__.load({
         padding: '2px 10px 4px 12px',
       };
 
-      if (state.loading) return h('div', { style: { ...cardStyle, fontSize: 12, color: T.muted } }, label('step.loading', '载入 Step 内容…'));
+      if (state.loading) return h('div', { style: { ...cardStyle, fontSize: 12, color: T.muted } }, label('step.loading', 'Loading step…'));
       if (state.error != null) {
         return h('div', { style: { ...cardStyle, fontSize: 12, color: T.error } },
           state.error,
@@ -1237,7 +1306,7 @@ window.__ModuleLoader__.load({
             type: 'button',
             onClick: () => { cache.step.delete(key); setNonce((value) => value + 1); },
             style: { marginLeft: 8, font: 'inherit', fontSize: 11, color: T.text, background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm, padding: '1px 8px', cursor: 'pointer' },
-          }, label('step.retry', '重试')),
+          }, label('step.retry', 'retry')),
         );
       }
 
@@ -1297,13 +1366,13 @@ window.__ModuleLoader__.load({
           border: '1px solid ' + T.border, borderRadius: T.radiusSm, background: T.surface,
         },
       },
-        sumChip(`模型 ${counts.models ?? 0}`, 'assistant', data.model ? [data.model.provider, data.model.model].filter(Boolean).join('/') : null),
+        sumChip(`model ${counts.models ?? 0}`, 'assistant', data.model ? [data.model.provider, data.model.model].filter(Boolean).join('/') : null),
         h('span', { style: { width: 1, height: 11, background: T.border } }),
-        sumChip(`工具 ${counts.tools ?? 0}`, 'tool'),
+        sumChip(`tools ${counts.tools ?? 0}`, 'tool'),
         (counts.contexts ?? 0) > 0 ? h('span', { style: { width: 1, height: 11, background: T.border } }) : null,
-        (counts.contexts ?? 0) > 0 ? sumChip(`上下文 ${counts.contexts}`, 'context') : null,
+        (counts.contexts ?? 0) > 0 ? sumChip(`contexts ${counts.contexts}`, 'context') : null,
         h('span', { style: { flex: '1 1 auto' } }),
-        h('span', { style: { ...mono11, color: T.muted } }, `计时 ${fmtMs(data.timeMs)} · ${tokenText}`),
+        h('span', { style: { ...mono11, color: T.muted } }, `time ${fmtMs(data.timeMs)} · ${tokenText}`),
       );
 
       // ---- B: timeline ------------------------------------------------------
@@ -1343,7 +1412,7 @@ window.__ModuleLoader__.load({
           type: 'button',
           onClick: () => toggleRaw(rawKey),
           style: { font: 'inherit', fontSize: 11, color: open ? T.text : T.faint, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 },
-        }, label('step.original', '原文'));
+        }, label('step.original', 'raw'));
       };
 
       const timeline = [];
@@ -1352,8 +1421,8 @@ window.__ModuleLoader__.load({
         timeline.push(h('div', { key: 'instruction', style: { position: 'relative', marginBottom: 8 } },
           dotOf('user'),
           h('div', { style: cardBox() },
-            capRow(chipOf('USER', 'user', label('step.instruction', '指令')),
-              h('span', { style: { ...mono11, color: T.faint } }, `${runPrompt.length} 字`)),
+            capRow(chipOf('USER', 'user', label('step.instruction', 'instruction')),
+              h('span', { style: { ...mono11, color: T.faint } }, `${runPrompt.length} chars`)),
             // F147: full instruction text; the block scrolls, it is not cut.
             h('div', {
               title: runPrompt,
@@ -1373,13 +1442,13 @@ window.__ModuleLoader__.load({
             h('div', {
               style: cardBox({ borderStyle: 'dashed', background: T.surface, cursor: 'pointer' }),
               onClick: () => setCtxOpen((value) => !value),
-              title: open ? '收起注入内容' : '展开注入内容',
+              title: open ? 'collapse injections' : 'expand injections',
             },
               capRow(
                 h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
                   chipOf('CTX', 'context'),
-                  h('span', { style: { fontSize: 12, ...mono11 } }, `注入 ×${n}`),
-                  h('span', { style: { ...mono11, color: T.muted } }, open ? '收起' : '展开'),
+                  h('span', { style: { fontSize: 12, ...mono11 } }, `injected ×${n}`),
+                  h('span', { style: { ...mono11, color: T.muted } }, open ? 'collapse' : 'expand'),
                 ),
                 rawButton(item.seqs),
               ),
@@ -1401,8 +1470,8 @@ window.__ModuleLoader__.load({
             h('div', { style: cardBox() },
               capRow(
                 h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
-                  chipOf('REPLY', 'assistant', label('step.modelCall', '模型调用')),
-                  h('span', { style: { fontSize: 12, ...mono11 } }, label('step.modelCall', '模型调用'))),
+                  chipOf('REPLY', 'assistant', label('step.modelCall', 'model call')),
+                  h('span', { style: { fontSize: 12, ...mono11 } }, label('step.modelCall', 'model call'))),
                 h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
                   h('span', { style: { ...mono11, color: T.muted } }, `in ${fmtK(value.input)} · out ${fmtK(value.output)}`),
                   rawButton([op.seq])),
@@ -1419,7 +1488,7 @@ window.__ModuleLoader__.load({
         if (op.kind === 'tool') {
           const failed = op.error != null || op.isError;
           const isSlow = typeof op.durationMs === 'number' && op.durationMs > slowMs;
-          const errorText = failed ? (op.error ?? 'error') : (isSlow ? label('step.slow', '慢') : null);
+          const errorText = failed ? (op.error ?? 'error') : (isSlow ? label('step.slow', 'slow') : null);
           timeline.push(h('div', { key: 'op-' + op.seq, style: { position: 'relative', marginBottom: 8 } },
             dotOf(failed ? 'error' : 'tool'),
             h('div', { style: cardBox(failed ? { borderColor: T.error } : null) },
@@ -1439,7 +1508,7 @@ window.__ModuleLoader__.load({
               op.result ? h('div', {
                 title: op.result,
                 style: { marginTop: 1, ...mono11, color: failed ? T.error : T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-              }, op.result) : (op.durationMs != null ? h('div', { style: { marginTop: 1, ...mono11, color: T.faint } }, '无结果') : null),
+              }, op.result) : (op.durationMs != null ? h('div', { style: { marginTop: 1, ...mono11, color: T.faint } }, 'no output') : null),
               rawPanel([op.callSeq, op.resultSeq]),
             ),
           ));
@@ -1459,7 +1528,7 @@ window.__ModuleLoader__.load({
                 text: NOTE_TAG_EN[op.noteKind] ?? 'EVENT',
                 color: notePalette.color,
                 background: notePalette.background,
-                title: label('note.' + (op.noteKind ?? 'note'), NOTE_TAG[op.noteKind] ?? '事件'),
+                title: label('note.' + (op.noteKind ?? 'note'), NOTE_TAG[op.noteKind] ?? 'events'),
               }),
               h('span', { title: op.text, style: { fontSize: 12, ...mono11, color: tone, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, op.text),
             ),
@@ -1471,7 +1540,7 @@ window.__ModuleLoader__.load({
       return h('div', { style: cardStyle },
         strip,
         empty
-          ? h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, label('step.empty', '该 Step 无内容'))
+          ? h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, label('step.empty', 'No content in this step'))
           : h('div', { style: { position: 'relative', paddingLeft: 14 } },
             h('span', {
               style: { position: 'absolute', left: 4, top: 6, bottom: 6, width: 1, background: 'color-mix(in srgb, ' + T.text + ' 12%, transparent)' },
@@ -1504,7 +1573,7 @@ window.__ModuleLoader__.load({
         return () => { cancelled = true; };
       }, [key]);
 
-      if (state.loading) return h('div', { style: { padding: '4px 0', fontSize: 12, color: T.muted } }, '载入原文…');
+      if (state.loading) return h('div', { style: { padding: '4px 0', fontSize: 12, color: T.muted } }, 'Loading raw event…');
       if (state.error != null) return h('div', { style: { padding: '4px 0', fontSize: 12, color: T.error } }, state.error);
       let text;
       try { text = JSON.stringify(state.value, null, 2); } catch { text = String(state.value); }
@@ -1926,7 +1995,7 @@ window.__ModuleLoader__.load({
         const detail = details.get(run.idx);
         if (!detail) {
           if (detailErrors.has(run.idx)) return h('div', { style: { padding: '4px 0 6px 74px', fontSize: 12, color: T.error } }, detailErrors.get(run.idx));
-          return h('div', { style: { padding: '4px 0 6px 74px', fontSize: 12, color: T.muted } }, detailLoading.has(run.idx) ? label('loadingDetail', '载入 step…') : '');
+          return h('div', { style: { padding: '4px 0 6px 74px', fontSize: 12, color: T.muted } }, detailLoading.has(run.idx) ? label('loadingDetail', 'Loading steps…') : '');
         }
         const min = detail.startTime ?? run.startTime ?? 0;
         const max = detail.endTime ?? run.endTime ?? 0;
@@ -1987,7 +2056,7 @@ window.__ModuleLoader__.load({
               // spent before this step (same underlay as the time column)
               h(SpentFill, { tone: T.token, pct: beforePct }),
               // this step's own slice
-              h(SliceFill, { tone: T.token, left: beforePct, width: ownPct, tip: `${tokenText} tok · ${sharePct}% of Run · 累计 ${fmtK(cumTokens[stepIdx])} (${Math.round(cumPct)}%)` }),
+              h(SliceFill, { tone: T.token, left: beforePct, width: ownPct, tip: `${tokenText} tok · ${sharePct}% of Run · cum ${fmtK(cumTokens[stepIdx])} (${Math.round(cumPct)}%)` }),
             );
             return h(StepRow, {
               key: stepIdx,
@@ -2000,16 +2069,16 @@ window.__ModuleLoader__.load({
                 width: METRIC_W, numWidth: METRIC_NUM_W, tone: T.brand, fill: timeFill, valueText: timeText,
                 // Split tooltip: execution = model + tools, waiting shown separately (F133).
                 tip: [timeText]
-                  .concat(step.modelMs != null ? ['模型 ' + fmtMs(step.modelMs)] : [])
-                  .concat(step.toolMs > 0 ? ['工具 ' + fmtMs(step.toolMs)] : [])
-                  .concat(fmtWait(step.waitMs) != null ? ['等待 ' + fmtWait(step.waitMs)] : [])
+                  .concat(step.modelMs != null ? ['model ' + fmtMs(step.modelMs)] : [])
+                  .concat(step.toolMs > 0 ? ['tools ' + fmtMs(step.toolMs)] : [])
+                  .concat(fmtWait(step.waitMs) != null ? ['wait ' + fmtWait(step.waitMs)] : [])
                   .join(' · '),
               }),
               tokenMetric: h(MetricBar, {
                 width: METRIC_W, numWidth: METRIC_NUM_W, tone: T.token, fill: tokenFill, valueText: tokenText,
                 // F143: the track is the run's total, so the tip says where this
                 // step sits inside it and how much of the run is spent already.
-                tip: `${tokenText} tok · ${sharePct}% of Run · 累计 ${fmtK(cumTokens[stepIdx])} (${Math.round(cumPct)}%)`,
+                tip: `${tokenText} tok · ${sharePct}% of Run · cum ${fmtK(cumTokens[stepIdx])} (${Math.round(cumPct)}%)`,
               }),
               text: step.text ?? '—',
               title: step.title ?? step.text ?? '—',
@@ -2043,7 +2112,7 @@ window.__ModuleLoader__.load({
                   background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm,
                   padding: '2px 8px', cursor: 'pointer',
                 },
-              }, `显示全部 ${detail.steps.length} 步（还有 ${hidden} 步）`))
+              }, `show all ${detail.steps.length} steps (${hidden} more)`))
             : null,
         );
       };
@@ -2065,15 +2134,15 @@ window.__ModuleLoader__.load({
 
       const renderList = () => {
         if (error != null) return h('div', { style: { color: T.error } }, String(error));
-        if (loading && !payload) return h('div', { style: { color: T.muted } }, label('loading', '加载中…'));
+        if (loading && !payload) return h('div', { style: { color: T.muted } }, label('loading', 'Loading…'));
         if (!payload) return null;
-        if ((payload.counts?.events ?? 0) === 0) return h('div', { style: { color: T.muted } }, label('empty', '该会话暂无事件'));
+        if ((payload.counts?.events ?? 0) === 0) return h('div', { style: { color: T.muted } }, label('empty', 'No events in this session'));
         return h('div', null,
           h(DualBarChart, {
             rows: payload.runs ?? [],
             sort,
             onSort: setSort,
-            sysLabel: label('system', '系统提示词'),
+            sysLabel: label('system', 'system prompt'),
             expanded,
             onToggleRun: openRun,
             renderDetail,
@@ -2098,6 +2167,10 @@ window.__ModuleLoader__.load({
           '--hades-muted': T.muted,
           '--hades-text': T.text,
           '--hades-brand': T.brand,
+          // F165: matrix slider/surface tokens.
+          '--hades-track': `color-mix(in srgb, ${T.text} 12%, transparent)`,
+          '--hades-surface': T.surface,
+          '--hades-border': T.border,
         },
       },
         h('style', { key: 'hades-row-anim' }, ROW_ANIM_CSS),
@@ -2126,64 +2199,37 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'locale'],
       apply(ctx) {
-        ctx.effect(() => ctx.locale.register(NS, {
-          zh: {
-            'view.title': 'Trace Lab',
-            'loading': '加载中…', 'empty': '该会话暂无事件',
-            'run': 'Run ', 'step': 'Step ', 'followup': '续跑', 'system': '系统提示词',
-            'stat.runs': 'Run（指令）', 'stat.steps': 'Step（迭代）', 'stat.events': '事件', 'stat.tokens': 'Token',
-            'stat.errors': '错误', 'stat.slow': '慢操作', 'stat.abnormal': '异常 Run', 'stat.slowest': '最慢操作',
-            'mx.steps': '步数', 'mx.flags': '异常', 'mx.hint': '悬停看这个 Run · 点击定位', 'mx.clearSel': '取消选中',
-            'mx.showAll': '全部', 'mx.showRecent': '最近', 'mx.runsUnit': '个 Run',
-            'mx.windowHint': '拖动调节热力矩阵显示的 Run 数量（显示最新的一批）',
-            'mx.rampTime': '颜色越深 = 该 Run 的耗时在会话里的排位越高',
-            'mx.rampToken': '颜色越深 = 该 Run 的 token 在会话里的排位越高',
-            'mx.rampSteps': '颜色越深 = 该 Run 的步数在会话里的排位越高',
-            'mx.error': '有错误', 'mx.slow': '有慢操作',
-            'loadingDetail': '载入 Step…',
-            'step.model': '模型', 'step.timing': '计时', 'step.tokens': 'Token', 'step.summary': '概述',
-            'step.args': '参数', 'step.result': '结果', 'step.original': '原文', 'step.loading': '载入 Step 内容…',
-            'step.retry': '重试', 'step.empty': '该 Step 无内容', 'step.instruction': '指令',
-            'step.countModels': '模型调用', 'step.countTools': '工具调用', 'step.countContexts': '上下文',
-            'step.modelCall': '模型调用', 'step.injected': '注入', 'step.systemPrompt': '系统提示词', 'step.slow': '慢',
-            'role.user': '用户', 'role.assistant': '助手', 'role.context': '上下文',
-            'role.tool': '工具', 'role.system': '系统',
-            'steps': ' 步',
-            'col.time': 'Time', 'col.token': 'Token',
-            'sort.by': '已按', 'sort.on': '排序', 'sort.clear': '清除排序',
-            'note.compact': '压缩', 'note.retry': '重试', 'note.fail': '失败', 'note.workspace': '变更',
-            'note.command': '命令', 'note.plan': '计划', 'note.todo': '清单', 'note.deliver': '交付',
-            'note.approval': '审批', 'note.note': '事件',
-          },
-          en: {
-            'view.title': 'Trace Lab',
-            'loading': 'Loading…', 'empty': 'No events in this session',
-            'run': 'Run ', 'step': 'Step ', 'followup': 'follow-up', 'system': 'system prompt',
-            'stat.runs': 'Runs', 'stat.steps': 'Steps', 'stat.events': 'Events', 'stat.tokens': 'Tokens',
-            'stat.errors': 'Errors', 'stat.slow': 'Slow ops', 'stat.abnormal': 'Abnormal runs', 'stat.slowest': 'Slowest',
-            'mx.steps': 'Steps', 'mx.flags': 'Flags', 'mx.hint': 'hover a Run · click to locate', 'mx.clearSel': 'clear selection',
-            'mx.showAll': 'all', 'mx.showRecent': 'latest', 'mx.runsUnit': 'runs',
-            'mx.windowHint': 'Drag to choose how many of the latest runs the matrix shows',
-            'mx.rampTime': 'darker = the Run is slower relative to the session',
-            'mx.rampToken': 'darker = the Run spends more tokens',
-            'mx.rampSteps': 'darker = the Run has more steps',
-            'mx.error': 'has error', 'mx.slow': 'has slow op',
-            'loadingDetail': 'loading Steps…',
-            'step.model': 'model', 'step.timing': 'elapsed', 'step.tokens': 'tokens', 'step.summary': 'summary',
-            'step.args': 'args', 'step.result': 'result', 'step.original': 'raw', 'step.loading': 'loading Step…',
-            'step.retry': 'Retry', 'step.empty': 'Empty Step', 'step.instruction': 'instruction',
-            'step.countModels': 'model calls', 'step.countTools': 'tool calls', 'step.countContexts': 'context',
-            'step.modelCall': 'model call', 'step.injected': 'injected', 'step.systemPrompt': 'system prompt', 'step.slow': 'slow',
-            'role.user': 'USER', 'role.assistant': 'ASSISTANT', 'role.context': 'CONTEXT',
-            'role.tool': 'TOOL', 'role.system': 'SYSTEM',
-            'steps': ' steps',
-            'col.time': 'Time', 'col.token': 'Token',
-            'sort.by': 'sorted by', 'sort.on': '', 'sort.clear': 'clear sort',
-            'note.compact': 'compact', 'note.retry': 'retry', 'note.fail': 'fail', 'note.workspace': 'files',
-            'note.command': 'cmd', 'note.plan': 'plan', 'note.todo': 'todo', 'note.deliver': 'deliver',
-            'note.approval': 'approval', 'note.note': 'event',
-          },
-        }), 'trace-analyzer: locale');
+        // F165: the product ships English-only. Both locale slots carry the same
+        // table so a Chinese UI language cannot produce half-English labels.
+        const EN = {
+          'view.title': 'Trace Lab',
+          'loading': 'Loading…', 'empty': 'No events in this session',
+          'run': 'Run ', 'step': 'Step ', 'followup': 'follow-up', 'system': 'System prompt',
+          'stat.runs': 'Runs', 'stat.steps': 'Steps', 'stat.events': 'Events', 'stat.tokens': 'Tokens',
+          'stat.errors': 'Errors', 'stat.slow': 'Slow ops', 'stat.abnormal': 'Abnormal runs', 'stat.slowest': 'Slowest',
+          'mx.steps': 'Steps', 'mx.flags': 'Flags', 'mx.hint': 'hover a run · click to locate', 'mx.clearSel': 'Clear selection',
+          'mx.showAll': 'all', 'mx.showRecent': 'latest', 'mx.runsUnit': 'runs',
+          'mx.windowHint': 'Drag to choose how many of the latest runs the matrix shows',
+          'mx.rampTime': 'darker = slower relative to the session',
+          'mx.rampToken': 'darker = more tokens in the session',
+          'mx.rampSteps': 'darker = more steps in the session',
+          'mx.error': 'Error', 'mx.slow': 'Slow',
+          'loadingDetail': 'loading Steps…',
+          'step.model': 'model', 'step.timing': 'elapsed', 'step.tokens': 'tokens', 'step.summary': 'summary',
+          'step.args': 'args', 'step.result': 'result', 'step.original': 'raw', 'step.loading': 'loading Step…',
+          'step.retry': 'Retry', 'step.empty': 'Empty Step', 'step.instruction': 'instruction',
+          'step.countModels': 'model calls', 'step.countTools': 'tool calls', 'step.countContexts': 'context',
+          'step.modelCall': 'model call', 'step.injected': 'injected', 'step.systemPrompt': 'system prompt', 'step.slow': 'slow',
+          'role.user': 'USER', 'role.assistant': 'ASSISTANT', 'role.context': 'CONTEXT',
+          'role.tool': 'TOOL', 'role.system': 'SYSTEM',
+          'steps': ' steps',
+          'col.time': 'Time', 'col.token': 'Token',
+          'sort.by': 'sorted by', 'sort.on': '', 'sort.clear': 'clear sort',
+          'note.compact': 'compact', 'note.retry': 'retry', 'note.fail': 'fail', 'note.workspace': 'files',
+          'note.command': 'cmd', 'note.plan': 'plan', 'note.todo': 'todo', 'note.deliver': 'deliver',
+          'note.approval': 'approval', 'note.note': 'event',
+        };
+        ctx.effect(() => ctx.locale.register(NS, { zh: EN, en: EN }), 'trace-analyzer: locale');
 
         const t = ctx.locale.bind(NS);
 

@@ -333,6 +333,8 @@ dsh-trace-analyzer/
 
 37. **M36 图例移到右上角 + 矩阵 Run 数量滑块（F164）** ✅：① 图例原来和悬停读数挤在矩阵**下方**同一行（把矩阵往下顶、右上角空着），现在卡片顶部一行：左边读数、右边选中胶囊 + 五色图例，矩阵紧接其下；② 1 列 1 个 Run 在 175 列时只有 ~4px，看不出差异 → 矩阵下方加 `type: range` 滑块（`data-hades-window`，12…全部，标注 `最近 N / 175 个 Run`，右侧 `全部` 复位），矩阵只渲染最新 N 个 Run，rank 按窗口内重算。连带把悬停/选中从"列位置"改为**存 Run idx**（拖滑块时选中列不跳位），读数/胶囊/高亮带按 idx 反查位置。验收：check-served 103/103（新增 type: 'range' / data-hades-window / mx.showRecent / windowN）；单测 43/43；设计稿 mockup/overview-window.png。见 TEST V77。
 
+38. **M37 全英文 UI + 工业化滑块 + 细节收敛（F165）** ✅：① 界面文案全英文，`zh`/`en` 两个 locale 槽指向**同一张英文表**（中文系统语言下也不会半中半英）；只有 `TAG_MAP` 的**键**保留中文（匹配 trace 事件原文），值是英文 chip。② 滑块不再用原生外观：自绘轨道（`--fill` 画已填充段）+ 12px 圆点拇指（白底/1px 品牌描边/阴影）、hover 1.15×、focus 3px 柔光、左侧 `all/latest N of 175 runs`、右侧 `12–175` 与 `all` 复位胶囊、与网格之间 1px 分隔线。③ 细节：swatch 8px、图例项间距 12、指标组与异常组 1px 竖分隔、行标签与图例统一 Title Case、读数 Run 号品牌色加粗 + tabular-nums、行距 4px、异常行单独 4px、单元格圆角按列数自适应（>48 → 1px，否则 2px）、卡片内边距 10/12/10。验收：check-served 103/103（新增 MATRIX_CSS / hades-range / const EN / zh: EN, en: EN）；单测 43/43；设计稿 mockup/matrix-f165.png。见 TEST V78。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

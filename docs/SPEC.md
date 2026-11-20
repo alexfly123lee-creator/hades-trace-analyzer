@@ -483,7 +483,15 @@
 - **连带改造**：悬停/选中状态从"列位置"改为**存 Run idx**，拖动滑块改变窗口时选中列不会跳位；读数、选中胶囊、高亮带都按 idx 反查当前位置。
 - **AC**：图例出现在矩阵卡**右上角**、读数在同行左侧；拖动滑块，矩阵列数实时增减且标注 `最近 N / 175`；点 `全部` 回到全量；窗口内被选中的 Run 仍带 22%+2px 高亮，胶囊显示其 Run 号；拖滑块后点击任一列仍能定位到正确的 Run；`check-served` 103/103（新增 `type: 'range'` / `data-hades-window` / `mx.showRecent` / `windowN`）；单测 43/43；设计稿 `mockup/overview-window.png`。
 
-## 42. 范围外（v1 不做）
+## 42. 全英文 UI + 工业化滑块 + 细节收敛（F165）
+
+- **F165 三件事**：
+  1. **界面全英文**：`view.title`、KPI 标签、矩阵/图例、排序、Step 明细（sum strip、卡片、tooltip、占位文案）、空态/加载态、note 标签全部改英文；`zh` 与 `en` 两个 locale 槽指向**同一张英文表** —— 这样中文系统语言下也不会出现半中半英。唯一保留中文的是 `TAG_MAP` 的**键**（它们匹配 trace 里的事件原文，如「读取」「压缩」），值是英文 chip。
+  2. **滑块做成产品件**：不再用原生 `input[type=range]` 的样子。自定义轨道（`--fill` 变量画已填充段）、12px 圆点拇指（白底 + 1px 品牌色描边 + 阴影）、hover 放大 1.15×、键盘 focus 有 3px 柔光环；左侧 `all 175 runs` / `latest 46 / 175 runs`，右侧 `12–175` 范围与 `all` 胶囊复位；滑块行与网格之间用 1px 分隔线隔开（"图" 与 "控" 分区）。
+  3. **细节收敛**：图例 swatch 9→8px、图例项 10→12px 间距、指标组与异常组之间加 1px 竖分隔；行标签与图例统一 Title Case（Time / Token / Steps / Flags / Error / Slow，KPI 为 Runs / Steps / Events / Tokens / Errors / Slow ops / Abnormal runs / Slowest）；读数里 Run 号用品牌色加粗、数字 `tabular-nums`；网格行距 3→4px、异常行单独加 4px 间距；单元格圆角随列数自适应（>48 列用 1px，≤48 用 2px）；卡片内边距 8/12/7 → 10/12/10。
+- **AC**：界面无中文（trace 数据里的提示词/事件原文除外）；滑块有填充轨道、圆点拇指、hover/focus 反馈和 `all` 复位；图例在右上角且指标与异常分组；`check-served` 103/103（新增 `MATRIX_CSS` / `hades-range` / `const EN = {` / `zh: EN, en: EN`）；单测 43/43；设计稿 `mockup/matrix-f165.png`。
+
+## 43. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
