@@ -1997,16 +1997,21 @@ window.__ModuleLoader__.load({
       followRef.current = follow;
       const programmatic = useRef(false);
       const programmaticTimer = useRef(null);
-      // F182: { top } a click-located Run was parked at; see the scroll listener.
-      const locatedHoldRef = useRef(null);
       // F182: a small ring buffer of scroll activity, readable from the console via
       // `__hadesScrollLog()`. It is the only way to see *who* moved the list in the
       // real host, where the CDP harness cannot reach.
       const scrollLogRef = useRef([]);
       const logScroll = (src, extra) => {
         const log = scrollLogRef.current;
-        log.push({ t: Math.round(typeof performance !== 'undefined' ? performance.now() : Date.now()), src, ...extra });
-        if (log.length > 60) log.splice(0, log.length - 60);
+        const host = scrollRef.current;
+        log.push({
+          t: Math.round(typeof performance !== 'undefined' ? performance.now() : Date.now()),
+          src,
+          top: host ? Math.round(host.scrollTop) : null,
+          sh: host ? host.scrollHeight : null,
+          ...extra,
+        });
+        if (log.length > 80) log.splice(0, log.length - 80);
       };
 
       const commitRunsPayload = (json) => {
@@ -2072,20 +2077,6 @@ window.__ModuleLoader__.load({
           logScroll('scroll', { top: Math.round(host.scrollTop), prog: programmatic.current, focus: focusRunRef.current });
           // Ignore the scroll events our own follow/glide produce.
           if (programmatic.current) return;
-          // F182: after a click parked a Run at the top, the pointer leaving the
-          // matrix used to drag it back to the focus line. Anything that moves the
-          // list while the focus is gone is reverted ONCE to the located position;
-          // real user input (wheel / pointer / key) drops the hold beforehand.
-          const hold = locatedHoldRef.current;
-          if (hold != null && focusRunRef.current == null) {
-            locatedHoldRef.current = null;
-            if (Math.abs(host.scrollTop - hold.top) > 2) {
-              programmatic.current = true;
-              host.scrollTop = hold.top;
-              window.setTimeout(() => { programmatic.current = false; }, 60);
-              return;
-            }
-          }
           const bottom = lastRowBottom();
           if (bottom == null) return;
           // F174: "at the live edge" means the newest Run is in view. F161's tail
@@ -2099,17 +2090,17 @@ window.__ModuleLoader__.load({
           followRef.current = atEdge;
         };
         host.addEventListener('scroll', onScroll, { passive: true });
-        // F182: real user input cancels the located hold — we only ever revert a
-        // move that nobody asked for.
-        const dropHold = () => { locatedHoldRef.current = null; logScroll('user-input'); };
-        host.addEventListener('wheel', dropHold, { passive: true });
-        host.addEventListener('pointerdown', dropHold, { passive: true });
-        host.addEventListener('keydown', dropHold, { passive: true });
+        // F184: keep logging real user input; it is how a "who moved the list"
+        // report can tell the user apart from our own animations.
+        const noteInput = () => logScroll('user-input');
+        host.addEventListener('wheel', noteInput, { passive: true });
+        host.addEventListener('pointerdown', noteInput, { passive: true });
+        host.addEventListener('keydown', noteInput, { passive: true });
         return () => {
           host.removeEventListener('scroll', onScroll);
-          host.removeEventListener('wheel', dropHold);
-          host.removeEventListener('pointerdown', dropHold);
-          host.removeEventListener('keydown', dropHold);
+          host.removeEventListener('wheel', noteInput);
+          host.removeEventListener('pointerdown', noteInput);
+          host.removeEventListener('keydown', noteInput);
         };
       }, []);
 
@@ -2312,6 +2303,7 @@ window.__ModuleLoader__.load({
       const markFocusedRow = (idx) => {
         const host = scrollRef.current;
         focusRunRef.current = idx;
+        logScroll('focus', { idx });
         if (!host) return;
         const previous = host.querySelector('.hades-run-group.is-focus');
         if (previous != null) previous.classList.remove('is-focus');
@@ -2427,9 +2419,6 @@ window.__ModuleLoader__.load({
           const target = Math.max(0, Math.min(maxScroll, current + offset - 2));
           const delta = target - current;
           if (Math.abs(delta) < 2) return;
-          // F182: remember where the click parked this Run. If the list moves while
-          // the pointer is off the matrix, the scroll listener puts it back here.
-          locatedHoldRef.current = { top: Math.round(target) };
           logScroll('glide', { idx, from: Math.round(current), to: Math.round(target) });
           if (reduce || typeof requestAnimationFrame !== 'function') { host.scrollTop = target; return; }
           // F174: same guard as scrubTo — a locate glide must not look like a user

@@ -395,6 +395,8 @@ dsh-trace-analyzer/
 
 55. **M54 真凶：点击后指针扫过邻列又触发悬停聚焦（F183）** ✅：现场 `__hadesScrollLog()` 显示最后一段是 `scrub idx 54→43→38→…→24`，末条 `scrub idx:24 from:832 to:665`，随后是一串 `scroll prog:true focus:null` 停在 **665 = 34% 焦点线** —— 点击把行停到顶部后，**指针只要再扫过任何一列就会 `scrubTo` 把列表拉回焦点线**（F181 只挡"同一列"）。改法：点击时给矩阵加**悬停锁** `hoverLock`——锁定期间指针移动只更新高亮/压暗（`onFocusOnly`），**不滚动**；离开矩阵解锁；方向键仍显式导航滚动；F182 的 hold 与日志保留。`cdp:focus` 新增"点击后悬停另一列不得滚动"+"高亮仍跟随"两条断言，**对照实验**去掉锁后立刻变红（`3526 → 3179`，与现场 832→665 同型）。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V95、SPEC 59。
 
+56. **M55 撤掉 hold 兜底 + 日志增强（F184）** ✅：日志证明真凶是"点击后扫邻列触发悬停聚焦"（F183 已修），而 F182 的 **hold 一次性回滚** 反而成了新的可见位移源（指针离开矩阵时把列表"补回"定位位置 = 每次挪下来错动几行）。有真因后兜底必须退场：删掉 `locatedHoldRef` 与回滚分支，user-input 监听改为纯日志。日志增强：每条带 `top`/`sh`（区分"滚动"还是"内容变高"），焦点变化记 `focus` 事件，环形缓冲扩到 80 条。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V96、SPEC 60。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
