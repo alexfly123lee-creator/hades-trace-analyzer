@@ -626,9 +626,13 @@ window.__ModuleLoader__.load({
           h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
             shown.map((r) => h('div', {
               key: 'mk-' + r.idx,
-              onMouseEnter: () => setHover(r.idx),
+              // F171: hover is resolved by the grid wrapper from `data-idx` — per
+              // cell mouseenter events get dropped when the pointer sweeps fast
+              // across 2400 tiny siblings. No `title` either: 700 native tooltips
+              // fire while sweeping and the tooltip window steals mouseover, which
+              // is the other half of "the hover band vanishes".
+              'data-idx': r.idx,
               onClick: () => { setSelected(r.idx); setTimeout(() => locateRef.current(r.idx), 0); },
-              title: `Run ${r.idx}${r.hasError ? ' · error' : r.hasSlow ? ' · slow op' : ''}`,
               style: { height: 3, borderRadius: 1, cursor: 'pointer', background: markerBg(r) },
             })),
           ),
@@ -640,9 +644,8 @@ window.__ModuleLoader__.load({
           h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1 } },
             shown.map((r) => h('div', {
               key: r.idx,
-              onMouseEnter: () => setHover(r.idx),
+              'data-idx': r.idx,
               onClick: () => { setSelected(r.idx); setTimeout(() => locateRef.current(r.idx), 0); },
-              title: `Run ${r.idx}`,
               style: { height: 11, borderRadius: cellRadius, cursor: 'pointer', background: shade(row.tone, row.rankOf(r)) },
             })),
           ),
@@ -908,10 +911,25 @@ window.__ModuleLoader__.load({
               padding: '10px 12px 10px', background: T.surface,
               boxShadow: `0 10px 18px -14px color-mix(in srgb, ${T.text} 55%, transparent)`,
             },
-            onMouseLeave: () => setHover(null),
           },
             legendRow,
-            h('div', { style: { position: 'relative', overscrollBehavior: 'contain' } },
+            // F171: ONE hover resolver for the whole grid. Cells only carry
+            // `data-idx`; pointer moves are mapped to a column here. The previous
+            // per-cell mouseenter relied on React's enter/leave emulation across
+            // 2400 siblings, and a fast sweep dropped events — the hover band then
+            // vanished mid-sweep.
+            h('div', {
+              onMouseMove: (event) => {
+                const target = event.target;
+                const cell = target && target.closest ? target.closest('[data-idx]') : null;
+                if (cell == null) return; // over a 1px gap: keep the last column
+                const next = Number(cell.getAttribute('data-idx'));
+                if (!Number.isFinite(next) || next === hoverRef.current) return;
+                setHover(next);
+              },
+              onMouseLeave: () => setHover(null),
+              style: { position: 'relative', overscrollBehavior: 'contain' },
+            },
               grid,
               // F157/F168: two distinct states — selected (26% fill + 2px edges,
               // stays) and hover (18% + 1px, follows). Fill strengths come from

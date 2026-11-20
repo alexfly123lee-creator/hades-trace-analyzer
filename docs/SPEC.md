@@ -546,7 +546,19 @@
 - **实测**（harness 复刻 + CDP）：初始 20 行 → `scrollTop = maxScroll`、`distanceToEdge = -12`、pill 隐藏；推 3 条 → 仍贴边缘、跟随保持；用户上滚 260px → `follow=false`、pill 出现、位置保留；此时再推 3 条 → **位置不动**（仍 356）、pill 仍在；点 pill → `scrollTop = maxScroll`、pill 隐藏、跟随恢复。
 - **AC**：打开面板即看到最新的 Run 与最新列高亮；流式期间视口自动贴底；上滚后不再被拉回，且出现 `↓ Latest`；`check-served` **126/126**（新增 `scrollToLatest` / `lastRowBottom` / `stopFollowing` / `followRef` / `data-hades-latest` / `mx.jumpLatest`）；单测 43/43；harness `mockup/follow-harness.html` + `cdp-follow-check.mjs`。
 
-## 48. 范围外（v1 不做）
+## 48. 矩阵 hover 在快速移动时丢失的修复（F171）
+
+- **F171 症状**：鼠标在热力矩阵上快速横扫时，高亮带/读数会**消失**（或停在别的列）。
+- **两个叠加成因**：
+  1. **每格一个 `onMouseEnter`**：175 列 × 4 行 ≈ 2400 个 4px 宽的小格子，快速移动时浏览器的 `mouseover/mouseout` 序列与 React 的 enter/leave 模拟在同帧内大量交错，最终状态可能落到"已离开"。
+  2. **每格一个 `title`**：700 个原生 tooltip 在横扫时不断弹出/收起，**原生 tooltip 窗口会抢走 hover**（经典原因），表现就是高亮突然消失。
+- **改法**：
+  1. 单元格只保留 `data-idx`，**hover 由网格容器统一解析**：`onMouseMove` → `event.target.closest('[data-idx]')` → 取列号；同一列不重复 `setState`。指针落在 1px 缝隙或行标签上时**保持上一列**（不闪）；只有**离开网格容器**才 `setHover(null)`。
+  2. **删掉全部格子级 `title`**；Run 号 / error / slow 信息由左侧读数与行 tooltip 承担。
+- **实测**（harness + CDP 真实鼠标）：6 次大跨度横扫（175 列）后，`hover` = 指针所在列 **149**，与 `root.elementFromPoint` 命中列**完全一致**（旧 harness 因 shadow hit-test 用了 `document.elementFromPoint` 才返回 null，已修正）；每次横扫只需 6 个 `mousemove`，而每格 enter/leave 方案同样要 6 个 over + 6 个 out 且依赖模拟。
+- **AC**：快速横扫矩阵不再丢高亮；停在某一列时读数稳定显示该 Run；移出网格容器后高亮消失；`check-served` **128/128**（新增 `'data-idx': r.idx` / `onMouseMove: (event) =>`）；单测 43/43；harness `mockup/hover-harness.html` + `cdp-hover-check.mjs`。
+
+## 49. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

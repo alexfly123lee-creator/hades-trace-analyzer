@@ -345,6 +345,8 @@ dsh-trace-analyzer/
 
 43. **M42 打开即落在实况边缘 + 实时跟随（F170）** ✅：打开面板直接落在**最新 Run**（底部），并默认"跟随"——流式期间 2s tick 每推新数据，视口自动贴底，矩阵光标（高亮带 + 读数）也骑到最后一列。状态机：`distanceToEdge ≤ 8px` 视为在边缘→跟随；跟随自身的滚动写 `programmatic` 标记让滚动监听忽略（避免自己把自己判成用户滚动）；点行/点矩阵/滚轮拨动都 `stopFollowing()` 交出控制权，新数据不再拽动位置；右下角 `↓ Latest`（`data-hades-latest`）平滑回到最新并恢复。落点用 `getBoundingClientRect` 差值换算内容坐标（**不用 `offsetTop`**：面板根是 relative，offsetTop 会带表头高度），因 F161 尾部留白 target 通常小于 maxScroll，不会停在空白。CDP 实测：初始贴边（distance −12）→ 推 3 条仍贴边 → 上滚 260px 后 `follow=false`、pill 出现、位置保留 → 再推 3 条位置不动 → 点 pill 回到底部、pill 消失。验收：check-served 126/126；单测 43/43。见 TEST V83、SPEC 47。
 
+44. **M43 矩阵 hover 快速移动丢失的修复（F171）** ✅：两个叠加成因——① 175×4 ≈ 2400 个 4px 小格各挂一个 `onMouseEnter`，快速横扫时 over/out 序列与 React 的 enter/leave 模拟同帧交错，最终状态可能落到"已离开"；② 每格一个 `title`（700 个原生 tooltip），横扫时 tooltip 窗口会**抢走 hover**。改法：单元格只留 `data-idx`，hover 由网格容器**统一解析**（`onMouseMove` + `closest('[data-idx]')`，同列不重复 setState，落在缝隙/标签上保持上一列，只有离开容器才清空）；删除全部格子级 `title`，Run 号/error/slow 交给左侧读数与行 tooltip。CDP 实测：6 次大跨度横扫后 hover = 149，与 `root.elementFromPoint` 命中列一致。验收：check-served 128/128；单测 43/43。见 TEST V84、SPEC 48。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
