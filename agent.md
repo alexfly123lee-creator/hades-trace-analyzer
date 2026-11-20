@@ -399,6 +399,8 @@ dsh-trace-analyzer/
 
 57. **M56 矩阵点击面：整块可点、整块手形（F185）** ✅：点击只挂在**格子节点**上（3px 标记带 / 11px 指标行），而格子间有 1px gap、行间 4px margin、左边 46px 标签栏 —— 指针落进缝里时 `closest('[data-idx]')` 返回 `null`，点击被吞、光标仍是箭头（用户："经常不进入点击态"）。改法：① 新增 `columnAt(event, container)` 按几何换算列索引（先 `closest`，取不到就用 x/宽度 比例），`clickColumn` 统一处理（含 F183 悬停锁与 locate）；② 点击改挂**容器**（标记带 1 个 + 三条指标行各 1 个，`data-hades-lane-grid` / `data-hades-row-grid`），删掉 2400 个格子级 onClick；③ 绘图区包装器/容器/网格都 `cursor: pointer`。附带修复：三条指标行的点击原先**没有**设 F183 悬停锁，点进去后指针一动又把行拉回焦点线。`smoke:render` 新增结构断言（1 个标记带容器 + 3 个指标行容器 + 手形光标 ≥4）。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V97、SPEC 61。
 
+58. **M57 打开 Step 不再"先上后下"跳一下（F186）** ✅：两个成因同在一个打开动作里——① **几何只在打开态存在**：Step 括号（1px 三边 + 3px 左轨 + `margin: 2px 0`）只写在 open 分支，点击瞬间凭空长出边框与 margin，内容先被顶一次；改为**两个状态都预留同样边框宽度与 margin**（关闭时 `transparent`），打开只变色不改几何。② **内容到达重放展开动画**：`expandMs` 从 0 变 `EXPAND_MS` 让 `Collapse` 打开 effect 重跑，而首帧恒为 `height: 0` → 先缩到 0（"先向上"）再展开（"再向下"）；现在只有"用户打开内容已就绪的 Step"才动画（`expanding`），占位符→真实内容直接吸附。`smoke:render` 新增断言：closed/open 两棵树的边框宽度、margin、上内边距必须完全一致。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V98、SPEC 62。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

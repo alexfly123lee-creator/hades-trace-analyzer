@@ -1414,6 +1414,12 @@ window.__ModuleLoader__.load({
     }
     function StepRow({ step, selected, open, onSelect, idxWidth, timeMetric, tokenMetric, text, title, tag, tags, marks, waitMs, hasError, content, contentReady }) {
       const [hover, setHover] = useState(false);
+      // F186: animate only a real open/close of settled content. While the step's
+      // payload is still arriving the box must snap to its final height instead of
+      // animating placeholder → content (that two-phase move is the "jump").
+      const wasReady = useRef(false);
+      const expanding = open && contentReady && wasReady.current;
+      if (contentReady) wasReady.current = true;
       const background = selected ? T.stepSelBg : (hover ? T.stepHoverBg : 'transparent');
       // Title = verb + object (F23.1); the chip row carries every action the
       // step performed (F137). `text` stays the raw caption and is the tooltip.
@@ -1471,25 +1477,23 @@ window.__ModuleLoader__.load({
         hasError ? h('span', { style: { flex: '0 0 8px', width: 8, height: 8, borderRadius: '50%', background: T.error } }) : null,
       );
       return h('div', {
-        style: open
-          ? {
-            // Step bracket (F129): outline unchanged (1px ring + 3px rail +
-            // radius + clip), only the fill is gone. Indented one level.
-            borderTop: '1px solid ' + T.stepGroupRing,
-            borderRight: '1px solid ' + T.stepGroupRing,
-            borderBottom: '1px solid ' + T.stepGroupRing,
-            borderLeft: '3px solid ' + T.rail,
-            borderRadius: T.radiusMd,
-            overflow: 'hidden',
-            padding: '0 0 2px',
-            margin: `2px 0 2px ${STEP_INDENT}px`,
-            background: 'transparent',
-          }
-          // Closed Steps keep the same indent, so toggling never shifts rows;
-          // no separator either — spacing alone separates them.
-          : { marginLeft: `${STEP_INDENT}px` },
+        // F186: the bracket's border widths and margins are reserved in BOTH
+        // states (transparent when closed). Toggling now only changes colours, so
+        // the box cannot shift up/down by the 3px border + 4px margins before the
+        // height animation even starts.
+        style: {
+          borderTop: '1px solid ' + (open ? T.stepGroupRing : 'transparent'),
+          borderRight: '1px solid ' + (open ? T.stepGroupRing : 'transparent'),
+          borderBottom: '1px solid ' + (open ? T.stepGroupRing : 'transparent'),
+          borderLeft: '3px solid ' + (open ? T.rail : 'transparent'),
+          borderRadius: T.radiusMd,
+          overflow: 'hidden',
+          padding: open ? '0 0 2px' : '0',
+          margin: `2px 0 2px ${STEP_INDENT}px`,
+          background: 'transparent',
+        },
       },
-      row, h(Collapse, { open, expandMs: contentReady ? EXPAND_MS : 0 }, content));
+      row, h(Collapse, { open, expandMs: expanding ? EXPAND_MS : 0 }, content));
     }
 
     /**
