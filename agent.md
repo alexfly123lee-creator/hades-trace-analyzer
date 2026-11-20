@@ -387,6 +387,8 @@ dsh-trace-analyzer/
 
 51. **M50 固定焦点线：行在滚、高亮不动（F179）** ✅：F178 的"舒适带最小滚动"让高亮在视口里上下移动，方向反了。改为**固定焦点线**：焦点行恒定落在视口 **34%**（`anchor = viewH × 0.34`），悬停不同列时由**列表移动**把该行送到这条线上 —— 眼睛看到"列表在滚、高亮不动"；连续悬停用 `scrubTarget/scrubAt` 合成位移（260ms 内从上一目标续算），扫过一串列是一次连贯滑动而非逐格跳；300ms easeInOutCubic 与 `markProgrammatic` 保留。`cdp:focus` 改为断言"焦点行必须落在 34%±6%"+"悬停线外行确实滚动列表"，并修掉测试里两处标识符/基线错误。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V91、SPEC 55。
 
+52. **M51 点击展开后行位置漂移（F180）** ✅：两处"列表自己动"的隐患——① `focusRun` 曾是 `DualBarChart` 的 prop 并参与**行缓存键**，指针离开矩阵时（`focusRun → null`）会**重建那一行**，展开中的行被重建会重挂 `Collapse` 子树、高度短暂变化 → 列表跳动；改成**直接操作 DOM**（`markFocusedRow` 给行节点加/去 `is-focus`，只有根节点的 `hades-scrubbing` 控制压暗），不再触发任何行重渲染，payload 刷新后由 `applyNow` 补标记。② 滚动位置由我们接管，但 Chrome **scroll anchoring** 会在视口上方内容变高时偷改 `scrollTop`（展开行 + 随后到达的 step 内容都会变高）→ 容器加 `overflow-anchor: none`。`cdp:focus` 新增完整回放（hover → 点击展开 → 详情增高 240px → 指针移出）+ 三条断言。**验证边界如实记录**：把 `overflow-anchor` 改回 `auto` 该 harness 同样通过（增高发生在视口顶部行内，锚定不触发），因此**无法证明锚定就是线上漂移的唯一原因**，需真实面板确认。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V92、SPEC 56。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

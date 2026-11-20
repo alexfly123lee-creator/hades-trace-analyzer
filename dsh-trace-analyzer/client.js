@@ -951,7 +951,7 @@ window.__ModuleLoader__.load({
     // stays a one-line change).
     const RUN_IDX_W = 78;
 
-    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, label, detailEpoch, instantRef, focusRun }) {
+    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, label, detailEpoch, instantRef }) {
       const listRef = useRef(null);
       const prevTops = useRef(new Map());
       const first = useRef(true);
@@ -1113,7 +1113,7 @@ window.__ModuleLoader__.load({
       // identity (a new closure every render).
       const langKey = label('col.time', 'Time') + '|' + label('col.token', 'Token') + '|' + sysLabel;
 
-      const buildRow = (r, open, focused) => {
+      const buildRow = (r, open) => {
         const tPct = (r.time / maxTime * 100).toFixed(1);
         const kPct = (r.token / maxToken * 100).toFixed(1);
         const abnormal = r.hasError;
@@ -1147,7 +1147,7 @@ window.__ModuleLoader__.load({
           'data-run': String(r.idx),
           // F166: the wheel-scrub focus lives on the group so its whole detail
           // block dims with it, not just the header line.
-          className: 'hades-run-group' + (focused ? ' is-focus' : ''),
+          className: 'hades-run-group',
           style: isNewRow ? { ...groupStyle, animation: 'hadesRowIn .22s ease-out' } : groupStyle,
         },
           h('div', {
@@ -1215,11 +1215,10 @@ window.__ModuleLoader__.load({
         }
         return sorted.map((r) => {
           const open = expanded.has('run-' + r.idx);
-          const focused = focusRun === r.idx;
           const hit = c.map.get(r.idx);
-          if (hit && hit.open === open && hit.focused === focused && (!open || hit.epoch === openEpoch)) return hit.el;
-          const el = buildRow(r, open, focused);
-          c.map.set(r.idx, { open, focused, epoch: openEpoch, el });
+          if (hit && hit.open === open && (!open || hit.epoch === openEpoch)) return hit.el;
+          const el = buildRow(r, open);
+          c.map.set(r.idx, { open, epoch: openEpoch, el });
           return el;
         });
       };
@@ -2249,13 +2248,29 @@ window.__ModuleLoader__.load({
 
       // F175: one focus path for the pointer, the wheel and the arrow keys.
       // `null` means "the pointer left the matrix" → un-dim.
+      // F180: the focus ring is applied straight to the row node — no React state,
+      // no cache invalidation, no re-render of the row (which used to re-mount the
+      // expanded Collapse and shift the list).
+      const focusRunRef = useRef(null);
+      const markFocusedRow = (idx) => {
+        const host = scrollRef.current;
+        focusRunRef.current = idx;
+        if (!host) return;
+        const previous = host.querySelector('.hades-run-group.is-focus');
+        if (previous != null) previous.classList.remove('is-focus');
+        if (idx == null) return;
+        const el = host.querySelector('[data-run="' + idx + '"]');
+        if (el != null) el.classList.add('is-focus');
+      };
       const beginScrub = (idx) => {
         if (idx == null) {
           setFocusRun(null);
+          markFocusedRow(null);
           return;
         }
         stopFollowing();
         setFocusRun(idx);
+        markFocusedRow(idx);
         scrubTo(idx);
       };
 
@@ -2623,7 +2638,6 @@ window.__ModuleLoader__.load({
             label,
             detailEpoch,
             instantRef: instantOpen,
-            focusRun,
           }),
           // F161: breathing room so the last Run can still be scrolled to the top.
           tailPad > 0 ? h('div', { key: 'tail', 'data-hades-tail': '1', style: { height: tailPad } }) : null,
@@ -2678,6 +2692,10 @@ window.__ModuleLoader__.load({
             // panel (header included) off-screen, and it looked like the matrix
             // had "stopped sticking" when scrolling back up.
             overscrollBehavior: 'contain',
+            // F180: we own the scroll position. Chrome's scroll anchoring silently
+            // adjusts scrollTop when content above the viewport grows (an expanded
+            // row's detail), which made the list shift under the pointer.
+            overflowAnchor: 'none',
           },
         },
           renderList(),
