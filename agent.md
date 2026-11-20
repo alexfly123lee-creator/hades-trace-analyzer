@@ -21,13 +21,37 @@
 
 ### 0.2 交付前标准检查清单（每次都要跑）
 
+- [ ] **一条命令跑完整回归：`node mockup/regress.mjs <GUI_URL>`，必须 `ALL GREEN`**（见 §0.4）。任何一项 FAIL 就先修，修完重跑，**不得**带着红项回复。
 - [ ] `node --check` 语法校验（client / index / lib）。
 - [ ] 纯函数单测 `node --test`（如有改动）。
 - [ ] JSON / package 校验。
 - [ ] **端到端**：从运行中的服务抓取实际生效的产物，确认新代码/新文案真的被加载（例如 fetch 服务端 bundle 并 grep 关键标记）。
+- [ ] **重点交互回归**（见 §0.4 表格）：拨动、hover、跟随、滑块、展开、定位——凡是本轮改动触碰到或可能连带影响的，都要有对应 CDP harness 的绿项。
 - [ ] 对照改动逐条核对真实结果，未验证项明确标注。
 - [ ] **样式遵循 `docs/DESIGN.md` §5**（DSH design tokens；禁止写死颜色/圆角/加粗，颜色只用 `--dsw-alias-*`）。
 - [ ] 文档（agent.md / SPEC / TEST / DESIGN / DETAIL）与代码保持一致。
+
+### 0.4 回归套件（`mockup/regress.mjs`，每次交付必跑）
+
+```powershell
+node mockup/regress.mjs http://127.0.0.1:<GUI端口>
+```
+
+| # | 检查 | 覆盖的重点功能 | 判定来源 |
+|---|---|---|---|
+| 1 | `syntax` | 整个 client bundle 可解析 | `node --check` 退出码 |
+| 2 | `unit` | run / step 切分、耗时、token、KPI 口径 | `node --test`（43 项） |
+| 3 | `smoke:load` | 模块加载 + `apply` + locale 表 + 视图注册 | 脚本退出码 |
+| 4 | `smoke:render` | KpiSummary / OverviewBoard / DualBarChart 三条渲染路径、标记带、渐隐类 | 脚本断言 |
+| 5 | `served` | **线上 bundle** 是否真的含本轮改动（130+ 标记 / 反向断言） | fetch 服务端产物 |
+| 6 | `cdp:scrub` | 矩阵滚轮拨动：一格一 Run、压暗、焦点类、页面不动 | `cdp-scrub-check.mjs` |
+| 7 | `cdp:wheel` | 滚轮语义：所有 `deltaMode` 一格一 Run、落点 34%、快速连拨单调不倒退 | `cdp-wheel-check.mjs` |
+| 8 | `cdp:hover` | 快速横扫不丢 hover、命中列与指针一致 | `cdp-hover-check.mjs` |
+| 9 | `cdp:follow` | 打开落在实况边缘、跟随、上滚释放、`↓ Latest` 复位 | `cdp-follow-check.mjs` |
+
+- harness 页面在 `mockup/*.html`，驱动脚本在 `mockup/cdp-*.mjs`；每个脚本**自带断言并以退出码表态**，套件只汇总。
+- 新增重点交互时，**必须同时补一个 harness + 一条套件项**，否则该交互不算「已交付」。
+- 报告里贴出套件的 summary 表（PASS/FAIL + 耗时），这是「已验证」的证据。
 
 ### 0.3 本次教训（记录在案）
 
@@ -35,6 +59,8 @@
 - 教训：**凡收到「没生效」的反馈，先定位用户实际看到的是哪个界面 / 哪条渲染路径，再做端到端验证，最后才下结论；绝不未经验证就宣称完成。**
 - 「Trace Lab 加载奇慢 vs 轨迹瞬间」——先用真实会话量化：首屏 payload 26.7 MB、`JSON.parse` 107 ms、建树仅 16.7 ms，才确定瓶颈是**下行体积/解析**而非聚合计算。
 - 教训：**性能问题必须先量化（payload 字节数、parse/序列化毫秒数、请求次数），再动手；交付时必须给出改造后的真实数字，禁止用「应该变快了」结案。**
+- 「滚轮拨动有问题」——上一轮我交付时只跑了语法 + 静态标记，**没有对重点交互做回归**，缺陷（`deltaMode` 行模式一步要 9 格、快速连拨时补间从半途重启导致列表追不上、从过期选中开始拨会让列表瞬移到别处）就直接漏到线上。
+- 教训：**每次交付之后、回复之前，必须先跑 `node mockup/regress.mjs` 把重点功能回归一遍（§0.4），并把 summary 贴出来；红项不许交付。** 这条已写成硬性要求，后续所有交付都遵守。
 
 ## 1. 目标与背景
 
@@ -346,6 +372,8 @@ dsh-trace-analyzer/
 43. **M42 打开即落在实况边缘 + 实时跟随（F170）** ✅：打开面板直接落在**最新 Run**（底部），并默认"跟随"——流式期间 2s tick 每推新数据，视口自动贴底，矩阵光标（高亮带 + 读数）也骑到最后一列。状态机：`distanceToEdge ≤ 8px` 视为在边缘→跟随；跟随自身的滚动写 `programmatic` 标记让滚动监听忽略（避免自己把自己判成用户滚动）；点行/点矩阵/滚轮拨动都 `stopFollowing()` 交出控制权，新数据不再拽动位置；右下角 `↓ Latest`（`data-hades-latest`）平滑回到最新并恢复。落点用 `getBoundingClientRect` 差值换算内容坐标（**不用 `offsetTop`**：面板根是 relative，offsetTop 会带表头高度），因 F161 尾部留白 target 通常小于 maxScroll，不会停在空白。CDP 实测：初始贴边（distance −12）→ 推 3 条仍贴边 → 上滚 260px 后 `follow=false`、pill 出现、位置保留 → 再推 3 条位置不动 → 点 pill 回到底部、pill 消失。验收：check-served 126/126；单测 43/43。见 TEST V83、SPEC 47。
 
 44. **M43 矩阵 hover 快速移动丢失的修复（F171）** ✅：两个叠加成因——① 175×4 ≈ 2400 个 4px 小格各挂一个 `onMouseEnter`，快速横扫时 over/out 序列与 React 的 enter/leave 模拟同帧交错，最终状态可能落到"已离开"；② 每格一个 `title`（700 个原生 tooltip），横扫时 tooltip 窗口会**抢走 hover**。改法：单元格只留 `data-idx`，hover 由网格容器**统一解析**（`onMouseMove` + `closest('[data-idx]')`，同列不重复 setState，落在缝隙/标签上保持上一列，只有离开容器才清空）；删除全部格子级 `title`，Run 号/error/slow 交给左侧读数与行 tooltip。CDP 实测：6 次大跨度横扫后 hover = 149，与 `root.elementFromPoint` 命中列一致。验收：check-served 128/128；单测 43/43。见 TEST V84、SPEC 48。
+
+45. **M44 滚轮三处缺陷 + 回归套件（F172）** ✅：① **`deltaMode` 未归一**——行模式（`deltaY=3/格`）下 26px 阈值要 9 格才走一步，滚轮像没反应；现在 `deltaMode 1×16 / 2×400` 归一，任何模式一格一 Run；② **补间从半途重启**——快速连拨时每步在落后的 `scrollTop` 重启 ease，列表追不上选中；改用 `scrubTarget/scrubAt` 记住在飞目标，260ms 内新一步从上一目标续算并瞬时跳到起点；③ **从过期选中开始拨**——`selected` 可能在很远的位置，拨一格把列表瞬移；改为"指针所在列 → 列表顶部可见行（`topVisibleRunIdx`）→ 选中"的顺序解析基数；④ 累加器 400ms 无滚轮清零。**同时落地回归套件** `mockup/regress.mjs`（9 项：syntax/unit/smoke:load/smoke:render/served + cdp:scrub/wheel/hover/follow，每项自带断言、以退出码表态），并把"每次交付前必跑、绿项才回复、贴 summary"写进 §0.2/§0.4 与教训。本轮实际结果：**ALL GREEN (9 checks)**。见 TEST V85、SPEC 49。
 
 ## 8. 待开工确认清单（第 0 步执行）
 

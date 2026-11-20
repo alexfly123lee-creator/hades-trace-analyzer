@@ -541,7 +541,7 @@ window.__ModuleLoader__.load({
      * scrolls, it never shifts the list, and it cannot create a fixed-position
      * containing-block surprise.
      */
-    function OverviewBoard({ kpi, rows, label, onLocate, onScrub, followLatest }) {
+    function OverviewBoard({ kpi, rows, label, onLocate, onScrub, followLatest, baseRun }) {
       // F164: hover/selection are stored as Run idx (not column position), so they
       // survive a change of the visible window.
       const [hover, setHover] = useState(null);
@@ -572,6 +572,11 @@ window.__ModuleLoader__.load({
       // F166: a stable handle for the wheel handler (attached once, natively).
       const scrubRef = useRef(onScrub);
       scrubRef.current = onScrub;
+      // F172: where the list is currently reading — the wheel steps from here when
+      // the pointer is not over a column (otherwise one notch could teleport the
+      // list to the stale selection's region).
+      const baseRunRef = useRef(baseRun);
+      baseRunRef.current = baseRun;
 
       const total = rows.length;
       // A "window" is the newest N runs — where a session's dense tail lives, and
@@ -668,6 +673,7 @@ window.__ModuleLoader__.load({
       const hoverRef = useRef(hover);
       hoverRef.current = hover;
       const wheelAcc = useRef(0);
+      const lastWheelAt = useRef(0);
       const detachWheel = useRef(null);
       const flashTickRef = useRef(flashTick);
       flashTickRef.current = flashTick;
@@ -680,14 +686,27 @@ window.__ModuleLoader__.load({
           // Take the gesture: over the matrix the wheel steers Runs, it does not
           // scroll the page. Passive listeners cannot do this — hence the native one.
           event.preventDefault();
-          wheelAcc.current += event.deltaY;
+          // F172: normalise the delta first. `deltaMode` is LINES on some Windows
+          // drivers (deltaY = 3 per notch) and PAGES in Firefox — without this the
+          // 26px threshold needed 9 notches for one step, so the wheel felt dead.
+          const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1;
+          const dy = event.deltaY * unit;
+          // A stale accumulator from minutes ago must not预付 the next step.
+          const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+          if (now - lastWheelAt.current > 400) wheelAcc.current = 0;
+          lastWheelAt.current = now;
+          wheelAcc.current += dy;
           if (Math.abs(wheelAcc.current) < 26) return;
+          // Exactly one Run per gesture step, whatever the delta magnitude was.
           const dir = wheelAcc.current > 0 ? 1 : -1;
           wheelAcc.current = 0;
           const findPos = (idx) => shownRef.current.findIndex((r) => r.idx === idx);
           const cur = findPos(selectedRef.current);
-          const base = cur >= 0 ? cur : findPos(hoverRef.current);
-          const from = base >= 0 ? base : 0;
+          const hov = findPos(hoverRef.current);
+          const at = baseRunRef.current ? findPos(baseRunRef.current()) : -1;
+          // Pointer over a column wins; otherwise step from what the list is
+          // actually showing; the stored selection is only a last resort.
+          const from = hov >= 0 ? hov : at >= 0 ? at : cur >= 0 ? cur : 0;
           const next = Math.max(0, Math.min(list.length - 1, from + dir));
           const run = list[next];
           if (run == null) return;
@@ -712,7 +731,8 @@ window.__ModuleLoader__.load({
         }
         const dir = key === 'ArrowRight' ? 1 : -1;
         const cur = list.findIndex((r) => r.idx === selectedRef.current);
-        const from = cur >= 0 ? cur : 0;
+        const at = baseRunRef.current ? list.findIndex((r) => r.idx === baseRunRef.current()) : -1;
+        const from = cur >= 0 ? cur : at >= 0 ? at : 0;
         const next = Math.max(0, Math.min(list.length - 1, from + dir));
         const run = list[next];
         if (run == null) return;
@@ -2158,6 +2178,11 @@ window.__ModuleLoader__.load({
       const [focusRun, setFocusRun] = useState(null);
       const scrubRaf = useRef(null);
       const scrubTimer = useRef(null);
+      // F172: where the previous tween was heading. Stepping faster than the tween
+      // finishes used to restart the ease from a mid-flight position, so the list
+      // crawled behind the selection (the wheel "felt broken" on a fast flick).
+      const scrubTarget = useRef(null);
+      const scrubAt = useRef(0);
       const scrubTo = (idx) => {
         const host = scrollRef.current;
         if (!host) return;
@@ -2171,17 +2196,28 @@ window.__ModuleLoader__.load({
         // some context above it is what makes the scrub comfortable.
         const anchor = Math.round(host.clientHeight * 0.34);
         const target = Math.max(0, Math.min(maxScroll, current + offset - anchor));
-        const delta = target - current;
-        if (Math.abs(delta) < 1) return;
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        // Compose with the tween in flight: start from its target instead of the
+        // current (lagging) scrollTop, so N fast notches move N rows in one motion.
+        const pending = (now - scrubAt.current < 260 && scrubTarget.current != null) ? scrubTarget.current : null;
+        const from = pending != null ? pending : current;
+        scrubTarget.current = target;
+        scrubAt.current = now;
+        const delta = target - from;
+        if (Math.abs(delta) < 1) {
+          if (Math.abs(target - current) >= 1) host.scrollTop = target;
+          return;
+        }
         // F168: reduced motion turns every tween into an instant move.
         if (typeof requestAnimationFrame !== 'function' || motionReduced()) { host.scrollTop = target; return; }
         if (scrubRaf.current != null) cancelAnimationFrame(scrubRaf.current);
+        if (Math.abs(from - current) >= 1) host.scrollTop = from; // skip ahead to the composed start
         const duration = DESIGN.motion.fast;
-        const t0 = performance.now();
+        const t0 = now;
         const ease = (p) => 1 - Math.pow(1 - p, 3);
-        const tick = (now) => {
-          const p = Math.min(1, (now - t0) / duration);
-          host.scrollTop = current + delta * ease(p);
+        const tick = (frameNow) => {
+          const p = Math.min(1, (frameNow - t0) / duration);
+          host.scrollTop = from + delta * ease(p);
           scrubRaf.current = p < 1 ? requestAnimationFrame(tick) : null;
         };
         scrubRaf.current = requestAnimationFrame(tick);
@@ -2193,6 +2229,24 @@ window.__ModuleLoader__.load({
         if (!followRef.current) return;
         followRef.current = false;
         setFollow(false);
+      };
+
+      /**
+       * F172: which Run is the user "at" right now? The topmost row visible in the
+       * list. Stepping must start here — starting from the (possibly far away)
+       * selection made one wheel notch teleport the list to a completely different
+       * region, which read as "the wheel is broken".
+       */
+      const topVisibleRunIdx = () => {
+        const host = scrollRef.current;
+        if (!host) return null;
+        const rows = host.querySelectorAll('[data-run]');
+        if (rows.length === 0) return null;
+        const top = host.getBoundingClientRect().top;
+        for (let i = 0; i < rows.length; i++) {
+          if (rows[i].getBoundingClientRect().bottom > top + 4) return Number(rows[i].getAttribute('data-run'));
+        }
+        return Number(rows[rows.length - 1].getAttribute('data-run'));
       };
 
       const beginScrub = (idx) => {
@@ -2499,6 +2553,7 @@ window.__ModuleLoader__.load({
           onLocate: locateRun,
           onScrub: beginScrub,
           followLatest: follow,
+          baseRun: topVisibleRunIdx,
         });
       };
 

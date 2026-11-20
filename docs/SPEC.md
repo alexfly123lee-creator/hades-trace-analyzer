@@ -558,7 +558,17 @@
 - **实测**（harness + CDP 真实鼠标）：6 次大跨度横扫（175 列）后，`hover` = 指针所在列 **149**，与 `root.elementFromPoint` 命中列**完全一致**（旧 harness 因 shadow hit-test 用了 `document.elementFromPoint` 才返回 null，已修正）；每次横扫只需 6 个 `mousemove`，而每格 enter/leave 方案同样要 6 个 over + 6 个 out 且依赖模拟。
 - **AC**：快速横扫矩阵不再丢高亮；停在某一列时读数稳定显示该 Run；移出网格容器后高亮消失；`check-served` **128/128**（新增 `'data-idx': r.idx` / `onMouseMove: (event) =>`）；单测 43/43；harness `mockup/hover-harness.html` + `cdp-hover-check.mjs`。
 
-## 49. 范围外（v1 不做）
+## 49. 滚轮拨动三处真实缺陷 + 回归套件（F172）
+
+- **F172 滚轮"有问题"的三个具体原因**：
+  1. **`deltaMode` 没归一**：部分 Windows 驱动用行模式（`deltaY = 3/格`），26px 阈值要 **9 格**才走一步 → 滚轮像没反应。现在 `deltaMode 1 ×16 / 2 ×400` 归一，任何模式都是**一格一 Run**。
+  2. **补间从半途重启**：连续快速拨动时每次都在 `scrollTop` 当前（落后）位置重启 ease，列表追不上选中。现在用 `scrubTarget/scrubAt` 记住在飞目标，260ms 内新一步从**上一个目标**续算并瞬时跳到起点，N 格 = 一次连贯位移。
+  3. **从过期选中开始拨**：`selected` 可能停在很远的位置（例如打开时是最后一 Run，用户已滚到中间），拨一格会把列表**瞬移到别处**。现在基数按"指针所在列 → 列表顶部可见行 → 选中"的顺序解析（`topVisibleRunIdx`），始终从**你正在看的地方**开始。
+  4. 附带：累加器在 400ms 无滚轮后清零，避免很久以前残留的增量"预付"下一次拨动。
+- **回归套件（本次同时落地）**：`node mockup/regress.mjs <GUI_URL>` 一条命令跑 9 项（syntax / unit / smoke:load / smoke:render / served / cdp:scrub / cdp:wheel / cdp:hover / cdp:follow），每项 harness 自带断言并以退出码表态；交付前必须 `ALL GREEN` 并把 summary 贴在回复里（规则写入 `agent.md` §0.2/§0.4）。
+- **AC**：一格一 Run（像素/行/页三种 deltaMode 均可）；快速连拨 10 格 → 选中 +10、落点 34%、滚动**单调不倒退**、页面不滚动；在列表中部拨动不会瞬移；`node mockup/regress.mjs` **ALL GREEN（9/9）**；`check-served` 128/128；单测 43/43。
+
+## 50. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
