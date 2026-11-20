@@ -541,7 +541,7 @@ window.__ModuleLoader__.load({
      * scrolls, it never shifts the list, and it cannot create a fixed-position
      * containing-block surprise.
      */
-    function OverviewBoard({ kpi, rows, label, onLocate, onScrub, followLatest, baseRun }) {
+    function OverviewBoard({ kpi, rows, label, onLocate, onScrub, onFocusOnly, followLatest, baseRun }) {
       // F164: hover/selection are stored as Run idx (not column position), so they
       // survive a change of the visible window.
       const [hover, setHover] = useState(null);
@@ -572,6 +572,11 @@ window.__ModuleLoader__.load({
       // F166: a stable handle for the wheel handler (attached once, natively).
       const scrubRef = useRef(onScrub);
       scrubRef.current = onScrub;
+      // F183: hover moves the highlight without scrolling once a click has parked a
+      // Run at the top; the lock ends when the pointer leaves the matrix.
+      const focusOnlyRef = useRef(onFocusOnly);
+      focusOnlyRef.current = onFocusOnly;
+      const hoverLock = useRef(false);
       // F172: where the list is currently reading — the wheel steps from here when
       // the pointer is not over a column (otherwise one notch could teleport the
       // list to the stale selection's region).
@@ -637,7 +642,13 @@ window.__ModuleLoader__.load({
               // fire while sweeping and the tooltip window steals mouseover, which
               // is the other half of "the hover band vanishes".
               'data-idx': r.idx,
-              onClick: () => { setSelected(r.idx); setTimeout(() => locateRef.current(r.idx), 0); },
+              onClick: () => {
+              // F183: the click parks this Run at the top; keep it there while the
+              // pointer moves around the matrix.
+              hoverLock.current = true;
+              setSelected(r.idx);
+              setTimeout(() => locateRef.current(r.idx), 0);
+            },
               style: { height: 3, borderRadius: 1, cursor: 'pointer', background: markerBg(r) },
             })),
           ),
@@ -904,9 +915,12 @@ window.__ModuleLoader__.load({
                 const next = Number(cell.getAttribute('data-idx'));
                 if (!Number.isFinite(next) || next === hoverRef.current) return;
                 setHover(next);
-                if (scrubRef.current) scrubRef.current(next);
+                if (hoverLock.current) {
+                  if (focusOnlyRef.current) focusOnlyRef.current(next);
+                } else if (scrubRef.current) scrubRef.current(next);
               },
               onMouseLeave: () => {
+                hoverLock.current = false;
                 setHover(null);
                 if (scrubRef.current) scrubRef.current(null);
               },
@@ -2323,6 +2337,20 @@ window.__ModuleLoader__.load({
         scrubTo(idx);
       };
 
+      /**
+       * F183: same focus visuals as a hover, but it never scrolls the list. Used
+       * while a click-located Run must stay parked at the top.
+       */
+      const focusRunOnly = (idx) => {
+        if (idx == null) {
+          setFocusRun(null);
+          markFocusedRow(null);
+          return;
+        }
+        setFocusRun(idx);
+        markFocusedRow(idx);
+      };
+
       const openRun = (idx) => {
         stopFollowing();
         const runKey = 'run-' + idx;
@@ -2626,6 +2654,7 @@ window.__ModuleLoader__.load({
           label,
           onLocate: locateRun,
           onScrub: beginScrub,
+          onFocusOnly: focusRunOnly,
           followLatest: follow,
           baseRun: topVisibleRunIdx,
         });

@@ -393,6 +393,8 @@ dsh-trace-analyzer/
 
 54. **M53 定位保持 hold + 滚动诊断（F182）** ✅：F181 的定位锁只挡住"重新悬停同一列"，真实面板里**指针离开矩阵**后行仍会滑回中线；harness 复刻不出这一步（缺真实 React 与宿主布局），所以本轮：① **hold** —— `locateRun` 把行停到顶部时记下目标 `scrollTop`（`locatedHoldRef`），之后若**指针不在矩阵上**却有东西移动了列表，滚动监听**回滚一次**并丢弃 hold；真实用户输入（`wheel`/`pointerdown`/`keydown`）先清 hold，绝不干扰用户滚动。② **诊断** —— `scrollLogRef` 环形缓冲记录 `locate/glide/scrub/scroll/user-input`（含 scrollTop、programmatic、焦点），控制台 `__hadesScrollLog()` 取最近 60 条，这是真实宿主里唯一能定位"谁动了列表"的手段。`cdp:focus` 增加"指针离开后外部改动必须被回滚"断言。**诚实边界**：hold 是症状级兜底，根因待日志确认。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V94、SPEC 58。
 
+55. **M54 真凶：点击后指针扫过邻列又触发悬停聚焦（F183）** ✅：现场 `__hadesScrollLog()` 显示最后一段是 `scrub idx 54→43→38→…→24`，末条 `scrub idx:24 from:832 to:665`，随后是一串 `scroll prog:true focus:null` 停在 **665 = 34% 焦点线** —— 点击把行停到顶部后，**指针只要再扫过任何一列就会 `scrubTo` 把列表拉回焦点线**（F181 只挡"同一列"）。改法：点击时给矩阵加**悬停锁** `hoverLock`——锁定期间指针移动只更新高亮/压暗（`onFocusOnly`），**不滚动**；离开矩阵解锁；方向键仍显式导航滚动；F182 的 hold 与日志保留。`cdp:focus` 新增"点击后悬停另一列不得滚动"+"高亮仍跟随"两条断言，**对照实验**去掉锁后立刻变红（`3526 → 3179`，与现场 832→665 同型）。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V95、SPEC 59。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
