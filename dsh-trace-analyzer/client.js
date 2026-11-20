@@ -337,6 +337,39 @@ window.__ModuleLoader__.load({
         open ? children : lastChildren.current);
     }
 
+    /**
+     * F189: a small segmented control for the Step card. Tabs are the card's
+     * views (activity / timeline / raw) — the raw JSON is one of them, not a
+     * per-row afterthought.
+     */
+    function ViewTabs({ tabs, value, onChange }) {
+      return h('div', {
+        role: 'tablist',
+        'data-hades-tabs': '1',
+        style: { display: 'flex', alignItems: 'flex-end', gap: DESIGN.space.md, marginBottom: DESIGN.space.sm },
+      },
+        tabs.map((tab) => {
+          const active = tab.id === value;
+          return h('button', {
+            key: tab.id,
+            type: 'button',
+            role: 'tab',
+            'aria-selected': active ? 'true' : 'false',
+            'data-hades-tab': tab.id,
+            onClick: () => onChange(tab.id),
+            style: {
+              font: `11px/1 ${T.mono}`, letterSpacing: '.04em', textTransform: 'uppercase',
+              color: active ? T.text : T.muted,
+              background: 'transparent', border: 'none', padding: '0 0 4px',
+              cursor: 'pointer',
+              borderBottom: '2px solid ' + (active ? T.brand : 'transparent'),
+              transition: `color ${DESIGN.motion.fast}ms ease, border-color ${DESIGN.motion.fast}ms ease`,
+            },
+          }, tab.text);
+        }),
+      );
+    }
+
     /** The ▸/▾ affordance as one glyph that rotates, so expanding never reflows. */
     function Caret({ open, tone, ms = 160 }) {
       return h('span', {
@@ -1485,6 +1518,8 @@ window.__ModuleLoader__.load({
       const [rawOpen, setRawOpen] = useState(() => new Set());
       // F159: context/system injections collapse into one row by default.
       const [ctxOpen, setCtxOpen] = useState(false);
+      // F189: which view of this step is on screen.
+      const [view, setView] = useState('activity');
       // F140: the parent bumps this token when the session log grew, so an open
       // panel shows a running tool call turning into "finished + duration"
       // without the user closing and reopening the step.
@@ -1765,21 +1800,125 @@ window.__ModuleLoader__.load({
         ));
       }
 
+      const TABS = [
+        { id: 'activity', text: label('step.tab.activity', 'Activity') },
+        { id: 'timeline', text: label('step.tab.timeline', 'Timeline') },
+        { id: 'raw', text: label('step.tab.raw', 'Raw') },
+      ];
+      const tabsBar = h(ViewTabs, { tabs: TABS, value: view, onChange: setView });
+
       const empty = timeline.length === 0;
-      return h('div', { style: cardStyle },
-        strip,
-        empty
-          ? h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, label('step.empty', 'No content in this step'))
-          : h('div', { style: { position: 'relative', paddingLeft: 14 } },
-            h('span', {
-              style: { position: 'absolute', left: 4, top: 6, bottom: 6, width: 1, background: 'color-mix(in srgb, ' + T.text + ' 12%, transparent)' },
-            }),
-            timeline,
-          ),
+      const activityView = empty
+        ? h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, label('step.empty', 'No content in this step'))
+        : h('div', { style: { position: 'relative', paddingLeft: 14 } },
+          h('span', {
+            style: { position: 'absolute', left: 4, top: 6, bottom: 6, width: 1, background: 'color-mix(in srgb, ' + T.text + ' 12%, transparent)' },
+          }),
+          timeline,
+        );
+
+      // ---- Timeline view (F189): the step as a waterfall ------------------
+      const span = Math.max(1, (data.endTime ?? 0) - (data.startTime ?? 0) || (data.timeMs ?? 1));
+      const origin = data.startTime ?? 0;
+      const pctOf = (ms) => Math.max(0, Math.min(100, (ms / span) * 100));
+      const split = [
+        { key: 'model', ms: data.modelMs ?? 0, color: palette('assistant').color, text: label('step.split.model', 'model') },
+        { key: 'tool', ms: data.toolMs ?? 0, color: palette('tool').color, text: label('step.split.tool', 'tools') },
+        { key: 'wait', ms: data.waitMs ?? 0, color: T.faint, text: label('step.split.wait', 'wait') },
+      ].filter((part) => part.ms > 0);
+      const splitTotal = split.reduce((sum, part) => sum + part.ms, 0) || 1;
+      const splitBar = split.length === 0 ? null : h('div', { style: { marginBottom: DESIGN.space.md } },
+        h('div', {
+          style: {
+            display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden',
+            background: 'color-mix(in srgb, ' + T.text + ' 8%, transparent)',
+          },
+        },
+          split.map((part) => h('div', {
+            key: 'split-' + part.key,
+            title: part.text + ' ' + fmtMs(part.ms),
+            style: { width: ((part.ms / splitTotal) * 100) + '%', background: part.color, opacity: part.key === 'wait' ? 0.5 : 1 },
+          })),
+        ),
+        h('div', { style: { display: 'flex', gap: DESIGN.space.md, marginTop: DESIGN.space.xs, fontSize: 11, color: T.muted } },
+          split.map((part) => h('span', { key: 'lg-' + part.key, style: { display: 'inline-flex', alignItems: 'center', gap: 4 } },
+            h('span', { style: { width: 6, height: 6, borderRadius: 3, background: part.color, opacity: part.key === 'wait' ? 0.5 : 1 } }),
+            part.text + ' ' + fmtMs(part.ms))),
+        ),
       );
+      const timelineRows = (data.operations ?? []).map((op, i) => {
+        const role = op.kind === 'assistant' ? 'assistant' : op.kind === 'tool' ? 'tool' : (op.kind === 'note' ? 'system' : 'context');
+        const tone = palette(role);
+        const startMs = Math.max(0, (op.kind === 'tool' ? (op.startTime ?? origin) : (op.time ?? origin)) - origin);
+        const durMs = op.kind === 'tool' ? Math.max(0, op.durationMs ?? 0) : 0;
+        const tagText = op.kind === 'assistant' ? 'REPLY' : op.kind === 'tool' ? 'TOOL' : (op.kind === 'note' ? (NOTE_TAG_EN[op.noteKind] ?? 'EVENT') : 'CTX');
+        const name = op.kind === 'tool' ? op.name : op.kind === 'assistant' ? label('step.modelCall', 'model call') : (op.kind === 'note' ? op.text : (op.text ?? '').slice(0, 80));
+        return h('div', {
+          key: 'tl-' + (op.seq ?? i),
+          style: { display: 'flex', alignItems: 'center', gap: DESIGN.space.sm, minHeight: 22, minWidth: 0 },
+        },
+          h(RowTag, { text: tagText, color: tone.color, background: tone.background }),
+          h('span', {
+            title: op.text ?? name,
+            style: { flex: '0 0 132px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: T.text },
+          }, name ?? ''),
+          h('span', { style: { flex: '1 1 auto', minWidth: 0, position: 'relative', height: 8, borderRadius: 4, background: 'color-mix(in srgb, ' + T.text + ' 6%, transparent)' } },
+            durMs > 0
+              ? h('span', {
+                style: {
+                  position: 'absolute', top: 0, bottom: 0, borderRadius: 4,
+                  left: pctOf(startMs) + '%', width: Math.max(pctOf(durMs), 1.5) + '%',
+                  background: tone.color, opacity: 0.85,
+                },
+              })
+              : h('span', { style: { position: 'absolute', top: -1, width: 2, height: 10, borderRadius: 1, left: pctOf(startMs) + '%', background: tone.color } }),
+          ),
+          h('span', {
+            style: { flex: '0 0 auto', fontFamily: T.mono, fontSize: 11, color: T.muted, textAlign: 'right', minWidth: 62 },
+          }, (durMs > 0 ? fmtMs(durMs) : '+ ' + fmtMs(startMs))),
+        );
+      });
+      const timelineView = (data.operations ?? []).length === 0
+        ? h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, label('step.empty', 'No content in this step'))
+        : h('div', { style: { marginTop: 2 } },
+          splitBar,
+          timelineRows,
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: DESIGN.space.xs, fontFamily: T.mono, fontSize: 11, color: T.faint } },
+            h('span', null, '0'),
+            h('span', null, fmtMs(span))),
+        );
+
+      // ---- Raw view (F189): every operation payload, expanded on demand ----
+      const seqsOf = (op) => (op.kind === 'tool'
+        ? [op.callSeq ?? op.seq, op.resultSeq].filter((value) => value != null)
+        : [op.seq].filter((value) => value != null));
+      const rawView = (data.operations ?? []).length === 0
+        ? h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, label('step.empty', 'No content in this step'))
+        : h('div', { style: { marginTop: 2, display: 'flex', flexDirection: 'column', gap: DESIGN.space.xs } },
+          (data.operations ?? []).map((op, i) => {
+            const seqs = seqsOf(op);
+            const rawKey = seqs.join(',');
+            const open = rawOpen.has(rawKey);
+            const tone = palette(op.kind === 'tool' ? 'tool' : (op.kind === 'assistant' ? 'assistant' : 'context'));
+            return h('div', { key: 'rw-' + (op.seq ?? i) },
+              h('button', {
+                type: 'button',
+                onClick: () => toggleRaw(rawKey),
+                style: { ...cardBox({ padding: '3px 9px', width: '100%', textAlign: 'left', cursor: 'pointer' }), display: 'flex', alignItems: 'center', gap: DESIGN.space.sm },
+              },
+                h(RowTag, { text: 'SEQ ' + seqs.join('+'), color: tone.color, background: tone.background }),
+                h('span', { style: { flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: T.text } },
+                  op.kind === 'tool' ? op.name : (op.text ?? '').slice(0, 90)),
+                h('span', { style: { fontFamily: T.mono, fontSize: 11, color: open ? T.text : T.faint } }, open ? 'hide' : 'raw'),
+              ),
+              open ? h(EventDetail, { sessionId, seqs }) : null,
+            );
+          }),
+        );
+
+      const body = view === 'raw' ? rawView : view === 'timeline' ? timelineView : activityView;
+      return h('div', { style: cardStyle }, strip, tabsBar, body);
     }
-
-
     /**
      * Raw event JSON, fetched only when the user opens an operation (SPEC F121/NF6).
      * Accepts one or more seqs (a tool call shows call + result together).

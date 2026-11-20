@@ -719,7 +719,21 @@
 - **回归（新增 `collapse` 检查）**：`mockup/check-collapse.mjs` **直接抽取 client.js 里两个 `useLayoutEffect` 的函数体**，在 Node 里用假元素跑 4 个场景：①子树有 height 动画在跑时外层**不得**再动画；②没有内部动画时异步增高仍要动画（200→400）；③已打开面板重跑时必须**从当前高度**起算；④首次打开仍从 0 起算。**对照实验**（`mockup/control-f188.mjs` 把两处修复回退）会立刻变红：`outer panel animated while a descendant height animation was running` / `re-open must start at the current height`。
 - **AC**：任意顺序打开/关闭 Step（含已有一个展开时打开另一个）**不再出现先塌后胀**；`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 
-## 65. 范围外（v1 不做）
+## 65. Step 卡片升级：视图 Tab（Activity / Timeline / Raw）（F189）
+
+- **F189 需求**：Step 卡片结构大体正确，但缺少**视图切换**，raw 只是其中一种视图。
+- **新增 `ViewTabs`（分段式 Tab）**，卡片顶部（摘要条之下）三个视图：
+  1. **Activity**（默认）——原有的操作卡片时间线（rail + 每步一张小卡），行为不变；
+  2. **Timeline**——本步的**瀑布视图**：顶部一条 **model / tools / wait** 用时占比条（数据来自 `modelMs / toolMs / waitMs`，带图例），下面每个操作一行：角色标签、名称、按时间偏移定位的条（tool 画**时长**、其余画**起点刻度**）、右侧 `+偏移` 或 `时长`，底部 `0 … 总时长` 轴；
+  3. **Raw**——把"逐行 raw 链接"升级为**独立视图**：每个操作一行（`SEQ callSeq+resultSeq`），点开即在原地渲染该操作的完整 JSON（复用 `EventDetail`，带 Copy），不再需要逐行点链接。
+- **实现要点**：
+  - Tab 用 `role="tablist" / "tab"` + `aria-selected`，激活态为品牌色 2px 底线 + 主文本色，非激活为 muted；11px 等宽、大写、字距 `.04em`，与矩阵卡片一致；
+  - 状态 `view` 存在 `StepContent` 内部（每个 Step 独立记忆）；`refreshToken` 变化时视图保持不变；
+  - 摘要条（model/tools/contexts、time · tokens）在三个视图里都保留，作为卡片头部。
+- **回归**：`smoke:render` 现在**会展开函数组件**（`walk` 支持 function component），断言 Step 卡片渲染 **1 个 tab 条 + 3 个 tab（activity/timeline/raw）**，且默认视图包含操作卡片；`check-served` 增加 `function ViewTabs` / `data-hades-tabs` / `step.tab.timeline` / `step.split.model` 标记。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
+- **AC**：Step 卡片顶部有三个可点视图；Timeline 能看出模型/工具/等待的用时分布；Raw 是独立视图且按需展开；`node mockup/regress.mjs` 全绿。
+
+## 66. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
