@@ -379,6 +379,8 @@ dsh-trace-analyzer/
 
 47. **M46 交互简化：悬停 = 滚轮 = 单 Run 聚焦，单击即打开（F175）** ✅：① 鼠标与滚轮合并成一条聚焦路径——悬停某列即把该 Run 设为唯一聚焦行（其余压暗 22%、焦点行全亮 + 3px 左轨 + 16% 底 + 滚到 34%），滚轮在此焦点上 ±1；移出矩阵清除聚焦；② 单击矩阵元素**直接打开**该 Run（展开 step + 滚到顶部），`selected` 只由单击写入，与"聚焦"语义分离；③ 顺带修掉"滚一格弹回"的真根因：尾部留白让边缘判定在末尾附近恒真，滚动监听把我们自己的补间误判成用户滚动 → 重新开启跟随 → F170 效果把光标拽回最后一行；现在所有程序化滚动都打 `markProgrammatic`，边缘判定加 `scrollTop >= maxScroll - 8`；④ **回归升级**：`mockup/integration-harness.html` 直接抽取 client.js 的 `onWheel/scrubTo/beginScrub/stopFollowing/topVisibleRunIdx` 源码在普通 DOM 跑，并镜像跟随/程序化滚动/tick，套件项改名 `cdp:focus`。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V87、SPEC 51。
 
+48. **M47 去掉矩阵滚轮 + 放慢聚焦滑行（F176）** ✅：① 删除整条滚轮链路（原生监听 / `deltaMode` 归一 / 累加器 / 拨动逻辑），矩阵只由指针驱动，滚轮回到浏览器默认行为（-2.3 KB）；② `scrubTo` 时长 120ms → **300ms**（`DESIGN.motion.focus`），缓动 `easeOutCubic` → **easeInOutCubic**，因为 120ms cubic-out 眼睛跟不上、"看不清挑了哪行"；③ 悬停/方向键仍走同一聚焦路径（压暗其余 + 滚到 34%），单击仍直接展开，跟随与 `↓ Latest` 不变；④ `cdp:focus` 新增两条断言：**滚轮不得移动焦点/列表**、**滑行在 ~90ms 时必须仍在途中**（防止把时长改回瞬时）。本轮 `node mockup/regress.mjs`：**ALL GREEN (8 checks)**。见 TEST V88、SPEC 52。
+
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

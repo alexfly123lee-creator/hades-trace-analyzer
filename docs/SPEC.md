@@ -588,7 +588,16 @@
 - **回归升级**：新增 `mockup/integration-harness.html` —— **直接抽取 client.js 里的 `onWheel` / `scrubTo` / `beginScrub` / `stopFollowing` / `topVisibleRunIdx` 源码**在普通 DOM 里运行，并镜像 Body 的跟随/程序化滚动/实时 tick。套件项 `cdp:focus` 断言：悬停聚焦 1 行并压暗、滚轮 +5、tick 不拽回、页面不滚动。
 - **AC**：悬停/滚轮效果一致且只高亮一行；单击即展开该 Run；连续滚动不弹回；`node mockup/regress.mjs` **ALL GREEN (8 checks)**；`check-served` 128/128；单测 43/43。
 
-## 52. 范围外（v1 不做）
+## 52. 去掉矩阵滚轮 + 放慢聚焦滑行（F176）
+
+- **F176 两条调整**：
+  1. **去掉鼠标滚轮效果**：矩阵不再拦截 `wheel`（监听器、`deltaMode` 归一、累加器、`programmatic` 之外的整套拨动逻辑全部删除，`-2.3 KB`）。滚轮回到浏览器默认行为；矩阵只由**指针**驱动。
+  2. **放慢聚焦滑行**：`scrubTo` 的时长从 120ms 提到 **300ms**（`DESIGN.motion.focus`），缓动由 `easeOutCubic` 换成 **easeInOutCubic** —— 原来 120ms 的 cubic-out 眼睛还没跟上就结束了，"看不清挑了哪一行"。
+- **保留**：悬停/方向键仍然走同一条聚焦路径（压暗其余行 + 滚到 34%）；单击仍直接打开该 Run；跟随（F170）与 `↓ Latest` 不变。
+- **回归升级**：`cdp:focus` 改成断言"**滚轮不再移动焦点、不再滚动列表**"，并新增"**滑行必须仍然在途中**"的断言（悬停后 ~90ms 采样，`scrollTop` 必须尚未到达终点）—— 这条能挡住"又把时长改回瞬时"的回归。
+- **AC**：矩阵上滚动鼠标 → 焦点与列表都**不动**（浏览器默认滚动）；悬停某列 → 单行高亮且约 300ms 平滑滑到位；单击 → 直接展开；`node mockup/regress.mjs` **ALL GREEN (8 checks)**；`check-served` 128/128；单测 43/43。
+
+## 53. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

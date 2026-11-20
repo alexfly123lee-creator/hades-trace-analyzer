@@ -72,7 +72,7 @@ window.__ModuleLoader__.load({
     // ---------------------------------------------------------------------
     const DESIGN = {
       space: { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16 },
-      motion: { fast: 120, base: 160, slow: 240, glide: 260, dimHold: 700 },
+      motion: { fast: 120, base: 160, slow: 240, glide: 260, focus: 300, dimHold: 700 },
       ease: { out: 'cubic-bezier(.2,.7,.3,1)', in: 'cubic-bezier(.4,0,1,1)' },
       alpha: {
         hover: [9, 22],
@@ -672,52 +672,6 @@ window.__ModuleLoader__.load({
       selectedRef.current = selected;
       const hoverRef = useRef(hover);
       hoverRef.current = hover;
-      const wheelAcc = useRef(0);
-      const lastWheelAt = useRef(0);
-      const detachWheel = useRef(null);
-      const flashTickRef = useRef(flashTick);
-      flashTickRef.current = flashTick;
-      const matrixEl = useCallback((el) => {
-        if (detachWheel.current != null) { detachWheel.current(); detachWheel.current = null; }
-        if (el == null) return;
-        const onWheel = (event) => {
-          const list = shownRef.current;
-          if (list.length < 2) return;
-          // Take the gesture: over the matrix the wheel steers Runs, it does not
-          // scroll the page. Passive listeners cannot do this — hence the native one.
-          event.preventDefault();
-          // F172: normalise the delta first. `deltaMode` is LINES on some Windows
-          // drivers (deltaY = 3 per notch) and PAGES in Firefox — without this the
-          // 26px threshold needed 9 notches for one step, so the wheel felt dead.
-          const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1;
-          const dy = event.deltaY * unit;
-          // A stale accumulator from minutes ago must not预付 the next step.
-          const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-          if (now - lastWheelAt.current > 400) wheelAcc.current = 0;
-          lastWheelAt.current = now;
-          wheelAcc.current += dy;
-          if (Math.abs(wheelAcc.current) < 26) return;
-          // Exactly one Run per gesture step, whatever the delta magnitude was.
-          const dir = wheelAcc.current > 0 ? 1 : -1;
-          wheelAcc.current = 0;
-          const findPos = (idx) => shownRef.current.findIndex((r) => r.idx === idx);
-          // F175: the wheel and the pointer share ONE focused Run — the wheel just
-          // moves it one column. The base is that focus (where the pointer is),
-          // falling back to the list's reading position.
-          const at = baseRunRef.current ? findPos(baseRunRef.current()) : -1;
-          const hov = findPos(hoverRef.current);
-          const from = hov >= 0 ? hov : at >= 0 ? at : 0;
-          const next = Math.max(0, Math.min(list.length - 1, from + dir));
-          const run = list[next];
-          if (run == null) return;
-          setHover(run.idx);
-          flashTickRef.current();
-          if (scrubRef.current) scrubRef.current(run.idx);
-        };
-        el.addEventListener('wheel', onWheel, { passive: false });
-        detachWheel.current = () => el.removeEventListener('wheel', onWheel);
-      }, []);
-
       // F168: the matrix is a control surface — arrows step, Enter locates.
       const onMatrixKeyDown = (event) => {
         const list = shownRef.current;
@@ -923,7 +877,6 @@ window.__ModuleLoader__.load({
         h('div', { ref: cardRef, 'data-hades-board': '1', style: { zIndex: 3 } },
           h(KpiSummary, { kpi, label }),
           h('div', {
-            ref: matrixEl,
             className: 'hades-matrix',
             tabIndex: 0,
             role: 'group',
@@ -2237,11 +2190,13 @@ window.__ModuleLoader__.load({
         if (typeof requestAnimationFrame !== 'function' || motionReduced()) { host.scrollTop = target; return; }
         if (scrubRaf.current != null) cancelAnimationFrame(scrubRaf.current);
         // F174: our own writes must not be read as "the user scrolled".
-        markProgrammatic(DESIGN.motion.fast + 160);
+        markProgrammatic(DESIGN.motion.focus + 160);
         if (Math.abs(from - current) >= 1) host.scrollTop = from; // skip ahead to the composed start
-        const duration = DESIGN.motion.fast;
+        // F176: 300ms with an ease-in-out curve — the 120ms cubic-out was over
+        // before the eye could follow which row the pointer had picked.
+        const duration = DESIGN.motion.focus;
         const t0 = now;
-        const ease = (p) => 1 - Math.pow(1 - p, 3);
+        const ease = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
         const tick = (frameNow) => {
           const p = Math.min(1, (frameNow - t0) / duration);
           host.scrollTop = from + delta * ease(p);
