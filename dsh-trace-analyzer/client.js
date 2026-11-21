@@ -351,6 +351,51 @@ window.__ModuleLoader__.load({
       }, '▸');
     }
 
+    /**
+     * F202: the ONE pointer → Run resolver for the heat matrix.
+     *
+     * Geometry, not hit-testing. With ~175 columns the plot is mostly 1px column
+     * gaps and 4px row gaps, and `closest('[data-idx]')` returns null on every one
+     * of them: that froze the readout on the previous column (a fast diagonal sweep
+     * stopped following) and, after re-entering through a gap, left the matrix with
+     * no hover at all. Resolving by x-position makes gaps land on the column they
+     * sit between, which is what the eye already assumes.
+     *
+     * `y` must be inside the plot band (tiny pad allowed) so the legend and the
+     * window slider above/below it stay dead zones; `x` must be inside the grid.
+     * Returns the Run idx, or null when the point is not on the plot.
+     */
+    const columnFromPoint = (point, plotRect, gridRect, list) => {
+      if (plotRect == null || gridRect == null || !Array.isArray(list) || list.length === 0) return null;
+      if (!(gridRect.width > 0)) return null;
+      const pad = 4;
+      if (point.y < plotRect.top - pad || point.y > plotRect.bottom + pad) return null;
+      if (point.x < gridRect.left - pad || point.x > gridRect.right + pad) return null;
+      const ratio = (point.x - gridRect.left) / gridRect.width;
+      const pos = Math.max(0, Math.min(list.length - 1, Math.floor(ratio * list.length)));
+      return list[pos] == null ? null : list[pos].idx;
+    };
+
+    /**
+     * F202: keep the list's focus highlight in step with the matrix after every
+     * commit, instead of writing the class once and hoping it survives.
+     *
+     * `is-focus` is the only visual that says "this row is the hovered column".
+     * It used to be set imperatively; any later React write to that row's
+     * className (opening or closing the Run) dropped it, leaving the list dimmed
+     * with no focused row — the half of "hover disappeared" that outlived the
+     * pointer. Re-asserting is two lookups, and it never rebuilds a row (a
+     * declarative version did, and re-ran the open animation on the expanded row).
+     */
+    const syncFocusRow = (host, idx) => {
+      if (host == null || typeof host.querySelector !== 'function') return;
+      const previous = host.querySelector('.hades-run-group.is-focus');
+      if (previous != null) previous.classList.remove('is-focus');
+      if (idx == null) return;
+      const el = host.querySelector('[data-run="' + idx + '"]');
+      if (el != null) el.classList.add('is-focus');
+    };
+
     // Short tag for the explanation-only rows a step panel gained in F23.2
     // (compaction / retry / file changes / slash commands / approvals …).
     const NOTE_TAG = { compact: 'compact', retry: 'retry', fail: 'fail', workspace: 'files', command: 'command', plan: 'plan', todo: 'todo', deliver: 'deliver', approval: 'approval', note: 'events' };
@@ -607,24 +652,20 @@ window.__ModuleLoader__.load({
       // F156: 700 cells are expensive to rebuild, and nothing about them changes
       // on hover/selection — only the overlay band does. Memoise them so a click
       // costs one band move instead of a full grid re-render.
-      // F185: the click target is the column under the pointer, not the 3–11px
-      // cell node. Over a 1px gap / 4px row margin the cell lookup returns null and
-      // the click used to be swallowed (and the cursor stayed an arrow).
-      const columnAt = (event, container) => {
-        const cell = event.target && event.target.closest ? event.target.closest('[data-idx]') : null;
-        if (cell != null) {
-          const fromCell = Number(cell.getAttribute('data-idx'));
-          if (Number.isFinite(fromCell)) return fromCell;
-        }
-        const rect = container.getBoundingClientRect();
-        const list = shownRef.current;
-        if (rect.width <= 0 || list.length === 0) return null;
-        const ratio = (event.clientX - rect.left) / rect.width;
-        const pos = Math.max(0, Math.min(list.length - 1, Math.floor(ratio * list.length)));
-        return list[pos] == null ? null : list[pos].idx;
+      // F185/F202: one geometric resolver for hover AND clicks, so a pointer on a
+      // 1px gap / 4px row margin / the 46px label gutter still lands on the column
+      // it visually belongs to instead of being swallowed.
+      const plotRef = useRef(null);
+      const indexAt = (event, gridEl) => {
+        const plot = plotRef.current;
+        const plotRect = plot != null && typeof plot.getBoundingClientRect === 'function'
+          ? plot.getBoundingClientRect() : null;
+        const gridRect = gridEl != null && typeof gridEl.getBoundingClientRect === 'function'
+          ? gridEl.getBoundingClientRect() : null;
+        return columnFromPoint({ x: event.clientX, y: event.clientY }, plotRect, gridRect, shownRef.current);
       };
       const clickColumn = (event, container) => {
-        const idx = columnAt(event, container);
+        const idx = indexAt(event, container);
         if (idx == null) return;
         // F183: the click parks this Run at the top; keep it there while the
         // pointer moves around the matrix.
@@ -720,6 +761,14 @@ window.__ModuleLoader__.load({
         if (last == null) return;
         setSelected((prev) => (prev === last.idx ? prev : last.idx));
       }, [followLatest, rows, windowN]);
+
+      // F202: the window slider changes which Runs the columns stand for, so a
+      // hover/selection captured against the old columns points at nothing.
+      useEffect(() => {
+        hoverLock.current = false;
+        setHover(null);
+        if (scrubRef.current) scrubRef.current(null);
+      }, [windowN]);
 
       if (n === 0) return null;
       const posOf = (idx) => (idx == null ? -1 : shown.findIndex((r) => r.idx === idx));
@@ -895,6 +944,27 @@ window.__ModuleLoader__.load({
             role: 'group',
             'aria-label': 'run heat matrix',
             onKeyDown: onMatrixKeyDown,
+            // F202: pointer tracking lives on the CARD, not on the ~52px plot
+            // strip. The strip is thinner than a mouse wobbles: one 3px drift up
+            // into the legend used to fire mouseleave and drop the hover plus the
+            // whole list focus. Off-plot moves now keep the last column; only
+            // leaving the card clears it.
+            onMouseMove: (event) => {
+              const gridEl = cardRef.current != null && typeof cardRef.current.querySelector === 'function'
+                ? cardRef.current.querySelector('[data-hades-row-grid]')
+                : null;
+              const next = indexAt(event, gridEl);
+              if (next == null || next === hoverRef.current) return;
+              setHover(next);
+              if (hoverLock.current) {
+                if (focusOnlyRef.current) focusOnlyRef.current(next);
+              } else if (scrubRef.current) scrubRef.current(next);
+            },
+            onMouseLeave: () => {
+              hoverLock.current = false;
+              setHover(null);
+              if (scrubRef.current) scrubRef.current(null);
+            },
             style: {
               border: '1px solid ' + T.border, borderRadius: T.radiusMd,
               padding: '10px 12px 10px', background: T.surface,
@@ -904,28 +974,12 @@ window.__ModuleLoader__.load({
             },
           },
             legendRow,
-            // F175: ONE pointer→column resolver for the whole grid, and it drives the
-            // SAME focus as the wheel: hovering a column highlights that single Run
-            // in the list (everything else dims) and brings it to the anchor. Cells
-            // only carry `data-idx`; per-cell mouseenter dropped events on a fast
-            // sweep, which is why the band used to vanish.
+            // F175/F202: the plot is one surface — the lane, three metric rows and
+            // their 1px/4px gaps all resolve through `columnFromPoint`. Cells only
+            // carry `data-idx`; nothing hangs per-cell listeners.
             h('div', {
-              onMouseMove: (event) => {
-                const target = event.target;
-                const cell = target && target.closest ? target.closest('[data-idx]') : null;
-                if (cell == null) return; // over a 1px gap: keep the last column
-                const next = Number(cell.getAttribute('data-idx'));
-                if (!Number.isFinite(next) || next === hoverRef.current) return;
-                setHover(next);
-                if (hoverLock.current) {
-                  if (focusOnlyRef.current) focusOnlyRef.current(next);
-                } else if (scrubRef.current) scrubRef.current(next);
-              },
-              onMouseLeave: () => {
-                hoverLock.current = false;
-                setHover(null);
-                if (scrubRef.current) scrubRef.current(null);
-              },
+              ref: plotRef,
+              'data-hades-plot': '1',
               // F185: the whole plot area is clickable — hand cursor everywhere,
               // including the 1px gaps and the 4px row margins.
               style: { position: 'relative', overscrollBehavior: 'contain', cursor: 'pointer' },
@@ -971,12 +1025,20 @@ window.__ModuleLoader__.load({
     // stays a one-line change).
     const RUN_IDX_W = 78;
 
-    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, label, detailEpoch, instantRef }) {
+    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, label, detailEpoch, instantRef, focusRun }) {
       const listRef = useRef(null);
       const prevTops = useRef(new Map());
       const first = useRef(true);
       const lastOrder = useRef(null);
       const seenRuns = useRef(new Set());
+      // F202: the focus highlight is derived, not remembered. Re-asserting it after
+      // every commit repairs the one case that used to lose it — React rewriting
+      // that row's className when the Run opens or closes (`hades-run-group` →
+      // `… is-open`), which silently dropped the hand-set `is-focus` and left the
+      // list dimmed with no highlighted row.
+      useLayoutEffect(() => {
+        syncFocusRow(listRef.current, focusRun);
+      });
       // F158: run-row hover moved to CSS (see ROW_ANIM_CSS) — React state here
       // meant every pointer move re-rendered the whole list. Only the sort
       // header still tracks hover (it changes an icon and a border).
@@ -2326,22 +2388,15 @@ window.__ModuleLoader__.load({
 
       // F175: one focus path for the pointer, the wheel and the arrow keys.
       // `null` means "the pointer left the matrix" → un-dim.
-      // F180: the focus ring is applied straight to the row node — no React state,
-      // no cache invalidation, no re-render of the row (which used to re-mount the
-      // expanded Collapse and shift the list).
+      // F180/F202: the row is NOT rebuilt on focus (that re-ran the expanded
+      // Collapse and shifted the list). The class itself is re-asserted by
+      // `syncFocusRow` from the rendered `focusRun`; this only records it.
       const focusRunRef = useRef(null);
       // F181: the Run a click parked at the top; its column no longer re-scrolls.
       const locatedRunRef = useRef(null);
       const markFocusedRow = (idx) => {
-        const host = scrollRef.current;
         focusRunRef.current = idx;
         logScroll('focus', { idx });
-        if (!host) return;
-        const previous = host.querySelector('.hades-run-group.is-focus');
-        if (previous != null) previous.classList.remove('is-focus');
-        if (idx == null) return;
-        const el = host.querySelector('[data-run="' + idx + '"]');
-        if (el != null) el.classList.add('is-focus');
       };
       const beginScrub = (idx) => {
         if (idx == null) {
@@ -2729,6 +2784,7 @@ window.__ModuleLoader__.load({
             label,
             detailEpoch,
             instantRef: instantOpen,
+            focusRun,
           }),
           // F161: breathing room so the last Run can still be scrolled to the top.
           tailPad > 0 ? h('div', { key: 'tail', 'data-hades-tail': '1', style: { height: tailPad } }) : null,
