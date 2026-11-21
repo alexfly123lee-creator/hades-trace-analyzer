@@ -1671,17 +1671,15 @@ window.__ModuleLoader__.load({
           timeline.push(h('div', { key: 'op-' + op.seq, style: { position: 'relative', marginBottom: 8 } },
             dotOf('assistant'),
             h('div', { style: cardBox() },
-              capRow(
+              // F196: chip + token text on one line, raw on the left below it.
+              h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flexWrap: 'wrap' } },
                 chipOf('REPLY', 'assistant', label('step.modelCall', 'model call')),
-                h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
-                  h('span', { style: { ...mono11, color: T.muted } }, `in ${fmtK(value.input)} · out ${fmtK(value.output)}`)),
-              ),
-              // F192: the reply is shown expanded; raw is a collapsed disclosure.
+                h('span', { style: { ...mono11, color: T.muted } }, `in ${fmtK(value.input)} · out ${fmtK(value.output)}`)),
+              h('div', { style: { marginTop: 2 } }, rawButton([op.seq])),
               op.text ? h('div', {
                 title: op.text,
-                style: { marginTop: 2, fontSize: 12, lineHeight: 1.55, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflow: 'auto' },
+                style: { marginTop: 4, fontSize: 12, lineHeight: 1.55, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflow: 'auto' },
               }, op.text) : null,
-              h('div', { style: { display: 'flex', justifyContent: 'flex-end', marginTop: 3 } }, rawButton([op.seq])),
               rawPanel([op.seq]),
             ),
           ));
@@ -1700,18 +1698,16 @@ window.__ModuleLoader__.load({
           timeline.push(h('div', { key: 'op-' + op.seq, style: { position: 'relative', marginBottom: 8 } },
             dotOf(failed ? 'error' : 'tool'),
             h('div', { style: cardBox(failed ? { borderColor: T.error } : null) },
-              capRow(
-                h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8, minWidth: 0 } },
-                  chipOf(String(op.name ?? 'tool'), 'tool')),
-                h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
-                  errorText != null ? h('span', { style: { fontSize: 11, color: failed ? T.error : T.warn } }, errorText) : null,
-                  h('span', { style: { ...mono11, color: T.muted } }, op.durationMs != null ? fmtMs(op.durationMs) : '—')),
-              ),
+              // F196: chip + duration on one line, raw on the left below it.
+              h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flexWrap: 'wrap' } },
+                chipOf(String(op.name ?? 'tool'), 'tool'),
+                h('span', { style: { ...mono11, color: T.muted } }, op.durationMs != null ? fmtMs(op.durationMs) : '—'),
+                errorText != null ? h('span', { style: { fontSize: 11, color: failed ? T.error : T.warn } }, errorText) : null),
+              h('div', { style: { marginTop: 2 } }, rawButton([op.callSeq, op.resultSeq])),
               // F192: both facets are expanded in the card; raw is a collapsed
               // disclosure at the bottom, closed by default.
               block(op.args || label('step.noArgs', '(no arguments)'), T.text, label('step.facet.args', 'args'), 160),
               block(op.result || label('step.noOutput', '(no output)'), failed ? T.error : T.text, label('step.facet.result', 'result'), 200),
-              h('div', { style: { display: 'flex', justifyContent: 'flex-end', marginTop: 3 } }, rawButton([op.callSeq, op.resultSeq])),
               rawPanel([op.callSeq, op.resultSeq]),
             ),
           ));

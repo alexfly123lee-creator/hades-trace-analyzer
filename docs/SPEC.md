@@ -766,7 +766,16 @@
 - **保留**：每张操作卡片里的 `in/out` token、工具耗时、错误/慢标记、`ARGS`/`RESULT`、`RAW` 下拉；Run 列表行里的时间/Token 条形与数值。
 - **回归**：`smoke:render` 新增断言 —— Step 树里**不得再有 `key: strip` 节点**、也不得出现 `tools N` 这类计数文案（当前输出 `step strip nodes: 0`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**；`check-served` 150/150。
 - **AC**：Step 卡片顶部不再有摘要条；打开 Step 直接看到操作卡片。
-## 70. 范围外（v1 不做）
+## 70. 卡片排版：RAW 靠左在上，数值跟标签同行（F196）
+
+- **F196 两条要求**：① `RAW` 放到**左边**，按**从上到下**的顺序排（默认收起）；② `in 196 · out 5.5k` 这类数值放到**工具标签的右侧**（与标签同一行）。
+- **改法**：两张操作卡片都改成"**头部一行 + RAW 一行 + 正文**"的纵向阅读顺序：
+  - **REPLY 卡**：头部一行 `[REPLY] in X · out Y`（数值紧跟标签右侧）；下一行左侧 `▸ RAW`；然后是回复正文；
+  - **TOOL 卡**：头部一行 `[工具名] 耗时 [错误/慢]`；下一行左侧 `▸ RAW`；然后 `ARGS` 块、`RESULT` 块；
+  - RAW 保持在 `rawButton` / `rawPanel` 上（默认收起，展开后就地渲染 JSON）。
+- **回归**：`smoke:render` 新增**顺序断言** —— `in/out` 数值必须先于 `RAW`、`RAW` 先于 `ARGS`、`ARGS` 先于 `RESULT`（实测偏移 `tokens 42 · raw 62 · args 221 · result 243`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
+- **AC**：卡片从上到下依次是 头部（标签+数值）→ RAW → 正文；RAW 在左侧且默认收起。
+## 71. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

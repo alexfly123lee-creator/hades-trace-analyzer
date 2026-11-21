@@ -145,6 +145,7 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 | V104 | Step 面板去赘述 + 工具名标签（F193） | 展开一个含工具调用的 Step，逐块看文字 | 工具卡徽标是**工具名**（如 `pwsh`），不再出现 `TOOL`；REPLY 卡不再重复 `model call`；指令卡没有 `N chars`；注入组只显示 `▸/▾`；摘要条不出现 `model 1`、也不出现 `tools 0` / `contexts 0`；`ARGS/RESULT`、耗时、错误标记、raw 下拉都还在；node mockup/regress.mjs **ALL GREEN (9 checks)** |
 | V105 | 卡片标签统一大写（F194） | 展开 Step，看卡片里的小标签：ARGS / RESULT / USER / REPLY / raw 下拉 | 全部**大写**，raw 下拉显示为 `▸ RAW`（展开后 `▾ RAW`），没有小写混用；node mockup/regress.mjs **ALL GREEN (9 checks)** |
 | V106 | 去掉 Step 摘要条（F195） | 展开任一 Step | 卡片顶部**不再有**模型 id / `tools N` / `time · tokens` 摘要条，直接看到操作卡片；`in/out` token、工具耗时、错误标记、ARGS/RESULT、RAW 下拉仍在；node mockup/regress.mjs **ALL GREEN (9 checks)**（`smoke:render` 断言无 `key: strip` 节点） |
+| V107 | 卡片排版：RAW 靠左在上、数值同行（F196） | 展开 Step，看 REPLY 卡与 TOOL 卡的排版 | 卡片从上到下依次是：头部（`REPLY`/工具名 + `in… · out…`/耗时）→ 左侧 `▸ RAW` → 正文（回复 / `ARGS` → `RESULT`）；RAW 默认收起；node mockup/regress.mjs **ALL GREEN (9 checks)**（`smoke:render` 顺序断言 tokens < RAW < ARGS < RESULT） |
 | V48 | step 耗时含工具、不含等人 | 找一个跑了几分钟工具的 step；再找一个等你回答/审批的 step | 前者行上显示 模型+工具 的合计（工具时间算进去）；后者行上只显示模型的几十秒，旁边有 `⏸ 13.1min` 等待标记；`run.time = Σ 各步`；`mockup/verify-traj-align.mjs` 校验模型段 0 差异、工具段差额 = waitMs（F133） |
 | V47 | 标题可回原文 | hover 任一 step 标题 | tooltip 显示原始长摘要（正文全段 / `tool · 名字 · 参数`），压缩不丢信息；展开后详情面板按事件顺序出现说明行 `[压缩]`/`[命令]`/`[审批]`（F23.2） |
 | V24 | Run/Step 共同选中 | 点一个 step，再点另一 run 的 step；再点同一 step；折叠该 run | 选中 step 与其 run 分组出现同色轨道/加深底色；选中转移且旧选中消失；再次点击取消并收起；折叠 run 后选中清除（F128） |
