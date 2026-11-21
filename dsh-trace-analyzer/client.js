@@ -1615,6 +1615,10 @@ window.__ModuleLoader__.load({
         const open = rawOpen.has(rawKey);
         return h('button', {
           type: 'button',
+          // F201: hovering the toggle starts the read; the click then opens an
+          // already-cached payload instead of a spinner.
+          onMouseEnter: () => { loadEventRaw(sessionId, seqs).catch(() => {}); },
+          onFocus: () => { loadEventRaw(sessionId, seqs).catch(() => {}); },
           onClick: (event) => { event.stopPropagation(); toggleRaw(rawKey); },
           // F194: every label in the card is uppercase (ARGS / RESULT / USER …);
           // the raw disclosure follows the same rule.
@@ -1754,31 +1758,69 @@ window.__ModuleLoader__.load({
 
 
     /**
+     * F201: ONE loader for raw events. It dedupes concurrent requests (hover
+     * prefetch + click), caches the pretty-printed text with the value, and is
+     * also what the RAW toggle warms on hover — the panel then opens instantly.
+     */
+    const RAW_PREVIEW_CHARS = 20000;
+    const rawInFlight = new Map();
+    const rawKeyOf = (sessionId, seqs) => sessionId + '::' + seqs.filter((value) => value != null).join(',');
+    const stringifyRaw = (value) => {
+      try { return JSON.stringify(value, null, 2); } catch { return String(value); }
+    };
+    function loadEventRaw(sessionId, seqs) {
+      const list = seqs.filter((value) => value != null);
+      const key = rawKeyOf(sessionId, list);
+      const hit = cache.event.get(key);
+      if (hit != null) return Promise.resolve(hit);
+      if (rawInFlight.has(key)) return rawInFlight.get(key);
+      const task = Promise.all(list.map((seq) => fetchPayload('event', { sessionId, seq })))
+        .then((results) => {
+          const value = results.length === 1
+            ? (results[0].json?.target ?? results[0].json)
+            : results.map((result) => result.json?.target ?? result.json);
+          const entry = { value, text: stringifyRaw(value) };
+          cacheSet(cache.event, key, entry, CACHE_MAX.event);
+          rawInFlight.delete(key);
+          return entry;
+        })
+        .catch((err) => {
+          rawInFlight.delete(key);
+          throw err;
+        });
+      rawInFlight.set(key, task);
+      return task;
+    }
+
+    /**
      * Raw event JSON, fetched only when the user opens an operation (SPEC F121/NF6).
      * Accepts one or more seqs (a tool call shows call + result together).
      */
     function EventDetail({ sessionId, seqs }) {
       const list = seqs.filter((s) => s != null);
-      const key = sessionId + '::' + list.join(',');
-      const [state, setState] = useState(() => (cache.event.has(key) ? { value: cache.event.get(key), loading: false, error: null } : { value: null, loading: true, error: null }));
+      const key = rawKeyOf(sessionId, list);
+      const [state, setState] = useState(() => (cache.event.has(key)
+        ? { entry: cache.event.get(key), loading: false, error: null }
+        : { entry: null, loading: true, error: null }));
+      const [showAll, setShowAll] = useState(false);
       useEffect(() => {
         if (cache.event.has(key) || list.length === 0) return undefined;
         let cancelled = false;
-        setState({ value: null, loading: true, error: null });
-        Promise.all(list.map((seq) => fetchPayload('event', { sessionId, seq })))
-          .then((results) => {
-            const value = results.length === 1 ? (results[0].json?.target ?? results[0].json) : results.map((r) => r.json?.target ?? r.json);
-            cacheSet(cache.event, key, value, CACHE_MAX.event);
-            if (!cancelled) setState({ value, loading: false, error: null });
-          })
-          .catch((err) => { if (!cancelled) setState({ value: null, loading: false, error: String((err && err.message) || err) }); });
+        setState({ entry: null, loading: true, error: null });
+        loadEventRaw(sessionId, list)
+          .then((entry) => { if (!cancelled) setState({ entry, loading: false, error: null }); })
+          .catch((err) => { if (!cancelled) setState({ entry: null, loading: false, error: String((err && err.message) || err) }); });
         return () => { cancelled = true; };
       }, [key]);
 
       if (state.loading) return h('div', { style: { padding: '4px 0', fontSize: 12, color: T.muted } }, 'Loading raw event…');
       if (state.error != null) return h('div', { style: { padding: '4px 0', fontSize: 12, color: T.error } }, state.error);
-      let text;
-      try { text = JSON.stringify(state.value, null, 2); } catch { text = String(state.value); }
+      const text = state.entry != null && typeof state.entry.text === 'string'
+        ? state.entry.text
+        : stringifyRaw(state.entry != null ? state.entry.value : state.entry);
+      // F201: a huge payload would block layout; render a bounded preview first.
+      const truncated = !showAll && text.length > RAW_PREVIEW_CHARS;
+      const shown = truncated ? text.slice(0, RAW_PREVIEW_CHARS) : text;
       // F168: the raw payload can be large — a copy affordance is what makes it
       // usable outside the panel (paste into an editor, diff two events, …).
       const copy = (event) => {
@@ -1806,8 +1848,19 @@ window.__ModuleLoader__.load({
             margin: 0, padding: '6px 10px', fontSize: 11.5, lineHeight: 1.45, fontFamily: T.mono,
             whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflow: 'auto',
             background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm,
+            // F201: keep the paint cost of a long payload off the scroll path.
+            contain: 'content', contentVisibility: 'auto',
           },
-        }, text),
+        }, shown),
+        truncated ? h('button', {
+          type: 'button',
+          'data-hades-raw-more': '1',
+          onClick: () => setShowAll(true),
+          style: {
+            marginTop: DESIGN.space.xs, font: `11px/1 ${T.mono}`, color: T.muted, background: 'transparent',
+            border: '1px solid ' + T.border, borderRadius: 999, padding: '2px 8px', cursor: 'pointer',
+          },
+        }, `show all ${text.length} chars`) : null,
       );
     }
 

@@ -32,6 +32,13 @@ export function apply(ctx) {
   const snapshots = new Map();
   /** Last cold rebuild: { ms, events, at } — reported by the loopback probe. */
   let lastBuild = null;
+  /**
+   * F201: raw event payloads never change once written, and the host's
+   * readEvent() re-locates the event on every call. Keep the last N responses so
+   * reopening a RAW panel (or a second browser tab) costs zero round-trips.
+   */
+  const eventCache = new Map();
+  const EVENT_CACHE_MAX = 256;
   /** F140: how many polls were answered with a 40 B unchanged reply. */
   let unchangedHits = 0;
 
@@ -364,13 +371,25 @@ export function apply(ctx) {
           case 'session':
             sendJson(res, 200, await ctx.sessionQuery.readSession(sessionId));
             return;
-          case 'event':
+          case 'event': {
             if (!Number.isFinite(seq)) {
               sendJson(res, 400, { code: 'bad-request', message: 'seq is required' });
               return;
             }
-            sendJson(res, 200, await ctx.sessionQuery.readEvent({ sessionId, seq, before, after }));
+            const eventKey = [sessionId, seq, before ?? '', after ?? ''].join('::');
+            const cachedEvent = eventCache.get(eventKey);
+            if (cachedEvent !== undefined) {
+              sendJson(res, 200, cachedEvent);
+              return;
+            }
+            const eventValue = await ctx.sessionQuery.readEvent({ sessionId, seq, before, after });
+            eventCache.set(eventKey, eventValue);
+            if (eventCache.size > EVENT_CACHE_MAX) {
+              eventCache.delete(eventCache.keys().next().value);
+            }
+            sendJson(res, 200, eventValue);
             return;
+          }
           case 'lineage':
             sendJson(res, 200, await ctx.sessionQuery.traceSession(sessionId));
             return;

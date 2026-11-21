@@ -803,7 +803,21 @@
 - **改法**：序号固定用文本色，**状态只由行尾的 8px 圆点**表示（该圆点保留）。
 - **回归**：`smoke:render` 新增断言 —— 12 个 `hades-idx` 序号单元中**没有**一个带 `style.color`（实测 `run ordinal cells: 12 · tinted: 0`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 - **AC**：任何 Run（含异常 Run）的序号颜色一致；异常仍可通过行尾圆点识别。
-## 75. 范围外（v1 不做）
+## 75. RAW 面板提速（F201）
+
+- **F201 现象**：点开卡片底部的 `RAW` 之后转圈很久才出内容。
+- **三个成因**（都在"一次点击"的路径上）：
+  1. **Host 每次重新定位事件**：`/event` 直接转发 `ctx.sessionQuery.readEvent()`，每次调用都要在会话日志里重新定位该 seq；重复打开同一段 raw 也照付。
+  2. **每次渲染都重新 `JSON.stringify`**：`EventDetail` 在渲染体里 stringify 整个 payload，父组件任何重渲染（切 Tab、开合别的卡片）都会再算一遍。
+  3. **大 payload 直接铺进 `<pre>`**：几十万字符的 JSON 一次性布局，主线程被占住，看起来就是"卡住"。
+- **改法**：
+  1. **Host 侧 LRU**：`index.js` 增加 `eventCache`（上限 256，键 `sessionId::seq::before::after`）。事件一旦写入就不会再变，重复打开为 0 往返。
+  2. **客户端统一 loader** `loadEventRaw()`：并发去重（hover 预取 + 点击共用同一个 Promise）、把**格式化好的文本与值一起缓存**（`cache.event` 存 `{ value, text }`）—— 不再每次渲染 stringify。
+  3. **hover 预取**：`RAW` 按钮 `onMouseEnter`/`onFocus` 即开始读，点击时多半已经在缓存里，直接展开。
+  4. **预览上限**：首屏只渲染前 **20 000 字符**，超出显示 `show all N chars` 按钮；`<pre>` 加 `contain: content` + `content-visibility: auto`，长内容不参与滚动路径的布局。
+- **回归**：`regress` 新增 **`syntax:host`**（现在也会 `node --check` Host 的 `index.js`）；`smoke:render` 新增断言 —— 60 000 字符的 payload 渲染出的 `pre` 只有 **20 000** 字符且带 `show all` 按钮，缓存项里带 `text`；`check-served` 增加 `function loadEventRaw` / `RAW_PREVIEW_CHARS` / `data-hades-raw-more` / `rawInFlight` 标记。`node mockup/regress.mjs` **ALL GREEN (10 checks)**。
+- **AC**：首次点开 RAW 的等待明显变短（hover 预取）；再次打开同一条几乎瞬时（Host LRU + 客户端缓存）；超大 JSON 不再卡住界面。
+## 76. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
