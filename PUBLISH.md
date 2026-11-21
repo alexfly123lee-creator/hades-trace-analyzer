@@ -90,3 +90,10 @@ $env:ELECTRON_RUN_AS_NODE='1'
 4. **索引必须整体合法**：一条不合规（含图标超限、版本非 SemVer、相对 icon 指向不存在的文件）会让整份索引被拒；发布前跑 `validate-index.mjs`。
 5. **详情页只认公开源码**：私服包没有可读文件 CDN，详情页会退回 README 或报错。
 6. **官方库**：官方没有公开索引，也没有提交入口；想让更多人不加索引就装到，只能把索引 URL 放进文档/帖子，或推动上游收录。
+
+---
+
+## 6. 明天的逐条 TODO
+
+发布/推广的分步清单、每条的验收标准与阻塞项见 [docs/PUBLISH-TODO.md](docs/PUBLISH-TODO.md)。
+先做「测试入库 + CI」，再做「npm preview 发布 + 索引」，最后才是 awesome 列表与 GIF。
