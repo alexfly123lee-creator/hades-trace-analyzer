@@ -785,7 +785,13 @@
   - `rawButton` 的点击加 `stopPropagation()` —— CTX 整卡可点，点 RAW 不能顺带折叠整组。
 - **回归**：`smoke:render` 增加断言 —— 工具卡 RAW 在 `RESULT` 之后、CTX 卡 RAW 在 `injected` 之后、**三张卡各一个 RAW**（`step raw toggles: 3`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 - **AC**：三种卡片从上到下都是 头部 → 正文 → RAW，且 RAW 都在左侧底部、默认收起。
-## 72. 范围外（v1 不做）
+## 72. 所有标签字母大写（F198）
+
+- **F198**：标签字母统一大写 —— 之前 `USER` / `REPLY` / `CTX` / `ARGS` / `RESULT` / `RAW` 已是大写，只剩**工具名徽标**（如 `pwsh`）和 CTX 的 `injected ×N` 是小写。
+- **改法**：把大写规则下沉到**组件层**，而不是逐处标注：`RowTag`（所有角色/标签胶囊的公共组件）加 `textTransform: uppercase`；CTX 的注入计数同样加 `textTransform: uppercase` + 字距 `.03em`。这样以后新增任何标签都自动大写。
+- **回归**：`smoke:render` 新增断言 —— 工具徽标节点的 `style.textTransform` 必须是 `uppercase`，且只出现一次。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
+- **AC**：面板内所有标签（含工具名与 injected 计数）显示为大写。
+## 73. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

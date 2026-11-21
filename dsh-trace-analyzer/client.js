@@ -464,7 +464,9 @@ window.__ModuleLoader__.load({
           height: 18, padding: '0 6px', boxSizing: 'border-box',
           border: '1px solid transparent', borderRadius: DESIGN.space.xs,
           color, background,
+          // F198: labels are uppercase everywhere, including tool names.
           fontSize: 11, lineHeight: '16px', fontWeight: 650, letterSpacing: '0.035em',
+          textTransform: 'uppercase',
           userSelect: 'none', whiteSpace: 'nowrap',
         },
       }, text);
@@ -1649,7 +1651,7 @@ window.__ModuleLoader__.load({
             },
               h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
                 chipOf('CTX', 'context'),
-                h('span', { style: { fontSize: 12, ...mono11 } }, `injected ×${n}`),
+                h('span', { style: { fontSize: 12, ...mono11, textTransform: 'uppercase', letterSpacing: '.03em' } }, `injected ×${n}`),
                 h('span', { style: { ...mono11, color: T.muted } }, open ? '▾' : '▸'),
               ),
               open ? item.list.map((op, k) => h('div', {
