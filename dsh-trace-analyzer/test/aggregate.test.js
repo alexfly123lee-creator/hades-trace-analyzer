@@ -1,11 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  groupTimeline,
   aggregateTokens,
   pairToolCalls,
-  judgeToolAnomaly,
-  normalizeLineage,
   buildTraceTree,
   buildRunsPayload,
   buildRunsPayloadFrom,
@@ -14,28 +11,6 @@ import {
   actorOf,
   slimToolPairs,
 } from '../lib/aggregate.js';
-
-test('groupTimeline groups events into turns and steps', () => {
-  const events = [
-    { type: 'turn/start', seq: 1, time: 1, data: { turn: 1 } },
-    { type: 'step/start', seq: 2, time: 2, data: { turn: 1, step: 1 } },
-    { type: 'tool/call', seq: 3, time: 3, data: { turn: 1, step: 1, callId: 'c1', name: 'read', arguments: '{}' } },
-    { type: 'tool/result', seq: 4, time: 8, data: { turn: 1, step: 1, message: { source: { callId: 'c1' } } } },
-    { type: 'turn/end', seq: 5, time: 9, data: { turn: 1, reason: { kind: 'completed' } } },
-    { type: 'turn/start', seq: 6, time: 10, data: { turn: 2 } },
-    { type: 'user/message', seq: 7, time: 11, data: { turn: 2, step: 1, role: 'user' } },
-  ];
-  const turns = groupTimeline(events);
-  assert.equal(turns.length, 2);
-  assert.equal(turns[0].turn, 1);
-  assert.equal(turns[0].steps.length, 1);
-  assert.equal(turns[0].steps[0].events.length, 3);
-  assert.equal(turns[1].turn, 2);
-});
-
-test('groupTimeline tolerates empty input', () => {
-  assert.deepEqual(groupTimeline([]), []);
-});
 
 test('aggregateTokens sums usage across turns', () => {
   const events = [
@@ -67,23 +42,6 @@ test('pairToolCalls pairs by callId and computes duration', () => {
   assert.equal(pairs.length, 2);
   assert.equal(pairs[0].durationMs, 5);
   assert.equal(pairs[1].durationMs, null);
-});
-
-test('judgeToolAnomaly classifies error and duration', () => {
-  assert.equal(judgeToolAnomaly({ error: { code: 'E' } }, { toolDurationMs: 5000 }), 'error');
-  assert.equal(judgeToolAnomaly({ durationMs: 6000 }, { toolDurationMs: 5000 }), 'duration');
-  assert.equal(judgeToolAnomaly({ durationMs: 1000 }, { toolDurationMs: 5000 }), null);
-});
-
-test('normalizeLineage flattens ancestors, target, descendants', () => {
-  const trace = {
-    ancestors: [{ header: { id: 'a' } }],
-    target: { header: { id: 'b' } },
-    descendants: [{ session: { header: { id: 'c' } }, descendants: [] }],
-  };
-  const nodes = normalizeLineage(trace);
-  assert.deepEqual(nodes.map((n) => n.role), ['ancestor', 'target', 'descendant']);
-  assert.deepEqual(nodes.map((n) => n.depth), [0, 1, 2]);
 });
 
 test('buildTraceTree groups by real user prompt (system prompt = run 0)', () => {

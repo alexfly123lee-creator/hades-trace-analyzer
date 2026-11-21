@@ -6,48 +6,6 @@
  * the Host/Client can share them and unit tests can run them with bare Node.
  */
 
-/** Group events into [{ turn, steps: [{ step, events: [] }] }], ordered by seq. */
-export function groupTimeline(events) {
-  const turns = [];
-  let turn = null;
-  let step = null;
-
-  const push = (event) => {
-    if (turn === null) { turn = { turn: 0, steps: [] }; turns.push(turn); }
-    if (step === null) { step = { step: 0, events: [] }; turn.steps.push(step); }
-    step.events.push(event);
-  };
-
-  for (const event of events) {
-    const data = event.data ?? {};
-    if (event.type === 'turn/start') {
-      turn = { turn: data.turn, steps: [] };
-      turns.push(turn);
-      step = null;
-      continue;
-    }
-    if (event.type === 'step/start') {
-      if (turn !== null) { step = { step: data.step, events: [] }; turn.steps.push(step); }
-      continue;
-    }
-    if (typeof data.turn === 'number') {
-      if (turn === null || turn.turn !== data.turn) {
-        turn = { turn: data.turn, steps: [] };
-        turns.push(turn);
-        step = null;
-      }
-      if (typeof data.step === 'number') {
-        if (step === null || step.step !== data.step) {
-          step = { step: data.step, events: [] };
-          turn.steps.push(step);
-        }
-      }
-    }
-    push(event);
-  }
-  return turns;
-}
-
 /** Sum token usage across `assistant/message` events. */
 export function aggregateTokens(events) {
   const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
@@ -106,44 +64,6 @@ export function pairToolCalls(events) {
   }
   pairs.sort((a, b) => (a.call.time ?? 0) - (b.call.time ?? 0));
   return pairs;
-}
-
-/**
- * Classify one tool-call pair as an anomaly under the given thresholds.
- * Returns a kind string or null.
- */
-export function judgeToolAnomaly(pair, thresholds) {
-  if (pair.error != null) return 'error';
-  if (typeof pair.durationMs === 'number' && pair.durationMs > (thresholds.toolDurationMs ?? 0)) return 'duration';
-  if (typeof pair.result?.data?.message?.content === 'string') {
-    // Token-based highlighting is computed from usage deltas elsewhere;
-    // tool-level token threshold is not applicable to a single result.
-  }
-  return null;
-}
-
-/** Flatten a SessionLineageTrace into a renderable node list (rooted at ancestors[0]). */
-export function normalizeLineage(trace) {
-  if (trace == null) return [];
-  const nodes = [];
-  const seen = new Set();
-  const addRecord = (record, depth, role) => {
-    if (record == null) return;
-    const id = record.header?.id;
-    if (id != null && seen.has(id)) return;
-    if (id != null) seen.add(id);
-    nodes.push({ record, depth, role });
-  };
-  const walkDescendants = (children, depth) => {
-    for (const child of children ?? []) {
-      addRecord(child.session, depth, 'descendant');
-      walkDescendants(child.descendants, depth + 1);
-    }
-  };
-  (trace.ancestors ?? []).forEach((record, index) => addRecord(record, index, 'ancestor'));
-  addRecord(trace.target, (trace.ancestors ?? []).length, 'target');
-  walkDescendants(trace.descendants, (trace.ancestors ?? []).length + 1);
-  return nodes;
 }
 
 /** Extract the visible text from a message's content blocks. */

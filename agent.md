@@ -40,7 +40,7 @@ node mockup/regress.mjs http://127.0.0.1:<GUI端口>
 | # | 检查 | 覆盖的重点功能 | 判定来源 |
 |---|---|---|---|
 | 1 | `syntax` | 整个 client bundle 可解析 | `node --check` 退出码 |
-| 2 | `unit` | run / step 切分、耗时、token、KPI 口径 | `node --test`（43 项） |
+| 2 | `unit` | run / step 切分、耗时、token、KPI 口径 | `node --test`（39 项） |
 | 3 | `smoke:load` | 模块加载 + `apply` + locale 表 + 视图注册 | 脚本退出码 |
 | 4 | `smoke:render` | KpiSummary / OverviewBoard / DualBarChart 三条渲染路径、标记带、渐隐类 | 脚本断言 |
 | 5 | `served` | **线上 bundle** 是否真的含本轮改动（130+ 标记 / 反向断言） | fetch 服务端产物 |
@@ -419,6 +419,7 @@ dsh-trace-analyzer/
 73. **M73 去掉矩阵窗口滑块（F205）** ✅：矩阵卡下方的「最近 N 个 Run」`input[type=range]` 整条删除 —— 矩阵始终**每个 Run 一列、显示全部**。删掉 `sliderRow`、`windowN` 状态、`shown` 的窗口切片、窗口变化清空 hover 的 effect、`MATRIX_CSS` 里的 `.hades-range` / `.hades-mx-reset` 样式以及两个只服务它的文案键（client.js 2939 → 2859 行）。回归：`check-served` 把 `data-hades-window` / `type: 'range'` / `hades-range` / `mx.showRecent` 移入**反向断言**，`served` 159/159；`node mockup/regress.mjs`：**ALL GREEN (15 checks)**。见 TEST V113、SPEC 76。
 74. **M74 矩阵高亮条看得见 + 选中列不再吞掉 hover（F204）** ✅：用户截图量出 hover 条（1px 线）与选中条（2px 线）都在，问题是"画了看不出来"：250 run 时每列约 11px，26% 淡底压在本来有色（38%）的格子上几乎无差别，只剩两根发丝线；且 `hoverPos !== selectedPos` 让指针停在选中列时**连 hover 条都不画**。改法：① 去掉该抑制，指针在哪列画哪列（两层叠加）；② `bandSel` 26 → **42**、`bandHover` 18 → **26**。构造不变（三个独立矩形、无边框），不会再现 F152 的梯形。回归：**ALL GREEN (15 checks)**。见 SPEC 75.1。
 75. **M75 去掉 hover 锁：选中一列后 hover 照常高亮并滚动（F206）** ✅：用户实测必现——点过一列后在矩阵上移动，"下方 run 行全部半透明、没有高亮行、也不再滚动"。根因是 F183 的 `hoverLock`：点击后**整块矩阵**的 hover 只走 `focusRunOnly`（只设焦点、不滚动），于是焦点被设到**视口外**的 Run → 整表压暗 22%、可见区里没有 `.is-focus`、列表冻结，三件事是同一个根因。改法：删掉 `hoverLock` 与 `focusRunOnly` / `onFocusOnly` 整条旁路，每一列都走 `beginScrub`（设焦点 + 滑到 34% 线）；唯一要保护的情形（点击停在该列顶部时别被拉回中线）由已有的 `idx === locatedRunRef.current` 负责。回归：`cdp:focus` 断言改写为"横跨到另一列**必须滚动**并落在 34%、重悬停被点击列**不动**"，harness 镜像同步去锁；`served` 反断言 `hoverLock`/`focusRunOnly`/`onFocusOnly`。`node mockup/regress.mjs`：**ALL GREEN (15 checks)**。见 TEST V114、SPEC 77。
+76. **M76 死代码与死路由清理（F207）** ✅：纯删除，不改任何像素。① `lib/aggregate.js` 删掉三个**产品从不调用、只被单测养着**的函数 —— `groupTimeline`（56 行，run/step 分组的早期实现）、`judgeToolAnomaly`（13 行）、`normalizeLineage`（23 行）；对应 4 个测试一并删除，**单测 43 → 39**。② `index.js` 删掉四条**全仓零调用**的路由 —— `events` / `session` / `lineage` / `event-trace`（后两者背后是 `traceSession` / `traceEvent`，血缘与溯源 UI 从未实现；`/session`、`/events` 还会把整份日志塞进下行，与 NF6 冲突），`ROUTES` 8 → 4、`HOST_REV` `m8.10 → m8.11`。③ 仅 loopback 的 `/bench` 探针整段搬到 `lib/bench.js`（`runBench(deps)`），`elapsed` 随之移出：`index.js` **431 → 299 行**，`aggregate.js` 1359 → 1277。风险面已核：`sessionQuery` 的服务方法仍在（只是没暴露路由）；`mockup/` 里几个历史探针引用了被删导出，但它们不在回归套件内。回归：`node mockup/regress.mjs` **ALL GREEN (15 checks)**、`unit` 39/39；Host 关→开后 `/health` = `m8.11` 且 routes 恰为 `[runs,run,step,event]`；`/bench` 与删除前**同一份 JSON 键集**（数值差异仅为会话增长）。见 TEST V115、SPEC 78。
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

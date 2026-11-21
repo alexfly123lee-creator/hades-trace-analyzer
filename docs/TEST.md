@@ -151,6 +151,7 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 | V110 | Time / Token 条缩短 1/3（F199） | 看 Run 列表的时间条与 Token 条 | 两条 track 明显变短（150 → 100px），表头 Time/Token 与行内条形仍然对齐，数值列不变；node mockup/regress.mjs **ALL GREEN (9 checks)**（`smoke:render` 断言 0 个 150px track、≥2 个 100px track、表头槽 176px） |
 | V111 | Run 序号不染色（F200） | 看含异常 Run 的列表（行尾有红点的那几条） | `Run N` 颜色与普通行一致，**不再整段变红**；异常仍由行尾红点表示；node mockup/regress.mjs **ALL GREEN (9 checks)**（`smoke:render` 断言 ordinal 无 `style.color`） |
 | V112 | RAW 面板提速（F201） | ① 鼠标移到某张卡的 `▸ RAW` 上停留一下再点 ② 关掉再点开同一条 ③ 打开一条超大 tool result 的 raw ④ 观察长 JSON 的滚动 | ①首次打开明显更快（hover 预取命中）②重开几乎瞬时（Host LRU + 客户端缓存，0 往返）③首屏只渲染 20 000 字符 + `show all` 按钮，界面不卡 ④长内容滚动流畅（`content-visibility`）；`node mockup/regress.mjs` **ALL GREEN (10 checks)**（含 `syntax:host` 与 raw 预览断言） |
+| V115 | 死代码/死路由已删（F207） | `node mockup/regress.mjs`；再查 `curl 127.0.0.1:<port>/api/trace-analyzer/health`（loopback，无需登录） | `unit` **39/39**；`/health` 的 `hostRev` = `m8.11`、`routes` 恰为 `["runs","run","step","event"]`（不再有 events/session/lineage/event-trace）；`/bench?sessionId=latest` 仍返回与删除前同一套字段；界面渲染**逐像素不变**（payload 字段与组件树未动）；`ALL GREEN (15 checks)` |
 | V114 | 选中列不再冻住 hover（F206） | 点矩阵任一列 → 再把鼠标横向扫到别的列 → 再扫回被点的那一列 | 扫到别的列：列表照常**滚动**、该行落在 34% 焦点线并**高亮**（整表压暗、只有它亮）；扫回被点的那一列：列表**不动**（行留在顶部）；移出矩阵后压暗消失；`node mockup/regress.mjs` **ALL GREEN (15 checks)**（`cdp:focus` 断言"横跨列必须滚动 + 重悬停不动"） |
 | V113 | 矩阵窗口滑块已删除（F205） | 看热力矩阵卡片底部；再扫一遍矩阵 | 卡片底部**没有任何控件**（没有 range 滑条、没有 `all/latest N runs` 文案）；矩阵始终每个 Run 一列；悬停读数、点击定位、跟随与 `↓ Latest` 行为不变；`node mockup/regress.mjs` **ALL GREEN (15 checks)**（`check-served` 对 `data-hades-window` / `type: 'range'` / `hades-range` 做反向断言） |
 | V48 | step 耗时含工具、不含等人 | 找一个跑了几分钟工具的 step；再找一个等你回答/审批的 step | 前者行上显示 模型+工具 的合计（工具时间算进去）；后者行上只显示模型的几十秒，旁边有 `⏸ 13.1min` 等待标记；`run.time = Σ 各步`；`mockup/verify-traj-align.mjs` 校验模型段 0 差异、工具段差额 = waitMs（F133） |
@@ -198,7 +199,7 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 | P05 | stream 裁剪 | P01/P04/P11 文本中 `"stream"` 出现次数 | = 0 |
 | P06 | 数字一致性 | 与 `buildTraceTree + aggregateTokens + pairToolCalls` 全量基线逐字段比对（run/step/事件/token 分项/错误/慢/异常/最慢） | 全相等 |
 | P07 | 事件原文按需 | `/event` 等价窗口（`readEvent` 目标事件）序列化体积 | ≤ 64 KB（实测 9.7 KB） |
-| P08 | 单测回归 | `node --test dsh-trace-analyzer/test/aggregate.test.js` | 全通过（29 项） |
+| P08 | 单测回归 | `node --test dsh-trace-analyzer/test/aggregate.test.js` | 全通过（39 项） |
 | P09 | 产物含新代码 | `/health` 的 `hostRev` + 服务端返回的 `client.js` grep `StepContent`/`MetricBar`/`stepSelBg` 标记 | 命中，且 `hostRev` 为当前版本 |
 | P10 | live 内存路径耗时 | `/bench`（或等价内联）对比 `inspectSession` 与 `readSession` | `/runs` 服务端 ≤ 50 ms（实测 ~20–37 ms，对照 1000–1600 ms） |
 | P11 | Step 内容体积 | 全部 step 的 `buildStepContent` 序列化体积，取 p50 / p95 / max | p50 ≤ 2 KB（1.2）、p95 ≤ 8 KB（2.2）、max ≤ 16 KB（7.5） |

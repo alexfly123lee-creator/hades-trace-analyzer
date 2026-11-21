@@ -10,6 +10,7 @@
  * then a single raw event only when the user opens its JSON (`/event`).
  * Raw session events never travel in bulk, so the payload stays KB-sized.
  */
+import { elapsed, runBench } from './lib/bench.js';
 import {
   buildRunsPayload,
   buildRunsPayloadFrom,
@@ -22,8 +23,11 @@ export const inject = ['webServer', 'connection', 'sessionQuery'];
 const PREFIX = '/api/trace-analyzer';
 const SNAPSHOT_MAX = 4;
 /** Bumped whenever the Host half changes; the loopback health probe reports it. */
-const HOST_REV = 'm8.10';
-const ROUTES = ['runs', 'run', 'step', 'event', 'events', 'session', 'lineage', 'event-trace'];
+const HOST_REV = 'm8.11';
+// The four routes the panel actually calls. `events` / `session` / `lineage` /
+// `event-trace` were never called by any client or harness (the UI has no lineage
+// view and never pulls a whole log), so they are gone — git keeps them.
+const ROUTES = ['runs', 'run', 'step', 'event'];
 
 export function apply(ctx) {
   // sessionId -> { seqCount, header, eventCount, tree, tokens, tools }
@@ -150,150 +154,20 @@ export function apply(ctx) {
         sendJson(res, 200, { ok: true, plugin: '@local/dsh-trace-analyzer', hostRev: HOST_REV, routes: ROUTES, cache: cacheStats(), uptimeMs: Math.round(performance.now()) });
         return;
       }
-      // Loopback-only bench: measures the real route code path (readSession →
-      // projection → JSON.stringify) and reports sizes/timings/counts only.
-      // It returns no session content, so it can sit outside the fence and make
-      // the performance acceptance (TEST §5) re-runnable against the live Host.
+      // Loopback-only bench: runs the real route code path and reports
+      // sizes/timings/counts only (no session content), so it can stay outside the
+      // fence and keep the performance acceptance re-runnable against a live Host.
       if (op === 'bench' && isLoopback(req)) {
         try {
-        const benchSessionArg = url.searchParams.get('sessionId') ?? '';
-        let benchSession = benchSessionArg;
-        let resolved = null;
-        if (benchSessionArg === '' || benchSessionArg === 'latest') {
-          const records = await ctx.sessionQuery.listSessions();
-          const liveRecords = records.filter((record) => record.live);
-          // "latest" = the live session with the most events (the one the user is
-          // working in), measured through the cheap seq probe.
-          let best = null;
-          for (const record of liveRecords) {
-            const id = record.header?.id;
-            if (id == null) continue;
-            let seq = 0;
-            try {
-              seq = await ctx.sessionQuery.inspectSession(id, (session) => session.seq);
-            } catch {
-              seq = 0;
-            }
-            if (best == null || seq > best.seq) best = { id, seq };
-          }
-          benchSession = best?.id ?? records[0]?.header?.id ?? '';
-          resolved = { total: records.length, live: liveRecords.length, pickedLive: best != null, seq: best?.seq ?? null };
-        }
-        const probeStarted = performance.now();
-        let probeSeq = null;
-        let probeError = null;
-        try {
-          probeSeq = await ctx.sessionQuery.inspectSession(benchSession, (session) => session.seq);
-        } catch (error) {
-          probeError = String(error && typeof error === 'object' && 'message' in error ? error.message : error).slice(0, 200);
-        }
-        const probeMs = elapsed(probeStarted);
-        // Production path timing: exactly what `/runs` does (probe + live-log
-        // read + projection + stringify), plus the cold `readSession` for contrast.
-        const prodStarted = performance.now();
-        const prodSnapshot = await snapshotFor(benchSession);
-        const prodPayload = buildRunsPayloadFrom(prodSnapshot.tree, prodSnapshot.tokens, prodSnapshot.tools, {
-          header: prodSnapshot.header,
-          eventCount: prodSnapshot.eventCount,
-          sessionId: benchSession,
-        });
-        const prodText = JSON.stringify(prodPayload);
-        const prodMs = elapsed(prodStarted);
-        const coldStarted = performance.now();
-        let coldReadMs = null;
-        let coldError = null;
-        try {
-          await ctx.sessionQuery.readSession(benchSession);
-        } catch (error) {
-          coldError = String(error && typeof error === 'object' && 'message' in error ? error.message : error).slice(0, 200);
-        }
-        coldReadMs = elapsed(coldStarted);
-        const tree = prodSnapshot.tree;
-        const tools = prodSnapshot.tools;
-        const detailStarted = performance.now();
-        const detailSizes = [];
-        const titleSamples = [];
-        let stepsSeen = 0;
-        let stepsWithMarks = 0;
-        let stepsWithChips = 0;
-        let stepsWithMultiChips = 0;
-        let streamHits = (prodText.match(/"stream"/g) ?? []).length;
-        for (let i = 0; i < tree.length; i++) {
-          const detail = buildRunDetail(tree, tools, i);
-          const text = JSON.stringify(detail);
-          detailSizes.push(Buffer.byteLength(text));
-          streamHits += (text.match(/"stream"/g) ?? []).length;
-          for (const step of detail.steps) {
-            stepsSeen += 1;
-            if ((step.marks ?? []).length > 0) stepsWithMarks += 1;
-            const chips = step.tags ?? [];
-            if (chips.length > 0) stepsWithChips += 1;
-            if (chips.length > 1) stepsWithMultiChips += 1;
-            if (titleSamples.length < 10) {
-              const marks = (step.marks ?? []).map((mark) => mark.text);
-              const chipText = chips.map((chip) => (chip.overflow ? chip.tag : chip.tag + (chip.count > 1 ? '×' + chip.count : ''))).join(' ');
-              titleSamples.push(`run ${i}/step ${step.step}  [${chipText}] ${step.title}${marks.length > 0 ? '  「' + marks.join(' · ') + '」' : ''}`);
-            }
-          }
-        }
-        const detailMs = elapsed(detailStarted);
-        const stepStarted = performance.now();
-        const stepSizes = [];
-        const noteSamples = [];
-        let noteOps = 0;
-        for (let runIdx = 0; runIdx < tree.length; runIdx++) {
-          const run = tree[runIdx];
-          for (let stepIdx = 0; stepIdx < run.steps.length; stepIdx++) {
-            const content = buildStepContent(tree, tools, runIdx, stepIdx);
-            if (content == null) continue;
-            const text = JSON.stringify(content);
-            stepSizes.push(Buffer.byteLength(text));
-            streamHits += (text.match(/"stream"/g) ?? []).length;
-            for (const op of content.operations ?? []) {
-              if (op.kind !== 'note') continue;
-              noteOps += 1;
-              if (noteSamples.length < 8) noteSamples.push(`${op.noteKind}: ${op.text}`);
-            }
-          }
-        }
-        const stepMs = elapsed(stepStarted);
-        const sortedSteps = [...stepSizes].sort((a, b) => a - b);
-        const sorted = [...detailSizes].sort((a, b) => a - b);
-        sendJson(res, 200, {
-          ok: true,
-          hostRev: HOST_REV,
-          sessionId: benchSession,
-          resolved,
-          probeSeq,
-          probeMs,
-          probeError,
-          events: prodSnapshot.eventCount,
-          runs: tree.length,
-          steps: prodPayload.counts.steps,
-          runsPayloadBytes: Buffer.byteLength(prodText),
-          runsRouteMs: prodMs,
-          coldReadMs,
-          coldError,
-          detailBytes: {
-            median: sorted[Math.floor(sorted.length / 2)] ?? 0,
-            p90: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))] ?? 0,
-            max: sorted[sorted.length - 1] ?? 0,
-            all: detailSizes.reduce((a, b) => a + b, 0),
-          },
-          detailMs,
-          stepBytes: {
-            median: sortedSteps[Math.floor(sortedSteps.length / 2)] ?? 0,
-            p95: sortedSteps[Math.min(sortedSteps.length - 1, Math.floor(sortedSteps.length * 0.95))] ?? 0,
-            max: sortedSteps[sortedSteps.length - 1] ?? 0,
-            all: stepSizes.reduce((a, b) => a + b, 0),
-          },
-          stepMs,
-          streamHits,
-          titles: { steps: stepsSeen, withMarks: stepsWithMarks, withChips: stepsWithChips, multiChips: stepsWithMultiChips, samples: titleSamples },
-          notes: { total: noteOps, samples: noteSamples },
-          kpi: prodPayload.kpi,
-          tokens: prodPayload.tokens.total,
-        });
+          sendJson(res, 200, await runBench({
+            sessionQuery: ctx.sessionQuery,
+            snapshotFor,
+            buildRunsPayloadFrom,
+            buildRunDetail,
+            buildStepContent,
+            hostRev: HOST_REV,
+            sessionArg: url.searchParams.get('sessionId') ?? '',
+          }));
         } catch (error) {
           sendJson(res, 500, { code: 'bench-error', message: error && typeof error === 'object' && 'stack' in error ? String(error.stack).slice(0, 600) : String(error) });
         }
@@ -365,12 +239,6 @@ export function apply(ctx) {
             sendJson(res, 200, content);
             return;
           }
-          case 'events':
-            sendJson(res, 200, await ctx.sessionQuery.listEvents(sessionId));
-            return;
-          case 'session':
-            sendJson(res, 200, await ctx.sessionQuery.readSession(sessionId));
-            return;
           case 'event': {
             if (!Number.isFinite(seq)) {
               sendJson(res, 400, { code: 'bad-request', message: 'seq is required' });
@@ -390,16 +258,6 @@ export function apply(ctx) {
             sendJson(res, 200, eventValue);
             return;
           }
-          case 'lineage':
-            sendJson(res, 200, await ctx.sessionQuery.traceSession(sessionId));
-            return;
-          case 'event-trace':
-            if (!Number.isFinite(seq)) {
-              sendJson(res, 400, { code: 'bad-request', message: 'seq is required' });
-              return;
-            }
-            sendJson(res, 200, await ctx.sessionQuery.traceEvent({ sessionId, seq }));
-            return;
           default:
             sendJson(res, 404, { code: 'not-found', message: `unknown operation: ${op}` });
             return;
@@ -414,9 +272,6 @@ export function apply(ctx) {
   }), 'trace-analyzer: sessionQuery routes');
 }
 
-function elapsed(started) {
-  return Math.round((performance.now() - started) * 10) / 10;
-}
 
 /** True only for a request that came in over the loopback interface. */
 function isLoopback(req) {

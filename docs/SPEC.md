@@ -838,7 +838,14 @@
 - **改法**：删除 `hoverLock`（以及 `focusRunOnly` / `onFocusOnly` 整条旁路）。现在每一列都走同一条 `beginScrub`：设焦点 + `scrubTo` 滑到 34% 焦点线。唯一被保护的情形（点击停在该列顶部时不要被拉回中线）由 `beginScrub` 里已有的 `idx === locatedRunRef.current` 判断负责。
 - **回归**：`cdp:focus` 的断言改写为「点击后**横跨到另一列必须滚动**，并落在 34% 线；**重悬停被点击的那一列仍不移动**」；harness 镜像同步去掉锁。`served` 反断言 `hoverLock` / `focusRunOnly` / `onFocusOnly` 不得出现。`node mockup/regress.mjs` **ALL GREEN (15 checks)**。
 - **AC**：任意列 hover → 整表压暗 + 该行高亮 + 列表滑到 34%；点击后横跨列照常滚动；重悬停被点击列不动。
-## 78. 范围外（v1 不做）
+## 78. 死代码与死路由清理（F207）
+
+- **删掉的函数**（`lib/aggregate.js`，产品从不调用、只被单测养着）：`groupTimeline`（56 行，run/step 分组的早期实现，早被 `buildTraceTree` 取代）、`judgeToolAnomaly`（13 行，阈值判定，KPI 已改为直接比较 `durationMs`）、`normalizeLineage`（23 行，血缘树展平，血缘视图从未实现）。对应 4 个测试一并删除：**单测 43 → 39**（曾经说的 40 是重构分支里额外加的"动词表合并"用例，回滚后不存在）。
+- **删掉的路由**（`index.js`）：`events`（`listEvents` 全量 seq/type/time）、`session`（`readSession` 整份日志）、`lineage`（`traceSession`）、`event-trace`（`traceEvent`）。四者**全仓零调用**：客户端只调 `runs`/`run`/`step`/`event`；`/session` 与 `/events` 还会把整份日志塞进下行（与 NF6 冲突）。`ROUTES` 从 8 条降为 4 条，`/health.routes` 同步（`m8.10 → m8.11`）。
+- **搬走的代码**：仅 loopback 的 `/bench` 探针整段移到 `lib/bench.js`（`runBench(deps)`，响应字段与嵌套字段逐项不变）；`elapsed` 随之移出并在 `index.js` 里 import。`index.js` 431 → **299 行**。
+- **风险与边界**：① `sessionQuery` 的 `traceSession` / `traceEvent` / `filterEvents` **服务方法仍在**，只是没有路由暴露；将来要做血缘/溯源时按 §2 的路由表重新加。② `mockup/` 里若干历史探针脚本引用了被删的导出（`measure-memory.mjs` 等），它们不在回归套件内，已按"本地草稿"对待。③ 纯删除：payload 字段、渲染结构、交互**零变化**。
+- **回归**：`node mockup/regress.mjs` **ALL GREEN (15 checks)**；`unit` 39/39；Host 关→开后 `/health` = `m8.11` 且 routes 恰为 `[runs,run,step,event]`；`/bench` 与删除前**同一份 JSON 键集**（`ok,hostRev,sessionId,resolved,probeSeq,probeMs,probeError,events,runs,steps,runsPayloadBytes,runsRouteMs,coldReadMs,coldError,detailBytes,detailMs,stepBytes,stepMs,streamHits,titles,notes,kpi,tokens`），数值差异仅为会话在两个采样点之间增长（events 38485 → 38537）。
+## 79. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
