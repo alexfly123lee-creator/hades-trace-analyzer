@@ -180,32 +180,17 @@ window.__ModuleLoader__.load({
       + '@keyframes hadesSkeleton{0%{opacity:.55}50%{opacity:1}100%{opacity:.55}}'
       + '.hades-skeleton{animation:hadesSkeleton 1.2s ease-in-out infinite}';
 
-    // F165: matrix control styling. A native range input reads as a prototype —
-    // we draw the track (filled up to the value via --fill), the thumb, the hover
-    // and focus states ourselves. Only colours vary by theme; geometry is fixed.
+    // F168: the matrix is a control surface — arrow keys step, Enter locates.
     const MATRIX_CSS = `
-      .hades-range{-webkit-appearance:none;appearance:none;background:transparent;height:18px;margin:0 6px 0 0;padding:0;cursor:pointer}
-      .hades-range:focus{outline:none}
-      .hades-range::-webkit-slider-runnable-track{
         height:3px;border-radius:999px;
         background:linear-gradient(90deg,var(--hades-brand) 0,var(--hades-brand) var(--fill,100%),var(--hades-track) var(--fill,100%),var(--hades-track) 100%);
       }
-      .hades-range::-webkit-slider-thumb{
         -webkit-appearance:none;appearance:none;width:12px;height:12px;margin-top:-4.5px;
         border-radius:999px;background:var(--hades-surface);
         border:1.5px solid var(--hades-brand);
         box-shadow:0 1px 2px color-mix(in srgb,var(--hades-text) 22%,transparent);
         transition:transform 120ms ease,box-shadow 120ms ease;
       }
-      .hades-range:hover::-webkit-slider-thumb{transform:scale(1.15)}
-      .hades-range:active::-webkit-slider-thumb{transform:scale(1.05)}
-      .hades-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px color-mix(in srgb,var(--hades-brand) 22%,transparent)}
-      .hades-range::-moz-range-track{height:3px;border-radius:999px;background:var(--hades-track)}
-      .hades-range::-moz-range-progress{height:3px;border-radius:999px;background:var(--hades-brand)}
-      .hades-range::-moz-range-thumb{width:12px;height:12px;border-radius:999px;background:var(--hades-surface);border:1.5px solid var(--hades-brand);box-shadow:0 1px 2px color-mix(in srgb,var(--hades-text) 22%,transparent)}
-      .hades-mx-reset{font:inherit;color:var(--hades-muted);background:transparent;border:1px solid var(--hades-border);border-radius:999px;padding:1px 8px;cursor:pointer;transition:color 120ms ease,border-color 120ms ease}
-      .hades-mx-reset:hover{color:var(--hades-text);border-color:var(--hades-brand)}
-      .hades-mx-reset:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--hades-brand) 22%,transparent)}
       /* F168: the matrix is a control surface — it can take focus and be driven
          by the arrow keys. */
       .hades-matrix:focus{outline:none}
@@ -573,8 +558,6 @@ window.__ModuleLoader__.load({
       // F155: the clicked column stays highlighted, so "which Run did I pick?" is
       // answerable after the pointer leaves the matrix.
       const [selected, setSelected] = useState(null);
-      // F164: how many of the most recent runs the matrix shows. null = all.
-      const [windowN, setWindowN] = useState(null);
       // F168: transient "Run 112 / 175" ticker while the wheel / arrow keys step
       // through runs; it clears itself after DESIGN.motion.dimHold.
       const [tick, setTick] = useState(false);
@@ -609,13 +592,9 @@ window.__ModuleLoader__.load({
       baseRunRef.current = baseRun;
 
       const total = rows.length;
-      // A "window" is the newest N runs — where a session's dense tail lives, and
-      // the part worth reading at 1 column per run.
-      const shown = useMemo(() => {
-        if (windowN == null || windowN >= total) return rows;
-        return rows.slice(Math.max(0, total - windowN));
-      }, [rows, windowN, total]);
-      const n = shown.length;
+      // F205: every Run is a column — there is no "show only the latest N".
+      const shown = rows;
+      const n = total;
       // F168: rank against the WHOLE session, not the visible window. Dragging the
       // slider then only crops the picture — a Run never changes colour because
       // you zoomed, and the matrix stops recomputing 175×3 ranks per drag step.
@@ -763,15 +742,7 @@ window.__ModuleLoader__.load({
         const last = shownRef.current[shownRef.current.length - 1];
         if (last == null) return;
         setSelected((prev) => (prev === last.idx ? prev : last.idx));
-      }, [followLatest, rows, windowN]);
-
-      // F202: the window slider changes which Runs the columns stand for, so a
-      // hover/selection captured against the old columns points at nothing.
-      useEffect(() => {
-        hoverLock.current = false;
-        setHover(null);
-        if (scrubRef.current) scrubRef.current(null);
-      }, [windowN]);
+      }, [followLatest, rows]);
 
       if (n === 0) return null;
       const posOf = (idx) => (idx == null ? -1 : shown.findIndex((r) => r.idx === idx));
@@ -882,56 +853,6 @@ window.__ModuleLoader__.load({
           legendItem(T.warn, label('mx.slow', 'Slow')),
         ),
       );
-      // F164/F165: window control. 1 column per run stops being readable past a few
-      // dozen runs, so the matrix can focus on the newest N. Drawn as a product
-      // control — own track/thumb (.hades-range), value on the left, reset pill on
-      // the right — instead of a stock <input type=range>.
-      const windowPct = total > 12 ? Math.round(((n - 12) / Math.max(1, total - 12)) * 100) : 100;
-      const windowLabel = windowN == null || windowN >= total
-        ? `${label('mx.showAll', 'all')} ${total} ${label('mx.runsUnit', 'runs')}`
-        : `${label('mx.showRecent', 'latest')} ${n} / ${total} ${label('mx.runsUnit', 'runs')}`;
-      const sliderRow = total > 12 ? h('div', {
-        key: 'window',
-        style: {
-          display: 'flex', alignItems: 'center', gap: 10,
-          marginTop: 8, paddingTop: 8, borderTop: '1px solid ' + T.border,
-          font: `11px/1.2 ${T.mono}`, color: T.muted,
-        },
-      },
-        h('span', {
-          key: 'wlabel',
-          style: { flex: '0 0 auto', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', letterSpacing: '.01em' },
-        }, windowLabel),
-        h('input', {
-          key: 'wrange',
-          type: 'range',
-          className: 'hades-range',
-          min: 12,
-          max: total,
-          step: 1,
-          value: n,
-          'data-hades-window': '1',
-          'aria-label': label('mx.windowHint', 'Drag to choose how many of the latest runs the matrix shows'),
-          title: label('mx.windowHint', 'Drag to choose how many of the latest runs the matrix shows'),
-          onChange: (e) => {
-            const value = Number(e.target.value);
-            setWindowN(value >= total ? null : value);
-          },
-          style: { flex: '1 1 auto', maxWidth: 220, minWidth: 80, '--fill': windowPct + '%' },
-        }),
-        h('span', {
-          key: 'wend',
-          style: { flex: '0 0 auto', color: T.faint, fontVariantNumeric: 'tabular-nums' },
-        }, windowN == null ? '' : `12–${total}`),
-        windowN == null
-          ? null
-          : h('button', {
-            key: 'wall',
-            type: 'button',
-            className: 'hades-mx-reset',
-            onClick: () => setWindowN(null),
-          }, label('mx.showAll', 'all')),
-      ) : null;
       return h('div', {
         ref: wrapRef,
         // F153/F187: the wrapper paints the surface colour so no seam shows the
@@ -1014,7 +935,6 @@ window.__ModuleLoader__.load({
                 left: `calc(${bandAt(hoverPos).left} + (${bandAt(hoverPos).width}) - 1px)`, width: 1, background: T.brand,
               }) : null,
             ),
-            sliderRow,
           ),
         ),
       );
@@ -2893,9 +2813,8 @@ window.__ModuleLoader__.load({
           'loading': 'Loading…', 'empty': 'No events in this session',
           'run': 'Run ', 'step': 'Step ', 'followup': 'follow-up', 'system': 'System prompt',
           'mx.steps': 'Steps', 'mx.flags': 'Flags', 'mx.hint': 'hover a run · click to locate', 'mx.clearSel': 'Clear selection',
-          'mx.showAll': 'all', 'mx.showRecent': 'latest', 'mx.runsUnit': 'runs',
+          'mx.showAll': 'all', 'mx.runsUnit': 'runs',
           'mx.latest': 'Latest', 'mx.jumpLatest': 'Jump to the latest Run',
-          'mx.windowHint': 'Drag to choose how many of the latest runs the matrix shows',
           'mx.rampTime': 'darker = slower relative to the session',
           'mx.rampToken': 'darker = more tokens in the session',
           'mx.rampSteps': 'darker = more steps in the session',

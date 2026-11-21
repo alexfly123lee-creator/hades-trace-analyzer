@@ -817,7 +817,21 @@
   4. **预览上限**：首屏只渲染前 **20 000 字符**，超出显示 `show all N chars` 按钮；`<pre>` 加 `contain: content` + `content-visibility: auto`，长内容不参与滚动路径的布局。
 - **回归**：`regress` 新增 **`syntax:host`**（现在也会 `node --check` Host 的 `index.js`）；`smoke:render` 新增断言 —— 60 000 字符的 payload 渲染出的 `pre` 只有 **20 000** 字符且带 `show all` 按钮，缓存项里带 `text`；`check-served` 增加 `function loadEventRaw` / `RAW_PREVIEW_CHARS` / `data-hades-raw-more` / `rawInFlight` 标记。`node mockup/regress.mjs` **ALL GREEN (10 checks)**。
 - **AC**：首次点开 RAW 的等待明显变短（hover 预取）；再次打开同一条几乎瞬时（Host LRU + 客户端缓存）；超大 JSON 不再卡住界面。
-## 76. 范围外（v1 不做）
+### 75.1 矩阵高亮条：看得见 + 选中列不再吞掉 hover（F204）
+
+- **现象**：点过某一列后，在矩阵上移动指针"没有高亮条"。
+- **实测（用户截图逐列量像素）**：hover 条（左右各 1px）与选中条（左右各 2px）**都存在**——不是没画，而是看不出来：250 run 时每列约 11px，条内填充只有 26%，压在本来就有色（Time 蓝 38% / Token 紫 / Steps 绿）的格子上几乎无差别，眼睛只剩两根发丝线。
+- **第二个成因**：`hoverPos !== selectedPos` 让**选中列不画 hover 条**。点完一列后指针通常仍停在该列 → 这一列连 hover 都没有，正是"选中后 hover 失效"。
+- **改法**：① 去掉该抑制（指针在哪列画哪列，两层叠加）；② `DESIGN.alpha.bandSel` 26 → **42**、`bandHover` 18 → **26**。构造不变：三个独立矩形、无 `border`、无圆角 —— 不会重演 F152 的梯形。
+- **AC**：指针扫过任意列都出现整列竖带（含选中列）；`node mockup/regress.mjs` **ALL GREEN (15 checks)**。
+## 76. 去掉矩阵窗口滑块（F205）
+
+- **要求**：热力矩阵下方的「最近 N 个 Run」滑动条去掉；矩阵始终**每个 Run 一列、显示全部**。
+- **删除面**：`sliderRow`（`input[type=range]` + `all/latest N runs` 文案 + `all` 复位胶囊）、`windowN` 状态、`shown` 的窗口切片、"窗口变化清空 hover"的 effect、`MATRIX_CSS` 里的 `.hades-range` / `.hades-mx-reset` 全部样式、只被它们的两个文案键。
+- **代价（如实记录）**：Run 变多时列宽被摊薄（250 run / 1600px 约 6px 一列），放大单列的路径没有了；辨认靠悬停读数与高亮列。
+- **回归**：`check-served` 把 `data-hades-window` / `type: 'range'` / `hades-range` / `mx.showRecent` 移入**反向断言**（不得再出现）；`served` 159/159；`node mockup/regress.mjs` **ALL GREEN (15 checks)**。
+- **AC**：矩阵卡片底部没有任何控件；`hover`/点击/定位/跟随行为不变。
+## 77. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

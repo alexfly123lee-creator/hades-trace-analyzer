@@ -151,6 +151,7 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 | V110 | Time / Token 条缩短 1/3（F199） | 看 Run 列表的时间条与 Token 条 | 两条 track 明显变短（150 → 100px），表头 Time/Token 与行内条形仍然对齐，数值列不变；node mockup/regress.mjs **ALL GREEN (9 checks)**（`smoke:render` 断言 0 个 150px track、≥2 个 100px track、表头槽 176px） |
 | V111 | Run 序号不染色（F200） | 看含异常 Run 的列表（行尾有红点的那几条） | `Run N` 颜色与普通行一致，**不再整段变红**；异常仍由行尾红点表示；node mockup/regress.mjs **ALL GREEN (9 checks)**（`smoke:render` 断言 ordinal 无 `style.color`） |
 | V112 | RAW 面板提速（F201） | ① 鼠标移到某张卡的 `▸ RAW` 上停留一下再点 ② 关掉再点开同一条 ③ 打开一条超大 tool result 的 raw ④ 观察长 JSON 的滚动 | ①首次打开明显更快（hover 预取命中）②重开几乎瞬时（Host LRU + 客户端缓存，0 往返）③首屏只渲染 20 000 字符 + `show all` 按钮，界面不卡 ④长内容滚动流畅（`content-visibility`）；`node mockup/regress.mjs` **ALL GREEN (10 checks)**（含 `syntax:host` 与 raw 预览断言） |
+| V113 | 矩阵窗口滑块已删除（F205） | 看热力矩阵卡片底部；再扫一遍矩阵 | 卡片底部**没有任何控件**（没有 range 滑条、没有 `all/latest N runs` 文案）；矩阵始终每个 Run 一列；悬停读数、点击定位、跟随与 `↓ Latest` 行为不变；`node mockup/regress.mjs` **ALL GREEN (15 checks)**（`check-served` 对 `data-hades-window` / `type: 'range'` / `hades-range` 做反向断言） |
 | V48 | step 耗时含工具、不含等人 | 找一个跑了几分钟工具的 step；再找一个等你回答/审批的 step | 前者行上显示 模型+工具 的合计（工具时间算进去）；后者行上只显示模型的几十秒，旁边有 `⏸ 13.1min` 等待标记；`run.time = Σ 各步`；`mockup/verify-traj-align.mjs` 校验模型段 0 差异、工具段差额 = waitMs（F133） |
 | V47 | 标题可回原文 | hover 任一 step 标题 | tooltip 显示原始长摘要（正文全段 / `tool · 名字 · 参数`），压缩不丢信息；展开后详情面板按事件顺序出现说明行 `[压缩]`/`[命令]`/`[审批]`（F23.2） |
 | V24 | Run/Step 共同选中 | 点一个 step，再点另一 run 的 step；再点同一 step；折叠该 run | 选中 step 与其 run 分组出现同色轨道/加深底色；选中转移且旧选中消失；再次点击取消并收起；折叠 run 后选中清除（F128） |
