@@ -831,7 +831,14 @@
 - **代价（如实记录）**：Run 变多时列宽被摊薄（250 run / 1600px 约 6px 一列），放大单列的路径没有了；辨认靠悬停读数与高亮列。
 - **回归**：`check-served` 把 `data-hades-window` / `type: 'range'` / `hades-range` / `mx.showRecent` 移入**反向断言**（不得再出现）；`served` 159/159；`node mockup/regress.mjs` **ALL GREEN (15 checks)**。
 - **AC**：矩阵卡片底部没有任何控件；`hover`/点击/定位/跟随行为不变。
-## 77. 范围外（v1 不做）
+## 77. 去掉 hover 锁：选中一列后 hover 照常高亮并滚动（F206）
+
+- **现象（必现）**：点过矩阵某一列后，在矩阵上移动鼠标 → 下方 run 行**全部变半透明**、**看不到任何高亮行**、列表**也不再滚动**。
+- **根因**：F183 为解决「点击定位后行被拉回中线」加了 `hoverLock`：点击后**整块矩阵**的 hover 只走 `focusRunOnly`（只设焦点、不滚动）。于是焦点被设到一个**在视口外**的 Run —— 整表按 `.hades-scrubbing` 压暗到 22%，可见区域里没有 `.is-focus` 行，列表也不动。三件事是同一个根因。
+- **改法**：删除 `hoverLock`（以及 `focusRunOnly` / `onFocusOnly` 整条旁路）。现在每一列都走同一条 `beginScrub`：设焦点 + `scrubTo` 滑到 34% 焦点线。唯一被保护的情形（点击停在该列顶部时不要被拉回中线）由 `beginScrub` 里已有的 `idx === locatedRunRef.current` 判断负责。
+- **回归**：`cdp:focus` 的断言改写为「点击后**横跨到另一列必须滚动**，并落在 34% 线；**重悬停被点击的那一列仍不移动**」；harness 镜像同步去掉锁。`served` 反断言 `hoverLock` / `focusRunOnly` / `onFocusOnly` 不得出现。`node mockup/regress.mjs` **ALL GREEN (15 checks)**。
+- **AC**：任意列 hover → 整表压暗 + 该行高亮 + 列表滑到 34%；点击后横跨列照常滚动；重悬停被点击列不动。
+## 78. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

@@ -551,7 +551,7 @@ window.__ModuleLoader__.load({
      * scrolls, it never shifts the list, and it cannot create a fixed-position
      * containing-block surprise.
      */
-    function OverviewBoard({ rows, label, onLocate, onScrub, onFocusOnly, followLatest, baseRun }) {
+    function OverviewBoard({ rows, label, onLocate, onScrub, followLatest, baseRun }) {
       // F164: hover/selection are stored as Run idx (not column position), so they
       // survive a change of the visible window.
       const [hover, setHover] = useState(null);
@@ -577,14 +577,15 @@ window.__ModuleLoader__.load({
       // ref instead.
       const locateRef = useRef(onLocate);
       locateRef.current = onLocate;
-      // F166: a stable handle for the wheel handler (attached once, natively).
+      // F166: a stable handle for the pointer-scrub path.
       const scrubRef = useRef(onScrub);
       scrubRef.current = onScrub;
-      // F183: hover moves the highlight without scrolling once a click has parked a
-      // Run at the top; the lock ends when the pointer leaves the matrix.
-      const focusOnlyRef = useRef(onFocusOnly);
-      focusOnlyRef.current = onFocusOnly;
-      const hoverLock = useRef(false);
+      // F206: no hover lock. F183 parked the clicked Run at the top and then
+      // suppressed scrolling for EVERY column until the pointer left the matrix;
+      // the effect was a list that dimmed, showed no highlighted row (the focus was
+      // a Run outside the viewport) and stopped moving. `beginScrub` already skips
+      // re-scrolling the parked column via `locatedRunRef`, which is the only case
+      // that needed protecting.
       // F172: where the list is currently reading — the wheel steps from here when
       // the pointer is not over a column (otherwise one notch could teleport the
       // list to the stale selection's region).
@@ -649,9 +650,8 @@ window.__ModuleLoader__.load({
       const clickColumn = (event, container) => {
         const idx = indexAt(event, container);
         if (idx == null) return;
-        // F183: the click parks this Run at the top; keep it there while the
-        // pointer moves around the matrix.
-        hoverLock.current = true;
+        // F183/F206: the click parks this Run at the top. `beginScrub` keeps that
+        // column still (via locatedRunRef) while every other column scrolls again.
         setSelected(idx);
         setTimeout(() => locateRef.current(idx), 0);
       };
@@ -873,6 +873,8 @@ window.__ModuleLoader__.load({
             // into the legend used to fire mouseleave and drop the hover plus the
             // whole list focus. Off-plot moves now keep the last column; only
             // leaving the card clears it.
+            // F206: every column drives the same path — highlight AND scroll. A
+            // click no longer disables scrolling for the rest of the session.
             onMouseMove: (event) => {
               const gridEl = cardRef.current != null && typeof cardRef.current.querySelector === 'function'
                 ? cardRef.current.querySelector('[data-hades-row-grid]')
@@ -880,12 +882,9 @@ window.__ModuleLoader__.load({
               const next = indexAt(event, gridEl);
               if (next == null || next === hoverRef.current) return;
               setHover(next);
-              if (hoverLock.current) {
-                if (focusOnlyRef.current) focusOnlyRef.current(next);
-              } else if (scrubRef.current) scrubRef.current(next);
+              if (scrubRef.current) scrubRef.current(next);
             },
             onMouseLeave: () => {
-              hoverLock.current = false;
               setHover(null);
               if (scrubRef.current) scrubRef.current(null);
             },
@@ -2345,20 +2344,6 @@ window.__ModuleLoader__.load({
         scrubTo(idx);
       };
 
-      /**
-       * F183: same focus visuals as a hover, but it never scrolls the list. Used
-       * while a click-located Run must stay parked at the top.
-       */
-      const focusRunOnly = (idx) => {
-        if (idx == null) {
-          setFocusRun(null);
-          markFocusedRow(null);
-          return;
-        }
-        setFocusRun(idx);
-        markFocusedRow(idx);
-      };
-
       const openRun = (idx) => {
         stopFollowing();
         const runKey = 'run-' + idx;
@@ -2643,7 +2628,6 @@ window.__ModuleLoader__.load({
           label,
           onLocate: locateRun,
           onScrub: beginScrub,
-          onFocusOnly: focusRunOnly,
           followLatest: follow,
           baseRun: topVisibleRunIdx,
         });
