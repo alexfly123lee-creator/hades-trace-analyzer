@@ -753,7 +753,13 @@
 - **保留**：`ARGS` / `RESULT` 两个小标题（区分两块正文所必需）、耗时、错误/慢标记、`raw` 下拉、`in/out` token、step 的 `time · tokens` 摘要。
 - **回归**：`smoke:render` 新增 —— Step 面板**不得出现 `TOOL`**、必须出现工具名 `pwsh`、**不得出现 `model call`**（重复标签）、**不得出现 `chars`**；`check-served` 增加 `chipOf(String(op.name ?? 'tool')` 标记。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 - **AC**：Step 面板里工具徽标是工具名；没有重复的 `model call`、字符数、`expand/collapse` 文案；零计数分组不出现。
-## 68. 范围外（v1 不做）
+## 68. 卡片标签统一大写（F194）
+
+- **F194**：Step 卡片里的标签原本混用大小写 —— `ARGS` / `RESULT` / `USER` / `REPLY` 是大写，但 raw 下拉是 `raw`。统一为**全大写 `RAW`**。
+- **改法**：raw 下拉的样式加 textTransform: uppercase + 等宽 11px + 字距 .03em（与其他标签同一套），locale 值也从 raw 改为 RAW（双保险）。
+- **回归**：`smoke:render` 新增断言 —— 每个 raw 下拉的文案必须等于其大写形式（当前输出 `▸ RAW | ▸ RAW`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
+- **AC**：Step 卡片内所有小标签（含 raw 下拉）全部大写。
+## 69. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

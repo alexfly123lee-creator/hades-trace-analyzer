@@ -1640,8 +1640,13 @@ window.__ModuleLoader__.load({
         return h('button', {
           type: 'button',
           onClick: () => toggleRaw(rawKey),
-          style: { font: 'inherit', fontSize: 11, color: open ? T.text : T.faint, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 },
-        }, (open ? '▾ ' : '▸ ') + label('step.original', 'raw'));
+          // F194: every label in the card is uppercase (ARGS / RESULT / USER …);
+          // the raw disclosure follows the same rule.
+          style: {
+            font: `11px/1 ${T.mono}`, letterSpacing: '.03em', textTransform: 'uppercase',
+            color: open ? T.text : T.faint, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+          },
+        }, (open ? '▾ ' : '▸ ') + label('step.original', 'RAW'));
       };
 
       const timeline = [];
@@ -2810,7 +2815,7 @@ window.__ModuleLoader__.load({
           'mx.error': 'Error', 'mx.slow': 'Slow',
           'loadingDetail': 'loading Steps…',
           'step.model': 'model', 'step.timing': 'elapsed', 'step.tokens': 'tokens', 'step.summary': 'summary',
-          'step.args': 'args', 'step.result': 'result', 'step.original': 'raw', 'step.loading': 'loading Step…',
+          'step.args': 'args', 'step.result': 'result', 'step.original': 'RAW', 'step.loading': 'loading Step…',
           'step.facet.args': 'args', 'step.facet.result': 'result',
           'step.noArgs': '(no arguments)', 'step.noOutput': '(no output)',
           'step.retry': 'Retry', 'step.empty': 'Empty Step', 'step.instruction': 'instruction',
