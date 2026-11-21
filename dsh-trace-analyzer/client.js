@@ -580,12 +580,14 @@ window.__ModuleLoader__.load({
       // F166: a stable handle for the pointer-scrub path.
       const scrubRef = useRef(onScrub);
       scrubRef.current = onScrub;
-      // F206: no hover lock. F183 parked the clicked Run at the top and then
-      // suppressed scrolling for EVERY column until the pointer left the matrix;
-      // the effect was a list that dimmed, showed no highlighted row (the focus was
-      // a Run outside the viewport) and stopped moving. `beginScrub` already skips
-      // re-scrolling the parked column via `locatedRunRef`, which is the only case
-      // that needed protecting.
+      // F208: "parked" = a click just put a Run at the top of the list and the
+      // pointer has not left the matrix since. While parked, moving over columns
+      // updates the band and the readout only — it does NOT scroll and does NOT dim
+      // the list, so the Run stays exactly where it expanded.
+      //   F183 got this wrong by dimming + moving the focus without scrolling (list
+      //   looked broken); F206 got it wrong the other way by scrolling on every
+      //   column change (the parked Run slid away as soon as the pointer moved).
+      const parked = useRef(false);
       // F172: where the list is currently reading — the wheel steps from here when
       // the pointer is not over a column (otherwise one notch could teleport the
       // list to the stale selection's region).
@@ -650,8 +652,9 @@ window.__ModuleLoader__.load({
       const clickColumn = (event, container) => {
         const idx = indexAt(event, container);
         if (idx == null) return;
-        // F183/F206: the click parks this Run at the top. `beginScrub` keeps that
-        // column still (via locatedRunRef) while every other column scrolls again.
+        // F183/F208: the click parks this Run at the top; the pointer stays useful
+        // for the readout but must not drag the list around until it leaves.
+        parked.current = true;
         setSelected(idx);
         setTimeout(() => locateRef.current(idx), 0);
       };
@@ -882,9 +885,12 @@ window.__ModuleLoader__.load({
               const next = indexAt(event, gridEl);
               if (next == null || next === hoverRef.current) return;
               setHover(next);
+              // F208: parked after a click — band + readout only.
+              if (parked.current) return;
               if (scrubRef.current) scrubRef.current(next);
             },
             onMouseLeave: () => {
+              parked.current = false;
               setHover(null);
               if (scrubRef.current) scrubRef.current(null);
             },

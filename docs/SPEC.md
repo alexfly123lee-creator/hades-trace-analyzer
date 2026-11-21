@@ -845,7 +845,15 @@
 - **搬走的代码**：仅 loopback 的 `/bench` 探针整段移到 `lib/bench.js`（`runBench(deps)`，响应字段与嵌套字段逐项不变）；`elapsed` 随之移出并在 `index.js` 里 import。`index.js` 431 → **299 行**。
 - **风险与边界**：① `sessionQuery` 的 `traceSession` / `traceEvent` / `filterEvents` **服务方法仍在**，只是没有路由暴露；将来要做血缘/溯源时按 §2 的路由表重新加。② `mockup/` 里若干历史探针脚本引用了被删的导出（`measure-memory.mjs` 等），它们不在回归套件内，已按"本地草稿"对待。③ 纯删除：payload 字段、渲染结构、交互**零变化**。
 - **回归**：`node mockup/regress.mjs` **ALL GREEN (15 checks)**；`unit` 39/39；Host 关→开后 `/health` = `m8.11` 且 routes 恰为 `[runs,run,step,event]`；`/bench` 与删除前**同一份 JSON 键集**（`ok,hostRev,sessionId,resolved,probeSeq,probeMs,probeError,events,runs,steps,runsPayloadBytes,runsRouteMs,coldReadMs,coldError,detailBytes,detailMs,stepBytes,stepMs,streamHits,titles,notes,kpi,tokens`），数值差异仅为会话在两个采样点之间增长（events 38485 → 38537）。
-## 79. 范围外（v1 不做）
+## 79. 点击后"停靠"：矩阵内移动不再拖动列表（F208）
+
+- **现象**：点选矩阵某一列后，把鼠标往下挪 → 下方 run 行会**下移**；预期是停在该 Run 展开的位置。
+- **成因**：F206 删掉锁之后，指针每换一列都会 `scrubTo`（把该列对应的 Run 滑到 34% 焦点线）。点击后从矩阵往下移时，手会有几像素的横向漂移，跨到相邻列 → 整列表被滑走。
+- **两条历史弯路（都记着，避免再来一次）**：F183 的锁「点击后只设焦点、不滚动」会造成**整表压暗 + 焦点在视口外 + 列表冻结**（F206 投诉）；F206 的「全部放开」又导致**点完一挪鼠标行就滑走**（本条投诉）。
+- **改法（折中，一行判断）**：点击时置 `parked`；**停靠期间指针移动只更新矩阵高亮条与读数，不 `scrubTo`、也不设 `focusRun`**（所以不会压暗）；指针**离开矩阵**即解除停靠，之后悬停恢复"高亮 + 滚动到 34% 线"。
+- **回归**：`cdp:focus` 断言改为 —— 停靠期间横跨列**不移动**；离开后重新悬停**必须滚动并落在 34%**；重悬停被点击列不动；离开不动已静止的列表。harness 镜像同步。
+- **AC**：点选一列 → 该 Run 停在列表顶部并展开；鼠标在矩阵内移动（含下移出矩阵）→ 列表**一动不动**；离开后再进矩阵悬停 → 恢复高亮 + 滚动。
+## 80. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
