@@ -1,41 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { actorOf, buildTraceTree } from '../lib/trace.js';
+import { stepTitle } from '../lib/titles.js';
 import {
-  groupTimeline,
   aggregateTokens,
   pairToolCalls,
-  judgeToolAnomaly,
-  normalizeLineage,
-  buildTraceTree,
   buildRunsPayload,
   buildRunsPayloadFrom,
   buildRunDetail,
   buildStepContent,
-  actorOf,
   slimToolPairs,
-} from '../lib/aggregate.js';
-
-test('groupTimeline groups events into turns and steps', () => {
-  const events = [
-    { type: 'turn/start', seq: 1, time: 1, data: { turn: 1 } },
-    { type: 'step/start', seq: 2, time: 2, data: { turn: 1, step: 1 } },
-    { type: 'tool/call', seq: 3, time: 3, data: { turn: 1, step: 1, callId: 'c1', name: 'read', arguments: '{}' } },
-    { type: 'tool/result', seq: 4, time: 8, data: { turn: 1, step: 1, message: { source: { callId: 'c1' } } } },
-    { type: 'turn/end', seq: 5, time: 9, data: { turn: 1, reason: { kind: 'completed' } } },
-    { type: 'turn/start', seq: 6, time: 10, data: { turn: 2 } },
-    { type: 'user/message', seq: 7, time: 11, data: { turn: 2, step: 1, role: 'user' } },
-  ];
-  const turns = groupTimeline(events);
-  assert.equal(turns.length, 2);
-  assert.equal(turns[0].turn, 1);
-  assert.equal(turns[0].steps.length, 1);
-  assert.equal(turns[0].steps[0].events.length, 3);
-  assert.equal(turns[1].turn, 2);
-});
-
-test('groupTimeline tolerates empty input', () => {
-  assert.deepEqual(groupTimeline([]), []);
-});
+} from '../lib/project.js';
 
 test('aggregateTokens sums usage across turns', () => {
   const events = [
@@ -67,23 +42,6 @@ test('pairToolCalls pairs by callId and computes duration', () => {
   assert.equal(pairs.length, 2);
   assert.equal(pairs[0].durationMs, 5);
   assert.equal(pairs[1].durationMs, null);
-});
-
-test('judgeToolAnomaly classifies error and duration', () => {
-  assert.equal(judgeToolAnomaly({ error: { code: 'E' } }, { toolDurationMs: 5000 }), 'error');
-  assert.equal(judgeToolAnomaly({ durationMs: 6000 }, { toolDurationMs: 5000 }), 'duration');
-  assert.equal(judgeToolAnomaly({ durationMs: 1000 }, { toolDurationMs: 5000 }), null);
-});
-
-test('normalizeLineage flattens ancestors, target, descendants', () => {
-  const trace = {
-    ancestors: [{ header: { id: 'a' } }],
-    target: { header: { id: 'b' } },
-    descendants: [{ session: { header: { id: 'c' } }, descendants: [] }],
-  };
-  const nodes = normalizeLineage(trace);
-  assert.deepEqual(nodes.map((n) => n.role), ['ancestor', 'target', 'descendant']);
-  assert.deepEqual(nodes.map((n) => n.depth), [0, 1, 2]);
 });
 
 test('buildTraceTree groups by real user prompt (system prompt = run 0)', () => {
@@ -563,6 +521,33 @@ test('step title: a tool-only step reads as verb + object, from the full argumen
   assert.equal(steps.every((step) => step.marks === undefined), true);
   // The raw caption is still shipped for the row tooltip.
   assert.equal(steps[0].text, 'tool · read · E:/w/src/a.ts');
+});
+
+test('step title: the merged verb table keeps exit_plan_mode / load_workspace_dependencies', () => {
+  // `TOOL_VERB` and `CALL_VERB` used to disagree on exactly these two tools
+  // (`计划`/`取环境` vs `提交计划`/`取运行环境`); the switch returned the title
+  // literal, so the observable wording was the chip-table one. One table must
+  // still produce that same title *and* chip.
+  const titleOf = (events) => stepTitle(buildTraceTree(events)[0].steps[0]);
+
+  const plan = titleOf(titleEvents([...call(2, 1, 'exit_plan_mode', {})]));
+  assert.equal(plan.title, '提交计划');
+  assert.deepEqual(plan.tags, [{ tag: '提交计划', count: 1 }]);
+  assert.equal(plan.tag, '提交计划');
+
+  const deps = titleOf(titleEvents([...call(2, 1, 'load_workspace_dependencies', {})]));
+  assert.equal(deps.title, '取运行环境');
+  assert.deepEqual(deps.tags, [{ tag: '取运行环境', count: 1 }]);
+  assert.equal(deps.tag, '取运行环境');
+
+  // Repeated calls fold into one chip instead of splitting into two names.
+  const repeated = titleOf(titleEvents([
+    ...call(2, 1, 'load_workspace_dependencies', {}),
+    ...call(4, 1, 'load_workspace_dependencies', {}),
+    ...call(6, 1, 'read', { file_path: 'E:/w/a.ts' }),
+  ]));
+  assert.equal(repeated.title, '取运行环境');
+  assert.deepEqual(repeated.tags, [{ tag: '取运行环境', count: 2 }, { tag: '读取', count: 1 }]);
 });
 
 test('step title: a model sentence leads and the actions become chips', () => {

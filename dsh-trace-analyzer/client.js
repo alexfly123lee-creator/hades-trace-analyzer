@@ -35,102 +35,77 @@ window.__ModuleLoader__.load({
       rail: 'var(--dsw-alias-trajectory-accent)',
       groupRing: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 25%, transparent)',
       stepGroupRing: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 38%, transparent)',
-      // Expanded Run row: fill only.
-      runSelBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 12%, var(--dsw-alias-bg-layer-1))',
-      // F148 hover: a 6% tint was too close to "nothing" on a light surface, so
-      // hover now reads as a real state — deeper tint (no outline; a 1px ring
-      // was tried and rejected as too heavy). Selection keeps a stronger fill
-      // plus the left rail, so hover never outranks it.
-      runHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 9%, var(--dsw-alias-bg-layer-1))',
-      // F168: scrub-focus fill (overwritten by applyThemePalette from the tokens).
-      focusRow: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 16%, transparent)',
-      // Expanded Step row: strongest fill, container itself stays transparent.
-      stepSelBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 22%, transparent)',
-      stepHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 10%, transparent)',
-      // Column header = sort control. The hover tint covers the whole column and
-      // a 1px underline carries the affordance (a 6% tint alone is invisible).
-      sortHoverBg: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 14%, transparent)',
-      sortHoverLine: 'color-mix(in srgb, var(--dsw-alias-trajectory-accent) 80%, transparent)',
+      // F202: the tinted states are CSS variables now (see THEME_CSS). Light and
+      // dark were two JS palettes swapped by rewriting this table during render,
+      // which made the theme a runtime value that every inline style had to be
+      // recomputed for. They are two CSS blocks over the same variable names.
+      runSelBg: 'var(--hades-sel-row)',
+      runHoverBg: 'var(--hades-hover-row)',
+      focusRow: 'var(--hades-focus-row)',
+      stepSelBg: 'var(--hades-step-sel)',
+      stepHoverBg: 'var(--hades-step-hover)',
+      sortHoverBg: 'var(--hades-sort-hover)',
+      sortHoverLine: 'var(--hades-sort-line)',
     };
 
-    // ---------------------------------------------------------------------
-    // F149: hover and selection tints are theme-dependent.
-    // The same 9% accent over a white surface is a readable tint; over the dark
-    // layer-1 (#232324) it is ~#252b39 — i.e. invisible. Dark therefore needs
-    // its own alphas (~2.4×). The platform marks dark mode with
-    // `body[data-ds-dark-theme]`, so the palette is resolved in JS and swapped
-    // in place: the panel may live inside a shadow root, where a `body[...]`
-    // descendant selector would never match.
-    // ---------------------------------------------------------------------
-    // ---------------------------------------------------------------------
     // F168 design tokens. Everything tunable lives here: one edit changes the
     // whole panel's rhythm instead of hunting inline numbers.
     //   space  — 4px grid only (no more 3/5/6/7/10 one-offs)
     //   motion — milliseconds; `glide` is the *cap*, distance no longer stretches it
     //   ease   — two curves: settle (out) and dismiss (in)
-    //   alpha  — [light, dark] pairs for every tinted state
-    // ---------------------------------------------------------------------
+    //   alpha  — theme-independent alphas (the theme-dependent ones live in CSS)
     const DESIGN = {
       space: { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16 },
       motion: { fast: 120, base: 160, slow: 240, glide: 260, focus: 300, dimHold: 700 },
       ease: { out: 'cubic-bezier(.2,.7,.3,1)', in: 'cubic-bezier(.4,0,1,1)' },
-      alpha: {
-        hover: [9, 22],
-        selected: [12, 30],
-        focus: [16, 34],
-        stepHover: [10, 26],
-        stepSel: [22, 36],
-        sortHover: [14, 26],
-        sortLine: [80, 90],
-        bandSel: 26,
-        bandHover: 18,
-        scrubDim: 0.22,
-        marker: 0.85,
-      },
+      alpha: { bandSel: 26, bandHover: 18, scrubDim: 0.22, marker: 0.85 },
       // Row rhythm: 28px rows on a 4px baseline grid.
       row: { height: 28, pad: 4 },
     };
-    const alphaOf = (pair, dark) => (Array.isArray(pair) ? pair[dark ? 1 : 0] : pair);
-
-    const TINT_BASE = {
-      run: 'var(--dsw-alias-bg-layer-1)',
-      step: 'transparent',
-    };
-    const LIGHT_TINT = {
-      runHover: DESIGN.alpha.hover[0], runSel: DESIGN.alpha.selected[0],
-      stepHover: DESIGN.alpha.stepHover[0], stepSel: DESIGN.alpha.stepSel[0],
-      sortHover: DESIGN.alpha.sortHover[0], sortLine: DESIGN.alpha.sortLine[0],
-    };
-    const DARK_TINT = {
-      runHover: DESIGN.alpha.hover[1], runSel: DESIGN.alpha.selected[1],
-      stepHover: DESIGN.alpha.stepHover[1], stepSel: DESIGN.alpha.stepSel[1],
-      sortHover: DESIGN.alpha.sortHover[1], sortLine: DESIGN.alpha.sortLine[1],
-    };
-    const tintOf = (pct, base) => `color-mix(in srgb, var(--dsw-alias-trajectory-accent) ${pct}%, ${base})`;
 
     function darkThemeActive() {
       const body = typeof document === 'undefined' ? null : document.body;
       return Boolean(body && body.hasAttribute('data-ds-dark-theme'));
     }
 
-    /** Point the shared palette at the current theme; returns true when it moved. */
-    let paletteDark = null;
-    function applyThemePalette() {
-      const dark = darkThemeActive();
-      if (paletteDark === dark) return false;
-      paletteDark = dark;
-      const p = dark ? DARK_TINT : LIGHT_TINT;
-      T.runHoverBg = tintOf(p.runHover, TINT_BASE.run);
-      T.runSelBg = tintOf(p.runSel, TINT_BASE.run);
-      T.stepHoverBg = tintOf(p.stepHover, TINT_BASE.step);
-      T.stepSelBg = tintOf(p.stepSel, TINT_BASE.step);
-      T.sortHoverBg = tintOf(p.sortHover, TINT_BASE.step);
-      T.sortHoverLine = tintOf(p.sortLine, TINT_BASE.step);
-      // F168: scrub-focus fill comes from the token table too, so the focus tint
-      // scales with the theme like every other state.
-      T.focusRow = tintOf(alphaOf(DESIGN.alpha.focus, dark), TINT_BASE.run);
-      return true;
-    }
+    /**
+     * F149/F202: hover, selection and focus tints are theme-dependent. The same 9%
+     * accent over white reads as a tint; over the dark layer-1 (#232324) it is
+     * ~#252b39, i.e. invisible — dark needs ~2.4× the alpha.
+     *
+     * The platform marks dark mode on `body`, but the panel can live inside a
+     * shadow root where a `body[...]` descendant selector never matches. So the
+     * theme is a single attribute on the panel root (set from `darkThemeActive`)
+     * and these two blocks do the rest: no palette rewriting, no re-render of a
+     * row just to restyle it.
+     */
+    const tint = (pct, base) => `color-mix(in srgb, var(--dsw-alias-trajectory-accent) ${pct}%, ${base})`;
+    const THEME_CSS = [
+      '.hades-panel{',
+      '--hades-muted:var(--dsw-alias-label-secondary);',
+      '--hades-text:var(--dsw-alias-label-primary);',
+      '--hades-brand:var(--dsw-alias-trajectory-accent);',
+      '--hades-surface:var(--dsw-alias-bg-layer-1);',
+      '--hades-border:var(--dsw-alias-border-l1);',
+      '--hades-track:color-mix(in srgb, var(--dsw-alias-label-primary) 12%, transparent);',
+      `--hades-hover-row:${tint(9, 'var(--dsw-alias-bg-layer-1)')};`,
+      `--hades-sel-row:${tint(12, 'var(--dsw-alias-bg-layer-1)')};`,
+      `--hades-focus-row:${tint(16, 'var(--dsw-alias-bg-layer-1)')};`,
+      `--hades-step-hover:${tint(10, 'transparent')};`,
+      `--hades-step-sel:${tint(22, 'transparent')};`,
+      `--hades-sort-hover:${tint(14, 'transparent')};`,
+      `--hades-sort-line:${tint(80, 'transparent')};`,
+      '}',
+      '.hades-panel[data-hades-theme="dark"]{',
+      `--hades-hover-row:${tint(22, 'var(--dsw-alias-bg-layer-1)')};`,
+      `--hades-sel-row:${tint(30, 'var(--dsw-alias-bg-layer-1)')};`,
+      `--hades-focus-row:${tint(34, 'var(--dsw-alias-bg-layer-1)')};`,
+      `--hades-step-hover:${tint(26, 'transparent')};`,
+      `--hades-step-sel:${tint(36, 'transparent')};`,
+      `--hades-sort-hover:${tint(26, 'transparent')};`,
+      `--hades-sort-line:${tint(90, 'transparent')};`,
+      '}',
+    ].join('');
 
     // Indent for the Step level: Step rows and their bracket sit one level in
     // from the Run group, so nesting reads by position, not only by color.
@@ -396,30 +371,66 @@ window.__ModuleLoader__.load({
       if (el != null) el.classList.add('is-focus');
     };
 
+    /**
+     * F176/F202: the one eased scroll primitive. The pointer glide (hover scrub)
+     * and the click glide (locate) each had their own copy of this rAF loop and
+     * the same cubic curve, so the two motions could drift apart in duration or
+     * shape without anything noticing. Returns a cancel function; a new glide
+     * replaces the running one.
+     */
+    const glideScroll = (host, from, to, duration) => {
+      if (host == null) return null;
+      const delta = to - from;
+      if (Math.abs(delta) < 1) { host.scrollTop = to; return null; }
+      if (motionReduced() || typeof requestAnimationFrame !== 'function') { host.scrollTop = to; return null; }
+      const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const ease = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+      let raf = null;
+      const step = (now) => {
+        const p = Math.min(1, (now - t0) / duration);
+        host.scrollTop = from + delta * ease(p);
+        raf = p < 1 ? requestAnimationFrame(step) : null;
+      };
+      raf = requestAnimationFrame(step);
+      return () => {
+        if (raf != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
+        raf = null;
+      };
+    };
+
     // Short tag for the explanation-only rows a step panel gained in F23.2
     // (compaction / retry / file changes / slash commands / approvals …).
-    const NOTE_TAG = { compact: 'compact', retry: 'retry', fail: 'fail', workspace: 'files', command: 'command', plan: 'plan', todo: 'todo', deliver: 'deliver', approval: 'approval', note: 'events' };
-    // Same English vocabulary as the step/role tags (F136); Chinese stays in the tooltip.
-    const NOTE_TAG_EN = { compact: 'COMPACT', retry: 'RETRY', fail: 'FAIL', workspace: 'FILES', command: 'CMD', plan: 'PLAN', todo: 'TODO', deliver: 'DELIVER', approval: 'APPROVAL', note: 'EVENT' };
-
-    // Session-scoped caches: reopening the tab, switching sessions back and forth,
-    // or re-expanding a run must not hit the network again (SPEC F123).
-    // Bounded (F138): an unbounded map keeps every step of every session a user
-    // ever opened alive in the renderer heap, which shows up as GC pressure on
-    // the whole app hours later. Oldest entry wins the eviction.
-    const cache = {
-      runs: new Map(),
-      run: new Map(),
-      step: new Map(),
-      event: new Map(),
+    // One table per kind: [chip text, tooltip] — it used to be two parallel maps
+    // that had to be kept in step by hand.
+    const NOTE_LABEL = {
+      compact: ['COMPACT', 'compact'], retry: ['RETRY', 'retry'], fail: ['FAIL', 'fail'],
+      workspace: ['FILES', 'files'], command: ['CMD', 'command'], plan: ['PLAN', 'plan'],
+      todo: ['TODO', 'todo'], deliver: ['DELIVER', 'deliver'], approval: ['APPROVAL', 'approval'],
+      note: ['EVENT', 'events'],
     };
-    const CACHE_MAX = { runs: 6, run: 40, step: 240, event: 160 };
+    const noteLabel = (kind) => NOTE_LABEL[kind] ?? NOTE_LABEL.note;
 
-    function cacheSet(map, key, value, max) {
-      map.delete(key);
-      map.set(key, value);
-      while (map.size > max) map.delete(map.keys().next().value);
+    /**
+     * F123/F138: one bounded cache primitive for every layer (runs / run detail /
+     * step content / raw event). Reopening a tab, switching sessions or
+     * re-expanding a run must not hit the network again; the bound keeps the
+     * renderer heap from growing for the whole life of the app (oldest evicted).
+     */
+    function lru(max) {
+      const map = new Map();
+      return {
+        has: (key) => map.has(key),
+        get: (key) => map.get(key),
+        set: (key, value) => {
+          map.delete(key);
+          map.set(key, value);
+          while (map.size > max) map.delete(map.keys().next().value);
+          return value;
+        },
+        delete: (key) => map.delete(key),
+      };
     }
+    const cache = { runs: lru(6), run: lru(40), step: lru(240), event: lru(160) };
 
     function buildUrl(op, params) {
       const url = new URL(PREFIX + '/' + op, window.location.origin);
@@ -521,11 +532,10 @@ window.__ModuleLoader__.load({
     // are English, so tags are too; the Chinese wording stays in the tooltip.
     const ROLE_EN = { user: 'USER', assistant: 'ASSISTANT', context: 'CONTEXT', system: 'SYSTEM', tool: 'TOOL' };
 
-    function RoleTag({ actor, label }) {
+    function RoleTag({ actor }) {
       const role = ROLE[actor] ?? ROLE.system;
       const text = ROLE_EN[actor] ?? ROLE_EN.system;
-      const zh = label ? label(role.key, role.fallback) : role.fallback;
-      return h(RowTag, { text, color: role.color, background: role.background, title: zh });
+      return h(RowTag, { text, color: role.color, background: role.background, title: role.fallback });
     }
 
     // ---------------------------------------------------------------------
@@ -563,7 +573,7 @@ window.__ModuleLoader__.load({
      * scrolls, it never shifts the list, and it cannot create a fixed-position
      * containing-block surprise.
      */
-    function OverviewBoard({ rows, label, onLocate, onScrub, onFocusOnly, followLatest, baseRun }) {
+    function OverviewBoard({ rows, onLocate, onScrub, onFocusOnly, followLatest, baseRun }) {
       // F164: hover/selection are stored as Run idx (not column position), so they
       // survive a change of the visible window.
       const [hover, setHover] = useState(null);
@@ -572,8 +582,8 @@ window.__ModuleLoader__.load({
       const [selected, setSelected] = useState(null);
       // F164: how many of the most recent runs the matrix shows. null = all.
       const [windowN, setWindowN] = useState(null);
-      // F168: transient "Run 112 / 175" ticker while the wheel / arrow keys step
-      // through runs; it clears itself after DESIGN.motion.dimHold.
+      // F168: transient "Run 112 / 175" ticker while the arrow keys step through
+      // runs; it clears itself after DESIGN.motion.dimHold.
       const [tick, setTick] = useState(false);
       const tickTimer = useRef(null);
       const flashTick = useCallback(() => {
@@ -591,7 +601,7 @@ window.__ModuleLoader__.load({
       // ref instead.
       const locateRef = useRef(onLocate);
       locateRef.current = onLocate;
-      // F166: a stable handle for the wheel handler (attached once, natively).
+      // F166: stable handles so the pointer path never depends on a fresh closure.
       const scrubRef = useRef(onScrub);
       scrubRef.current = onScrub;
       // F183: hover moves the highlight without scrolling once a click has parked a
@@ -599,9 +609,8 @@ window.__ModuleLoader__.load({
       const focusOnlyRef = useRef(onFocusOnly);
       focusOnlyRef.current = onFocusOnly;
       const hoverLock = useRef(false);
-      // F172: where the list is currently reading — the wheel steps from here when
-      // the pointer is not over a column (otherwise one notch could teleport the
-      // list to the stale selection's region).
+      // F172: where the list is currently reading — the arrow keys step from here
+      // (otherwise one keypress could teleport the list to a stale region).
       const baseRunRef = useRef(baseRun);
       baseRunRef.current = baseRun;
 
@@ -635,9 +644,9 @@ window.__ModuleLoader__.load({
       // from turning into a solid block.
       const shade = (tone, rank) => `color-mix(in srgb, ${tone} ${Math.round(8 + 80 * rank)}%, var(--dsw-alias-bg-layer-1))`;
       const rowsDef = [
-        { key: 'time', text: label('col.time', 'Time'), tone: T.brand, rankOf: (r) => ranks.time.get(r.idx) ?? 0 },
-        { key: 'token', text: label('col.token', 'Token'), tone: T.token, rankOf: (r) => ranks.token.get(r.idx) ?? 0 },
-        { key: 'steps', text: label('mx.steps', 'Steps'), tone: T.success, rankOf: (r) => ranks.steps.get(r.idx) ?? 0 },
+        { key: 'time', text: 'Time', tone: T.brand, rankOf: (r) => ranks.time.get(r.idx) ?? 0 },
+        { key: 'token', text: 'Token', tone: T.token, rankOf: (r) => ranks.token.get(r.idx) ?? 0 },
+        { key: 'steps', text: 'Steps', tone: T.success, rankOf: (r) => ranks.steps.get(r.idx) ?? 0 },
       ];
       // F168: errors and slow ops are MARKERS, not a fourth metric — a 3px lane
       // above the grid, so the matrix reads as three comparable rows plus flags.
@@ -843,7 +852,7 @@ window.__ModuleLoader__.load({
               ` · ${fmtMs(hovered.time)} · ${fmtK(hovered.token)} tok · ${hovered.stepCount} steps`
               + (hovered.hasError ? ' · error' : '') + (hovered.hasSlow ? ' · slow' : ''),
             ]
-            : label('mx.hint', 'hover a run · click to locate')),
+            : 'hover a run · click to locate'),
         // F157: an explicit selection chip, so "what is currently selected" is
         // answered in words as well as by the 26%/2px column band.
         selectedPos >= 0 && shown[selectedPos] ? h('span', {
@@ -859,7 +868,7 @@ window.__ModuleLoader__.load({
           `Run ${shown[selectedPos].idx}`,
           h('button', {
             type: 'button',
-            title: label('mx.clearSel', 'clear selection'),
+            title: 'Clear selection',
             onClick: () => setSelected(null),
             style: {
               border: 'none', background: 'transparent', color: T.brand, cursor: 'pointer',
@@ -868,15 +877,15 @@ window.__ModuleLoader__.load({
           }, '✕'),
         ) : null,
         h('span', { key: 'legend-items', style: { display: 'inline-flex', alignItems: 'center', gap: 12, flex: '0 0 auto' } },
-          legendItem(T.brand, label('col.time', 'Time'), label('mx.rampTime', 'darker = slower relative to the session')),
-          legendItem(T.token, label('col.token', 'Token'), label('mx.rampToken', 'darker = more tokens in the session')),
-          legendItem(T.success, label('mx.steps', 'Steps'), label('mx.rampSteps', 'darker = more steps in the session')),
+          legendItem(T.brand, 'Time', 'darker = slower relative to the session'),
+          legendItem(T.token, 'Token', 'darker = more tokens in the session'),
+          legendItem(T.success, 'Steps', 'darker = more steps in the session'),
           h('span', {
             key: 'lg-sep',
             style: { width: 1, height: 11, background: T.border, flex: '0 0 1px' },
           }),
-          legendItem(T.error, label('mx.error', 'Error')),
-          legendItem(T.warn, label('mx.slow', 'Slow')),
+          legendItem(T.error, 'Error'),
+          legendItem(T.warn, 'Slow'),
         ),
       );
       // F164/F165: window control. 1 column per run stops being readable past a few
@@ -885,8 +894,8 @@ window.__ModuleLoader__.load({
       // the right — instead of a stock <input type=range>.
       const windowPct = total > 12 ? Math.round(((n - 12) / Math.max(1, total - 12)) * 100) : 100;
       const windowLabel = windowN == null || windowN >= total
-        ? `${label('mx.showAll', 'all')} ${total} ${label('mx.runsUnit', 'runs')}`
-        : `${label('mx.showRecent', 'latest')} ${n} / ${total} ${label('mx.runsUnit', 'runs')}`;
+        ? `all ${total} runs`
+        : `latest ${n} / ${total} runs`;
       const sliderRow = total > 12 ? h('div', {
         key: 'window',
         style: {
@@ -908,8 +917,8 @@ window.__ModuleLoader__.load({
           step: 1,
           value: n,
           'data-hades-window': '1',
-          'aria-label': label('mx.windowHint', 'Drag to choose how many of the latest runs the matrix shows'),
-          title: label('mx.windowHint', 'Drag to choose how many of the latest runs the matrix shows'),
+          'aria-label': 'Drag to choose how many of the latest runs the matrix shows',
+          title: 'Drag to choose how many of the latest runs the matrix shows',
           onChange: (e) => {
             const value = Number(e.target.value);
             setWindowN(value >= total ? null : value);
@@ -927,7 +936,7 @@ window.__ModuleLoader__.load({
             type: 'button',
             className: 'hades-mx-reset',
             onClick: () => setWindowN(null),
-          }, label('mx.showAll', 'all')),
+          }, 'all'),
       ) : null;
       return h('div', {
         ref: wrapRef,
@@ -1025,7 +1034,7 @@ window.__ModuleLoader__.load({
     // stays a one-line change).
     const RUN_IDX_W = 78;
 
-    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, label, detailEpoch, instantRef, focusRun }) {
+    function DualBarChart({ rows, sort, onSort, sysLabel, expanded, onToggleRun, renderDetail, hasDetail, detailEpoch, instantRef, focusRun }) {
       const listRef = useRef(null);
       const prevTops = useRef(new Map());
       const first = useRef(true);
@@ -1157,7 +1166,7 @@ window.__ModuleLoader__.load({
       // other way to tell which key is driving the order, and ✕ clears it in one
       // click instead of "click it once more and hope".
       const sortClear = () => {
-        const text = sort.key === 'time' ? label('col.time', 'Time') : label('col.token', 'Token');
+        const text = sort.key === 'time' ? 'Time' : 'Token';
         const tone = sort.key === 'time' ? T.brand : T.token;
         return h('div', {
           key: 'sortClear',
@@ -1168,12 +1177,12 @@ window.__ModuleLoader__.load({
             fontSize: 11, lineHeight: '1', fontFamily: T.mono, letterSpacing: '.04em', color: T.muted,
           },
         },
-          label('sort.by', 'sorted by'),
+          'sorted by',
           h('b', { style: { fontWeight: 400, color: tone } }, `${text} ${sort.dir === 'asc' ? '↑' : '↓'}`),
-          label('sort.on', 'sort'),
+          '',
           h('button', {
             type: 'button',
-            title: label('sort.clear', 'clear sort'),
+            title: 'clear sort',
             onClick: () => onSort(null),
             style: { flex: '0 0 auto', border: 'none', background: 'transparent', color: T.faint, cursor: 'pointer', font: 'inherit', padding: 0, lineHeight: 1 },
           }, '✕'),
@@ -1193,7 +1202,7 @@ window.__ModuleLoader__.load({
       // Language is carried by closures, not by data: derive a cheap signature so
       // a locale switch invalidates the cache without depending on `label`'s
       // identity (a new closure every render).
-      const langKey = label('col.time', 'Time') + '|' + label('col.token', 'Token') + '|' + sysLabel;
+      const langKey = 'Time|Token|' + sysLabel;
 
       const buildRow = (r, open) => {
         const tPct = (r.time / maxTime * 100).toFixed(1);
@@ -1227,8 +1236,8 @@ window.__ModuleLoader__.load({
         return h('div', {
           key: r.idx,
           'data-run': String(r.idx),
-          // F166: the wheel-scrub focus lives on the group so its whole detail
-          // block dims with it, not just the header line.
+          // F166: the focus class lives on the group so its whole detail block
+          // dims with it, not just the header line.
           className: 'hades-run-group',
           style: isNewRow ? { ...groupStyle, animation: 'hadesRowIn .22s ease-out' } : groupStyle,
         },
@@ -1271,7 +1280,7 @@ window.__ModuleLoader__.load({
               valueText: fmtK(r.token),
               tip: fmtK(r.token) + ' tok',
             }),
-            h(RoleTag, { actor: r.actor, label }),
+            h(RoleTag, { actor: r.actor }),
             // F147/F168: the whole prompt goes into the cell and the column clips
             // it at the real width; F168 adds a linear fade (`.hades-prompt`) so
             // long prompts dissolve instead of ending in a hard ellipsis.
@@ -1322,9 +1331,9 @@ window.__ModuleLoader__.load({
           // bar-aligned labels land on the same x as the track below; the label
           // itself only covers the track. F169: fixed width, same as MetricBar.
           h('div', { key: 'h-time', style: { flex: `0 0 ${METRIC_W + 6 + METRIC_NUM_W}px`, display: 'flex', alignItems: 'center', minWidth: 0 } },
-            sortCol('time', label('col.time', 'Time'), T.brand, METRIC_W)),
+            sortCol('time', 'Time', T.brand, METRIC_W)),
           h('div', { key: 'h-token', style: { flex: `0 0 ${METRIC_W + 6 + METRIC_NUM_W}px`, display: 'flex', alignItems: 'center', minWidth: 0 } },
-            sortCol('token', label('col.token', 'Token'), T.token, METRIC_W)),
+            sortCol('token', 'Token', T.token, METRIC_W)),
           sort ? sortClear() : null,
         ),
         h('div', { ref: listRef }, buildRows()),
@@ -1544,7 +1553,7 @@ window.__ModuleLoader__.load({
      * context/system injection — each tagged with its role. Raw JSON stays an
      * optional per-row link.
      */
-    function StepContent({ sessionId, runIdx, stepIdx, runPrompt, runActor, t, refreshToken }) {
+    function StepContent({ sessionId, runIdx, stepIdx, runPrompt, runActor, refreshToken }) {
       const key = sessionId + '::' + runIdx + '::' + stepIdx;
       const [nonce, setNonce] = useState(0);
       const [state, setState] = useState(() => (cache.step.has(key)
@@ -1574,7 +1583,7 @@ window.__ModuleLoader__.load({
           : { data: null, loading: true, error: null, refreshing: false }));
         fetchPayload('step', { sessionId, idx: runIdx, step: stepIdx })
           .then(({ json }) => {
-            cacheSet(cache.step, key, json, CACHE_MAX.step);
+            cache.step.set(key, json);
             if (!cancelled) setState({ data: json, loading: false, error: null, refreshing: false });
           })
           .catch((err) => {
@@ -1586,8 +1595,6 @@ window.__ModuleLoader__.load({
           });
         return () => { cancelled = true; };
       }, [key, nonce, refreshToken, sessionId, runIdx, stepIdx]);
-
-      const label = (k, fb) => (t ? t(k) : fb);
       // The Step bracket (StepRow wrapper) already supplies the tint + rail, so
       // the detail block itself is transparent and only indents/divides rows.
       const cardStyle = {
@@ -1595,7 +1602,7 @@ window.__ModuleLoader__.load({
         padding: '2px 10px 4px 12px',
       };
 
-      if (state.loading) return h('div', { style: { ...cardStyle, fontSize: 12, color: T.muted } }, label('step.loading', 'Loading step…'));
+      if (state.loading) return h('div', { style: { ...cardStyle, fontSize: 12, color: T.muted } }, 'loading Step…');
       if (state.error != null) {
         return h('div', { style: { ...cardStyle, fontSize: 12, color: T.error } },
           state.error,
@@ -1603,7 +1610,7 @@ window.__ModuleLoader__.load({
             type: 'button',
             onClick: () => { cache.step.delete(key); setNonce((value) => value + 1); },
             style: { marginLeft: 8, font: 'inherit', fontSize: 11, color: T.text, background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm, padding: '1px 8px', cursor: 'pointer' },
-          }, label('step.retry', 'retry')),
+          }, 'Retry'),
         );
       }
 
@@ -1688,7 +1695,7 @@ window.__ModuleLoader__.load({
             font: `11px/1 ${T.mono}`, letterSpacing: '.03em', textTransform: 'uppercase',
             color: open ? T.text : T.faint, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
           },
-        }, (open ? '▾ ' : '▸ ') + label('step.original', 'RAW'));
+        }, (open ? '▾ ' : '▸ ') + 'RAW');
       };
 
       const timeline = [];
@@ -1697,7 +1704,7 @@ window.__ModuleLoader__.load({
         timeline.push(h('div', { key: 'instruction', style: { position: 'relative', marginBottom: 8 } },
           dotOf('user'),
           h('div', { style: cardBox() },
-            capRow(chipOf('USER', 'user', label('step.instruction', 'instruction'))),
+            capRow(chipOf('USER', 'user', 'instruction')),
             // F147: full instruction text; the block scrolls, it is not cut.
             h('div', {
               title: runPrompt,
@@ -1743,7 +1750,7 @@ window.__ModuleLoader__.load({
             h('div', { style: cardBox() },
               // F196: chip + token text on one line, raw on the left below it.
               h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flexWrap: 'wrap' } },
-                chipOf('REPLY', 'assistant', label('step.modelCall', 'model call')),
+                chipOf('REPLY', 'assistant', 'model call'),
                 h('span', { style: { ...mono11, color: T.muted } }, `in ${fmtK(value.input)} · out ${fmtK(value.output)}`)),
               op.text ? h('div', {
                 title: op.text,
@@ -1758,7 +1765,7 @@ window.__ModuleLoader__.load({
         if (op.kind === 'tool') {
           const failed = op.error != null || op.isError;
           const isSlow = typeof op.durationMs === 'number' && op.durationMs > slowMs;
-          const errorText = failed ? (op.error ?? 'error') : (isSlow ? label('step.slow', 'slow') : null);
+          const errorText = failed ? (op.error ?? 'error') : (isSlow ? 'slow' : null);
           const block = (text, tone, cap, maxHeight) => h('div', { style: { marginTop: 4 } },
             h('div', { style: { ...mono11, color: T.faint, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.03em', marginBottom: 1 } }, cap),
             h('div', {
@@ -1775,8 +1782,8 @@ window.__ModuleLoader__.load({
                 errorText != null ? h('span', { style: { fontSize: 11, color: failed ? T.error : T.warn } }, errorText) : null),
               // F192/F197: both facets are expanded in the card; raw is the
               // collapsed disclosure at the BOTTOM.
-              block(op.args || label('step.noArgs', '(no arguments)'), T.text, label('step.facet.args', 'args'), 160),
-              block(op.result || label('step.noOutput', '(no output)'), failed ? T.error : T.text, label('step.facet.result', 'result'), 200),
+              block(op.args || '(no arguments)', T.text, 'args', 160),
+              block(op.result || '(no output)', failed ? T.error : T.text, 'result', 200),
               h('div', { style: { marginTop: 4 } }, rawButton([op.callSeq, op.resultSeq])),
               rawPanel([op.callSeq, op.resultSeq]),
             ),
@@ -1794,10 +1801,10 @@ window.__ModuleLoader__.load({
           h('div', { style: cardBox({ padding: '3px 9px', background: 'transparent', borderStyle: 'dotted' }) },
             h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 } },
               h(RowTag, {
-                text: NOTE_TAG_EN[op.noteKind] ?? 'EVENT',
+                text: noteLabel(op.noteKind)[0],
                 color: notePalette.color,
                 background: notePalette.background,
-                title: label('note.' + (op.noteKind ?? 'note'), NOTE_TAG[op.noteKind] ?? 'events'),
+                title: noteLabel(op.noteKind)[1],
               }),
               h('span', { title: op.text, style: { fontSize: 12, ...mono11, color: tone, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, op.text),
             ),
@@ -1808,7 +1815,7 @@ window.__ModuleLoader__.load({
       const empty = timeline.length === 0;
       return h('div', { style: cardStyle },
         empty
-          ? h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, label('step.empty', 'No content in this step'))
+          ? h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, 'Empty Step')
           : h('div', { style: { position: 'relative', paddingLeft: 14 } },
             h('span', {
               style: { position: 'absolute', left: 4, top: 6, bottom: 6, width: 1, background: 'color-mix(in srgb, ' + T.text + ' 12%, transparent)' },
@@ -1842,7 +1849,7 @@ window.__ModuleLoader__.load({
             ? (results[0].json?.target ?? results[0].json)
             : results.map((result) => result.json?.target ?? result.json);
           const entry = { value, text: stringifyRaw(value) };
-          cacheSet(cache.event, key, entry, CACHE_MAX.event);
+          cache.event.set(key, entry);
           rawInFlight.delete(key);
           return entry;
         })
@@ -1926,17 +1933,90 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function Body({ sessionId, t }) {
-      // F149: keep the hover/selection palette in sync with the live theme. This
-      // runs during render (cheap attribute read) and the observer below forces a
-      // re-render when the user flips light/dark.
-      applyThemePalette();
-      const [, setThemeTick] = useState(0);
+    /**
+     * F158: how much *visible* change is in a payload? The 2 s tick can deliver a
+     * new seq while every number on screen is identical; re-rendering 175 rows and
+     * 700 matrix cells for that is pure waste. Covers the counts, the token totals
+     * and the tail run (the row that grows while a turn is running).
+     */
+    function payloadSignature(p) {
+      if (!p) return '';
+      const total = p.tokens?.total ?? {};
+      const last = p.runs && p.runs.length ? p.runs[p.runs.length - 1] : null;
+      return [
+        p.counts?.runs, p.counts?.steps, p.counts?.events, total.input, total.output,
+        last ? `${last.idx}:${last.token}:${last.time}:${last.stepCount}` : '',
+      ].join('|');
+    }
+
+    /**
+     * F140/F202: the /runs feed — first load, session switch, cache hit, abort, and
+     * the one place a payload is applied.
+     *
+     * The realtime *pacing* stays in Body (it is entangled with scroll position and
+     * following), but it commits through `commit`, so a tick and a first load share
+     * one path: same cache write, same offset, same "did anything visible change?".
+     */
+    function useRuns(sessionId, onFirstPayload) {
+      const [payload, setPayload] = useState(null);
+      const [error, setError] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const seqRef = useRef(null);
+      const appliedSig = useRef('');
+      const firstRef = useRef(onFirstPayload);
+      firstRef.current = onFirstPayload;
+
+      const commit = useCallback((json) => {
+        seqRef.current = json?.meta?.seq ?? null;
+        cache.runs.set(sessionId, json);
+        const sig = payloadSignature(json);
+        if (sig === appliedSig.current) return false; // nothing visible changed
+        appliedSig.current = sig;
+        setPayload(json);
+        return true;
+      }, [sessionId]);
+
+      const reload = useCallback((force) => {
+        if (!sessionId) { setPayload(null); setError(null); setLoading(false); return undefined; }
+        const cached = cache.runs.get(sessionId);
+        if (!force && cached != null) {
+          seqRef.current = cached?.meta?.seq ?? null;
+          appliedSig.current = payloadSignature(cached);
+          setPayload(cached); setError(null); setLoading(false);
+          return undefined;
+        }
+        let cancelled = false;
+        // F138: a pending /runs must not keep a socket (or a 17k-event session's
+        // JSON parse) alive after the user has already switched away.
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        setLoading(true); setError(null);
+        fetchPayload('runs', { sessionId }, controller?.signal).then(({ json }) => {
+          if (cancelled) return;
+          seqRef.current = json?.meta?.seq ?? null;
+          cache.runs.set(sessionId, json);
+          appliedSig.current = payloadSignature(json);
+          setPayload(json); setLoading(false);
+          if (firstRef.current != null) firstRef.current();
+        }).catch((err) => {
+          if (cancelled) return;
+          if (err && err.name === 'AbortError') { setLoading(false); return; }
+          setError(String((err && err.message) || err)); setLoading(false);
+        });
+        return () => { cancelled = true; controller?.abort(); };
+      }, [sessionId]);
+
+      useEffect(() => reload(false), [reload]);
+      return { payload, error, loading, seqRef, commit, reload };
+    }
+
+    function Body({ sessionId }) {
+      // F149/F202: the theme is one attribute on the panel root; flipping it
+      // restyles through CSS instead of rewriting a palette object mid-render.
+      const [dark, setDark] = useState(darkThemeActive);
       useEffect(() => {
         if (typeof document === 'undefined' || typeof MutationObserver !== 'function') return undefined;
-        const observer = new MutationObserver(() => {
-          if (applyThemePalette()) setThemeTick((n) => n + 1);
-        });
+        const sync = () => setDark(darkThemeActive());
+        const observer = new MutationObserver(sync);
         observer.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme', 'style'] });
         observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-ds-theme-source', 'style'] });
         return () => observer.disconnect();
@@ -1956,18 +2036,26 @@ window.__ModuleLoader__.load({
       // the top — "click a cell, the row comes to the top" would be true only for
       // the first rows. One viewport of tail space makes it true for every row.
       const [tailPad, setTailPad] = useState(0);
-      const [payload, setPayload] = useState(null);
-      const [error, setError] = useState(null);
-      const [loading, setLoading] = useState(false);
       const [sort, setSort] = useState(null);
       const [expanded, setExpanded] = useState(() => new Set());
       const [details, setDetails] = useState(() => new Map());
       const [detailLoading, setDetailLoading] = useState(() => new Set());
       const [detailErrors, setDetailErrors] = useState(() => new Map());
+      // F202: the /runs feed owns the payload; a session switch starts clean.
+      const { payload, error, loading, seqRef, commit: commitRunsPayload, reload } = useRuns(sessionId, () => {
+        // F170: first paint lands on the live edge (newest Run at the bottom).
+        followRef.current = true;
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => requestAnimationFrame(() => scrollToLatest(false)));
+        }
+      });
+      useEffect(() => {
+        setDetails(new Map()); setDetailLoading(new Set()); setDetailErrors(new Map());
+      }, [sessionId]);
       // F162: a locate that is waiting for its run detail to arrive, plus the
       // tween handle and the safety timer.
       const pendingLocate = useRef(null);
-      const glideRaf = useRef(null);
+      const glideCancel = useRef(null);
       const glideTimer = useRef(null);
       // F162: runs opened by a matrix click expand without a height animation, so
       // the locate tween never fights it.
@@ -2009,8 +2097,6 @@ window.__ModuleLoader__.load({
           window.clearTimeout(id);
         };
       }, []);
-      // F140 realtime: `seq` is the log offset the current payload was built at.
-      const seqRef = useRef(null);
       const tickBusy = useRef(false);
       const expandedRef = useRef(expanded);
       expandedRef.current = expanded;
@@ -2021,65 +2107,6 @@ window.__ModuleLoader__.load({
       // step key -> counter; bumping it makes an open StepContent refetch.
       const [stepTokens, setStepTokens] = useState(() => ({}));
 
-      const load = useCallback((force) => {
-        if (!sessionId) { setPayload(null); setError(null); setLoading(false); return undefined; }
-        if (!force && cache.runs.has(sessionId)) {
-          const hit = cache.runs.get(sessionId);
-          seqRef.current = hit.payload?.meta?.seq ?? null;
-          setPayload(hit.payload); setError(null); setLoading(false);
-          return undefined;
-        }
-        let cancelled = false;
-        // F138: a pending /runs must not keep a socket (or a 17k-event session's
-        // JSON parse) alive after the user has already switched away.
-        const controller = typeof AbortController === 'function' ? new AbortController() : null;
-        setLoading(true); setError(null);
-        setDetails(new Map()); setDetailLoading(new Set()); setDetailErrors(new Map());
-        fetchPayload('runs', { sessionId }, controller?.signal).then(({ json, bytes, ms }) => {
-          if (cancelled) return;
-          const info = {
-            ms: Math.round(ms * 10) / 10,
-            bytes,
-            serverMs: json?.meta?.serverMs ?? null,
-            parseMs: null,
-            cached: false,
-          };
-          cacheSet(cache.runs, sessionId, { payload: json, info }, CACHE_MAX.runs);
-          seqRef.current = json?.meta?.seq ?? null;
-          appliedSig.current = payloadSig(json);
-          setPayload(json); setLoading(false);
-          // F170: first paint lands on the live edge (newest Run at the bottom).
-          followRef.current = true;
-          if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => requestAnimationFrame(() => scrollToLatest(false)));
-          }
-        }).catch((err) => {
-          if (cancelled) return;
-          if (err && err.name === 'AbortError') { setLoading(false); return; }
-          setError(String((err && err.message) || err)); setLoading(false);
-        });
-        return () => { cancelled = true; controller?.abort(); };
-      }, [sessionId]);
-
-      useEffect(() => load(false), [load]);
-
-      /**
-       * F158: how much "visible change" is in a payload? The 2 s tick can deliver
-       * a new seq while every number on screen is identical; re-rendering 175 rows
-       * and 700 matrix cells for that is pure waste. Signature covers the counts,
-       * the token totals and the tail run (the row that actually grows while a
-       * turn is running).
-       */
-      const payloadSig = (p) => {
-        if (!p) return '';
-        const total = p.tokens?.total ?? {};
-        const last = p.runs && p.runs.length ? p.runs[p.runs.length - 1] : null;
-        return [
-          p.counts?.runs, p.counts?.steps, p.counts?.events, total.input, total.output,
-          last ? `${last.idx}:${last.token}:${last.time}:${last.stepCount}` : '',
-        ].join('|');
-      };
-      const appliedSig = useRef('');
       // Last time the user scrolled the list. A payload that lands mid-scroll is
       // applied after the gesture ends, so the update never steals frames from the
       // scroll itself.
@@ -2108,18 +2135,7 @@ window.__ModuleLoader__.load({
         if (log.length > 80) log.splice(0, log.length - 80);
       };
 
-      const commitRunsPayload = (json) => {
-        seqRef.current = json?.meta?.seq ?? null;
-        cacheSet(cache.runs, sessionId, {
-          payload: json,
-          info: { ms: 0, bytes: 0, serverMs: json?.meta?.serverMs ?? null, cached: true },
-        }, CACHE_MAX.runs);
-        const sig = payloadSig(json);
-        if (sig === appliedSig.current) return false; // nothing visible changed
-        appliedSig.current = sig;
-        setPayload(json);
-        return true;
-      };
+
 
       /**
        * F170: open on the live edge. The panel starts "following" — the newest Run
@@ -2218,11 +2234,8 @@ window.__ModuleLoader__.load({
             // (and does not re-measure) every 2 s while the session is idle.
             return;
           }
-          seqRef.current = json?.meta?.seq ?? null;
-          cacheSet(cache.runs, sessionId, {
-            payload: json,
-            info: { ms: 0, bytes: 0, serverMs: json?.meta?.serverMs ?? null, cached: true },
-          }, CACHE_MAX.runs);
+          // `commit` stores the payload, the offset and the visible-change
+          // signature in one place — a tick and a first load cannot diverge.
           // F158: apply now, or after the user stops scrolling.
           const applyNow = async () => {
             pendingCommit.current = null;
@@ -2239,7 +2252,7 @@ window.__ModuleLoader__.load({
               if (!Number.isInteger(idx)) continue;
               try {
                 const { json: detail } = await fetchPayload('run', { sessionId, idx });
-                cacheSet(cache.run, sessionId + '::' + idx, detail, CACHE_MAX.run);
+                cache.run.set(sessionId + '::' + idx, detail);
                 setDetails((prev) => new Map(prev).set(idx, detail));
               } catch { /* keep the previous detail for this run */ }
             }
@@ -2299,13 +2312,13 @@ window.__ModuleLoader__.load({
         };
       }, [sessionId, tick]);
 
-      // F166: scrub focus + the short detent tween the wheel handler drives.
+      // F166: scrub focus + the eased glide the pointer drives.
       const [focusRun, setFocusRun] = useState(null);
-      const scrubRaf = useRef(null);
+      const scrubCancel = useRef(null);
       const scrubTimer = useRef(null);
-      // F172: where the previous tween was heading. Stepping faster than the tween
+      // F172: where the previous glide was heading. Stepping faster than it
       // finishes used to restart the ease from a mid-flight position, so the list
-      // crawled behind the selection (the wheel "felt broken" on a fast flick).
+      // crawled behind the selection (a fast flick "felt broken").
       const scrubTarget = useRef(null);
       const scrubAt = useRef(0);
       const scrubTo = (idx) => {
@@ -2320,13 +2333,11 @@ window.__ModuleLoader__.load({
         // F179: a fixed FOCUS LINE. The highlighted Run always sits at 34% of the
         // viewport; the rows scroll underneath it, so sweeping the matrix reads as
         // "the list is moving", not "the highlight is jumping between rows".
-        // (F178 tried minimal band scrolling — the highlight then travelled up and
-        // down the viewport, which is the opposite of what a scanner line should do.)
         const anchor = Math.round(viewH * 0.34);
         let target = current + offset - anchor;
         target = Math.max(0, Math.min(maxScroll, Math.round(target)));
         const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        // Compose with the tween in flight: start from its target instead of the
+        // Compose with the glide in flight: start from its target instead of the
         // current (lagging) scrollTop, so consecutive moves read as one motion.
         const pending = (now - scrubAt.current < 260 && scrubTarget.current != null) ? scrubTarget.current : null;
         const from = pending != null ? pending : current;
@@ -2338,27 +2349,17 @@ window.__ModuleLoader__.load({
           return;
         }
         logScroll('scrub', { idx, from: Math.round(from), to: Math.round(target) });
-        // F168: reduced motion turns every tween into an instant move.
-        if (typeof requestAnimationFrame !== 'function' || motionReduced()) { host.scrollTop = target; return; }
-        if (scrubRaf.current != null) cancelAnimationFrame(scrubRaf.current);
         // F174: our own writes must not be read as "the user scrolled".
         markProgrammatic(DESIGN.motion.focus + 160);
         if (Math.abs(from - current) >= 1) host.scrollTop = from; // skip ahead to the composed start
-        // F176: 300ms with an ease-in-out curve — the 120ms cubic-out was over
+        if (scrubCancel.current != null) scrubCancel.current();
+        // F176: 300ms on an ease-in-out curve — the 120ms cubic-out was over
         // before the eye could follow which row the pointer had picked.
-        const duration = DESIGN.motion.focus;
-        const t0 = now;
-        const ease = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
-        const tick = (frameNow) => {
-          const p = Math.min(1, (frameNow - t0) / duration);
-          host.scrollTop = from + delta * ease(p);
-          scrubRaf.current = p < 1 ? requestAnimationFrame(tick) : null;
-        };
-        scrubRaf.current = requestAnimationFrame(tick);
+        scrubCancel.current = glideScroll(host, from, target, DESIGN.motion.focus);
       };
-      // F170: any explicit navigation (wheel scrub, row click, matrix click) hands
-      // the scroll position back to the user — following stops until they return
-      // to the live edge (or press the pill).
+      // F170: any explicit navigation (pointer scrub, row click, matrix click)
+      // hands the scroll position back to the user — following stops until they
+      // return to the live edge (or press the pill).
       if (typeof window !== 'undefined') {
         window.__hadesScrollLog = () => scrollLogRef.current.slice();
       }
@@ -2370,9 +2371,8 @@ window.__ModuleLoader__.load({
 
       /**
        * F172: which Run is the user "at" right now? The topmost row visible in the
-       * list. Stepping must start here — starting from the (possibly far away)
-       * selection made one wheel notch teleport the list to a completely different
-       * region, which read as "the wheel is broken".
+       * list. Stepping must start here — starting from a far-away selection made one
+       * keypress teleport the list to a completely different region.
        */
       const topVisibleRunIdx = () => {
         const host = scrollRef.current;
@@ -2386,7 +2386,7 @@ window.__ModuleLoader__.load({
         return Number(rows[rows.length - 1].getAttribute('data-run'));
       };
 
-      // F175: one focus path for the pointer, the wheel and the arrow keys.
+      // F175: one focus path for the pointer and the arrow keys.
       // `null` means "the pointer left the matrix" → un-dim.
       // F180/F202: the row is NOT rebuilt on focus (that re-ran the expanded
       // Collapse and shifted the list). The class itself is re-asserted by
@@ -2458,7 +2458,7 @@ window.__ModuleLoader__.load({
         // the "expands, then expands again" stutter.
         setDetailLoading((prev) => new Set(prev).add(idx));
         fetchPayload('run', { sessionId, idx }).then(({ json }) => {
-          cacheSet(cache.run, key, json, CACHE_MAX.run);
+          cache.run.set(key, json);
           setDetails((prev) => new Map(prev).set(idx, json));
           setExpanded((prev) => { const n = new Set(prev); n.add(runKey); return n; });
         }).catch((err) => {
@@ -2489,40 +2489,27 @@ window.__ModuleLoader__.load({
         if (!wasOpen) { instantOpen.current.add(idx); openRun(idx); }
         const host = scrollRef.current;
         if (!host) return;
-        const reduce = typeof window !== 'undefined' && window.matchMedia
-          && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         const glide = () => {
           const el = host.querySelector('[data-run="' + idx + '"]');
           if (!el) return;
-          // F155: the list box is the only scroller now (the header block is a
-          // flex sibling above it), so this is plain scrollTop arithmetic.
+          // F155/F161: the list box is the only scroller (the header is a flex
+          // sibling above it), so this is plain scrollTop arithmetic, and the Run
+          // lands at the TOP — the whole expanded detail then sits below it.
           const current = host.scrollTop;
           const maxScroll = Math.max(0, host.scrollHeight - host.clientHeight);
-          // F161: land the selected Run at the TOP of the list, not somewhere in
-          // the middle — the header is outside the scroller, so nothing can cover
-          // the row any more, and putting it at the top leaves the whole expanded
-          // detail below it (the reason the old 32–60% anchor existed is gone).
           const offset = el.getBoundingClientRect().top - host.getBoundingClientRect().top;
           const target = Math.max(0, Math.min(maxScroll, current + offset - 2));
           const delta = target - current;
           if (Math.abs(delta) < 2) return;
           logScroll('glide', { idx, from: Math.round(current), to: Math.round(target) });
-          if (reduce || typeof requestAnimationFrame !== 'function') { host.scrollTop = target; return; }
           // F174: same guard as scrubTo — a locate glide must not look like a user
           // scroll, or following flips back on and the cursor gets yanked.
           markProgrammatic(DESIGN.motion.glide + 200);
           // F168: one duration for every distance — the curve does the work, so a
           // long jump lands as crisply as a short one.
           const duration = Math.min(DESIGN.motion.glide, Math.max(DESIGN.motion.base, Math.abs(delta) * 0.35));
-          const t0 = performance.now();
-          const ease = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
-          if (glideRaf.current != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(glideRaf.current);
-          const step = (now) => {
-            const p = Math.min(1, (now - t0) / duration);
-            host.scrollTop = current + delta * ease(p);
-            glideRaf.current = p < 1 ? requestAnimationFrame(step) : null;
-          };
-          glideRaf.current = requestAnimationFrame(step);
+          if (glideCancel.current != null) glideCancel.current();
+          glideCancel.current = glideScroll(host, current, target, duration);
         };
         // F162: start moving as early as the layout allows, instead of sitting on
         // a fixed 200 ms timer — that timer was the "click feels laggy" part.
@@ -2568,8 +2555,6 @@ window.__ModuleLoader__.load({
         });
       };
 
-      const label = (k, fb) => (t ? t(k) : fb);
-
       // F162: identity token for everything an OPEN row's content depends on
       // (its detail payload, which Steps are open, live step refreshes). Closed
       // rows ignore it, so a click no longer rebuilds the whole list.
@@ -2580,7 +2565,7 @@ window.__ModuleLoader__.load({
         const detail = details.get(run.idx);
         if (!detail) {
           if (detailErrors.has(run.idx)) return h('div', { style: { padding: '4px 0 6px 74px', fontSize: 12, color: T.error } }, detailErrors.get(run.idx));
-          return h('div', { style: { padding: '4px 0 6px 74px', fontSize: 12, color: T.muted } }, detailLoading.has(run.idx) ? label('loadingDetail', 'Loading steps…') : '');
+          return h('div', { style: { padding: '4px 0 6px 74px', fontSize: 12, color: T.muted } }, detailLoading.has(run.idx) ? 'loading Steps…' : '');
         }
         const min = detail.startTime ?? run.startTime ?? 0;
         const max = detail.endTime ?? run.endTime ?? 0;
@@ -2681,7 +2666,6 @@ window.__ModuleLoader__.load({
                   stepIdx,
                   runPrompt: run.prompt,
                   runActor: run.actor,
-                  t,
                   refreshToken: stepTokens[skey] ?? 0,
                 })
                 : null,
@@ -2711,7 +2695,6 @@ window.__ModuleLoader__.load({
         if ((payload.counts?.events ?? 0) === 0) return null;
         return h(OverviewBoard, {
           rows: payload.runs ?? [],
-          label,
           onLocate: locateRun,
           onScrub: beginScrub,
           onFocusOnly: focusRunOnly,
@@ -2761,27 +2744,26 @@ window.__ModuleLoader__.load({
         if (error != null) {
           return stateCard('err', T.error, String(error), h('button', {
             type: 'button',
-            onClick: () => load(true),
+            onClick: () => reload(true),
             style: {
               marginTop: DESIGN.space.xs, font: `11px/1 ${T.mono}`, color: T.text,
               background: T.surface, border: '1px solid ' + T.border, borderRadius: 999, padding: '3px 10px', cursor: 'pointer',
             },
-          }, label('step.retry', 'Retry')));
+          }, 'Retry'));
         }
         if (loading && !payload) return skeleton();
         if (!payload) return null;
-        if ((payload.counts?.events ?? 0) === 0) return stateCard('empty', T.muted, label('empty', 'No events in this session'));
+        if ((payload.counts?.events ?? 0) === 0) return stateCard('empty', T.muted, 'No events in this session');
         return h('div', null,
           h(DualBarChart, {
             rows: payload.runs ?? [],
             sort,
             onSort: setSort,
-            sysLabel: label('system', 'system prompt'),
+            sysLabel: 'System prompt',
             expanded,
             onToggleRun: openRun,
             renderDetail,
             hasDetail: (idx) => details.has(idx),
-            label,
             detailEpoch,
             instantRef: instantOpen,
             focusRun,
@@ -2794,27 +2776,19 @@ window.__ModuleLoader__.load({
       return h('div', {
         ref: rootRef,
         // F166: while scrubbing the list fades (see ROW_ANIM_CSS).
-        className: focusRun != null ? 'hades-scrubbing' : undefined,
+        // F202: `hades-panel` + `data-hades-theme` are the only theme inputs —
+        // THEME_CSS turns them into the light/dark tint variables.
+        className: 'hades-panel' + (focusRun != null ? ' hades-scrubbing' : ''),
+        'data-hades-theme': dark ? 'dark' : 'light',
         style: {
           height: shellH ? shellH + 'px' : '100%', minHeight: 0, display: 'flex', flexDirection: 'column',
           boxSizing: 'border-box', fontSize: 13, lineHeight: 1.6, color: T.text, fontFamily: T.font,
           position: 'relative',
-          // F158: consumed by the injected hover rules (see ROW_ANIM_CSS).
-          '--hades-hover-row': T.runHoverBg,
-          '--hades-sel-row': T.runSelBg,
-          '--hades-muted': T.muted,
-          '--hades-text': T.text,
-          '--hades-brand': T.brand,
-          // F165: matrix slider/surface tokens.
-          '--hades-track': `color-mix(in srgb, ${T.text} 12%, transparent)`,
-          '--hades-focus-row': T.focusRow,
-          '--hades-surface': T.surface,
-          '--hades-border': T.border,
-          // F168: design tokens consumed by the injected stylesheets.
+          // F168: motion tokens consumed by the injected stylesheet.
           ...CSS_VARS,
         },
       },
-        h('style', { key: 'hades-row-anim' }, ROW_ANIM_CSS),
+        h('style', { key: 'hades-row-anim' }, ROW_ANIM_CSS + THEME_CSS),
         // F151: no header bar — the "cache hit / server ms / live badge / refresh
         // button" chrome was developer telemetry sitting on top of the product,
         // and the 2 s realtime tick makes a manual refresh unnecessary.
@@ -2853,7 +2827,7 @@ window.__ModuleLoader__.load({
           key: 'latest',
           type: 'button',
           'data-hades-latest': '1',
-          title: label('mx.jumpLatest', 'Jump to the latest Run'),
+          title: 'Jump to the latest Run',
           onClick: () => {
             followRef.current = true;
             setFollow(true);
@@ -2869,7 +2843,7 @@ window.__ModuleLoader__.load({
           },
         },
           h('span', { style: { color: T.brand } }, '↓'),
-          label('mx.latest', 'Latest'),
+          'Latest',
         ) : null,
       );
     }
@@ -2877,38 +2851,11 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'locale'],
       apply(ctx) {
-        // F165: the product ships English-only. Both locale slots carry the same
-        // table so a Chinese UI language cannot produce half-English labels.
-        const EN = {
-          'view.title': 'Trace Lab',
-          'loading': 'Loading…', 'empty': 'No events in this session',
-          'run': 'Run ', 'step': 'Step ', 'followup': 'follow-up', 'system': 'System prompt',
-          'mx.steps': 'Steps', 'mx.flags': 'Flags', 'mx.hint': 'hover a run · click to locate', 'mx.clearSel': 'Clear selection',
-          'mx.showAll': 'all', 'mx.showRecent': 'latest', 'mx.runsUnit': 'runs',
-          'mx.latest': 'Latest', 'mx.jumpLatest': 'Jump to the latest Run',
-          'mx.windowHint': 'Drag to choose how many of the latest runs the matrix shows',
-          'mx.rampTime': 'darker = slower relative to the session',
-          'mx.rampToken': 'darker = more tokens in the session',
-          'mx.rampSteps': 'darker = more steps in the session',
-          'mx.error': 'Error', 'mx.slow': 'Slow',
-          'loadingDetail': 'loading Steps…',
-          'step.model': 'model', 'step.timing': 'elapsed', 'step.tokens': 'tokens', 'step.summary': 'summary',
-          'step.args': 'args', 'step.result': 'result', 'step.original': 'RAW', 'step.loading': 'loading Step…',
-          'step.facet.args': 'args', 'step.facet.result': 'result',
-          'step.noArgs': '(no arguments)', 'step.noOutput': '(no output)',
-          'step.retry': 'Retry', 'step.empty': 'Empty Step', 'step.instruction': 'instruction',
-          'step.countModels': 'model calls', 'step.countTools': 'tool calls', 'step.countContexts': 'context',
-          'step.modelCall': 'model call', 'step.injected': 'injected', 'step.systemPrompt': 'system prompt', 'step.slow': 'slow',
-          'role.user': 'USER', 'role.assistant': 'ASSISTANT', 'role.context': 'CONTEXT',
-          'role.tool': 'TOOL', 'role.system': 'SYSTEM',
-          'steps': ' steps',
-          'col.time': 'Time', 'col.token': 'Token',
-          'sort.by': 'sorted by', 'sort.on': '', 'sort.clear': 'clear sort',
-          'note.compact': 'compact', 'note.retry': 'retry', 'note.fail': 'fail', 'note.workspace': 'files',
-          'note.command': 'cmd', 'note.plan': 'plan', 'note.todo': 'todo', 'note.deliver': 'deliver',
-          'note.approval': 'approval', 'note.note': 'event',
-        };
-        ctx.effect(() => ctx.locale.register(NS, { zh: EN, en: EN }), 'trace-analyzer: locale');
+        // F165/F202: the panel UI is English-only, so its strings are literals in
+        // the components. The locale service still carries the one string the
+        // platform itself renders — the view-ring tab label.
+        const TITLE = { 'view.title': 'Trace Lab' };
+        ctx.effect(() => ctx.locale.register(NS, { zh: TITLE, en: TITLE }), 'trace-analyzer: locale');
 
         const t = ctx.locale.bind(NS);
 

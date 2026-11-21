@@ -14,7 +14,22 @@ npm-debug.log*
 *.tmp
 .playwright/
 
-# 设计稿 / 截图 / 会话数据 / 校验脚本：全部只留本地，不入库
-# （仓库只保留 agent.md、docs/、dsh-trace-analyzer/ 三块）
-mockup/
+# Design scratch / screenshots / session data: local only.
+# The regression SUITE is versioned (see the negations below) — a fresh clone must
+# be able to run `node mockup/regress.mjs <gui>` and get the same verdicts.
+mockup/*
+!mockup/regress.mjs
+!mockup/cdp-lib.mjs
+!mockup/check-served.mjs
+!mockup/check-docs.mjs
+!mockup/check-collapse.mjs
+!mockup/smoke-load.mjs
+!mockup/smoke-render.mjs
+!mockup/build-integration-harness.mjs
+!mockup/build-hover-harness.mjs
+!mockup/build-follow-harness.mjs
+!mockup/cdp-integration-check.mjs
+!mockup/cdp-hover-check.mjs
+!mockup/cdp-follow-check.mjs
+!mockup/control-hover.mjs
 docs/design-mockup.html
