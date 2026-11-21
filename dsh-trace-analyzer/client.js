@@ -1609,7 +1609,7 @@ window.__ModuleLoader__.load({
         const open = rawOpen.has(rawKey);
         return h('button', {
           type: 'button',
-          onClick: () => toggleRaw(rawKey),
+          onClick: (event) => { event.stopPropagation(); toggleRaw(rawKey); },
           // F194: every label in the card is uppercase (ARGS / RESULT / USER …);
           // the raw disclosure follows the same rule.
           style: {
@@ -1647,19 +1647,17 @@ window.__ModuleLoader__.load({
               onClick: () => setCtxOpen((value) => !value),
               title: open ? 'collapse injections' : 'expand injections',
             },
-              capRow(
-                h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
-                  chipOf('CTX', 'context'),
-                  h('span', { style: { fontSize: 12, ...mono11 } }, `injected ×${n}`),
-                  h('span', { style: { ...mono11, color: T.muted } }, open ? '▾' : '▸'),
-                ),
-                rawButton(item.seqs),
+              h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
+                chipOf('CTX', 'context'),
+                h('span', { style: { fontSize: 12, ...mono11 } }, `injected ×${n}`),
+                h('span', { style: { ...mono11, color: T.muted } }, open ? '▾' : '▸'),
               ),
               open ? item.list.map((op, k) => h('div', {
                 key: 'ctx-' + (op.seq ?? k),
                 style: { marginTop: 4, fontSize: 12, lineHeight: 1.5, color: T.muted, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 96, overflow: 'auto' },
                 title: op.text,
               }, op.text)) : null,
+              h('div', { style: { marginTop: 4 } }, rawButton(item.seqs)),
               rawPanel(item.seqs),
             ),
           ));
@@ -1675,11 +1673,11 @@ window.__ModuleLoader__.load({
               h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flexWrap: 'wrap' } },
                 chipOf('REPLY', 'assistant', label('step.modelCall', 'model call')),
                 h('span', { style: { ...mono11, color: T.muted } }, `in ${fmtK(value.input)} · out ${fmtK(value.output)}`)),
-              h('div', { style: { marginTop: 2 } }, rawButton([op.seq])),
               op.text ? h('div', {
                 title: op.text,
                 style: { marginTop: 4, fontSize: 12, lineHeight: 1.55, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflow: 'auto' },
               }, op.text) : null,
+              h('div', { style: { marginTop: 4 } }, rawButton([op.seq])),
               rawPanel([op.seq]),
             ),
           ));
@@ -1703,11 +1701,11 @@ window.__ModuleLoader__.load({
                 chipOf(String(op.name ?? 'tool'), 'tool'),
                 h('span', { style: { ...mono11, color: T.muted } }, op.durationMs != null ? fmtMs(op.durationMs) : '—'),
                 errorText != null ? h('span', { style: { fontSize: 11, color: failed ? T.error : T.warn } }, errorText) : null),
-              h('div', { style: { marginTop: 2 } }, rawButton([op.callSeq, op.resultSeq])),
-              // F192: both facets are expanded in the card; raw is a collapsed
-              // disclosure at the bottom, closed by default.
+              // F192/F197: both facets are expanded in the card; raw is the
+              // collapsed disclosure at the BOTTOM.
               block(op.args || label('step.noArgs', '(no arguments)'), T.text, label('step.facet.args', 'args'), 160),
               block(op.result || label('step.noOutput', '(no output)'), failed ? T.error : T.text, label('step.facet.result', 'result'), 200),
+              h('div', { style: { marginTop: 4 } }, rawButton([op.callSeq, op.resultSeq])),
               rawPanel([op.callSeq, op.resultSeq]),
             ),
           ));

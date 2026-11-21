@@ -775,7 +775,17 @@
   - RAW 保持在 `rawButton` / `rawPanel` 上（默认收起，展开后就地渲染 JSON）。
 - **回归**：`smoke:render` 新增**顺序断言** —— `in/out` 数值必须先于 `RAW`、`RAW` 先于 `ARGS`、`ARGS` 先于 `RESULT`（实测偏移 `tokens 42 · raw 62 · args 221 · result 243`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 - **AC**：卡片从上到下依次是 头部（标签+数值）→ RAW → 正文；RAW 在左侧且默认收起。
-## 71. 范围外（v1 不做）
+## 71. RAW 统一放到卡片底部（F197）
+
+- **F197 两条要求**：① `RAW` 放到卡片**最下面**；② **CTX 卡的 raw 独自挂在右边**，与其它卡片不一致，要统一。
+- **改法**：三类卡片统一成"**头部 → 正文 → 底部 RAW**"：
+  - **REPLY 卡**：`[REPLY] in/out` → 回复正文 → 底部 `▸ RAW`；
+  - **TOOL 卡**：`[工具名] 耗时 [错误/慢]` → `ARGS` → `RESULT` → 底部 `▸ RAW`；
+  - **CTX 卡**：`[CTX] injected ×N ▸`（整行可点开合）→ 注入内容 → 底部 `▸ RAW`；raw 从头部右侧移除。
+  - `rawButton` 的点击加 `stopPropagation()` —— CTX 整卡可点，点 RAW 不能顺带折叠整组。
+- **回归**：`smoke:render` 增加断言 —— 工具卡 RAW 在 `RESULT` 之后、CTX 卡 RAW 在 `injected` 之后、**三张卡各一个 RAW**（`step raw toggles: 3`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
+- **AC**：三种卡片从上到下都是 头部 → 正文 → RAW，且 RAW 都在左侧底部、默认收起。
+## 72. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

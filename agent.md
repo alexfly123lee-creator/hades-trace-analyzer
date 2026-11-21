@@ -411,6 +411,7 @@ dsh-trace-analyzer/
 65. **M65 卡片标签统一大写（F194）** ✅：Step 卡片标签混用大小写（ARGS/RESULT 大写、raw 下拉小写），统一为 **RAW**：raw 下拉样式加 textTransform: uppercase（等宽 11px、字距 .03em，与其他标签同一套），locale 值同步改为 RAW。回归：smoke:render 断言 raw 下拉文案必须等于其大写形式（当前 ▸ RAW | ▸ RAW）。本轮 node mockup/regress.mjs：**ALL GREEN (9 checks)**。见 TEST V105、SPEC 68。
 66. **M66 去掉 Step 摘要条（F195）** ✅：Step 卡片顶部的 `模型 id · tools N · time · tokens` 摘要没有价值（模型与计数在卡片内、Run 步骤行里都有）→ 整条 `strip` 删除，卡片直接从操作时间线开始；连带删掉只服务它的 `sumChip` / `tokenText` / `usage` / `counts` 与 `time · tokens` 汇总（净减约 1.8 KB）。保留每卡的 `in/out` token、耗时、错误标记、ARGS/RESULT、RAW 下拉。回归：`smoke:render` 断言无 `key: strip` 节点、无 `tools N` 文案。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V106、SPEC 69。
 67. **M67 卡片排版：RAW 靠左在上、数值跟标签同行（F196）** ✅：两张操作卡片统一成"头部一行 + RAW 一行 + 正文"的纵向顺序 —— REPLY 卡头部 `[REPLY] in X · out Y`、TOOL 卡头部 `[工具名] 耗时 [错误/慢]`，下一行左侧 `▸ RAW`（默认收起），再往下是正文（回复 / `ARGS` → `RESULT`）。回归：`smoke:render` 新增顺序断言 `tokens < RAW < ARGS < RESULT`（实测 42 / 62 / 221 / 243）。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V107、SPEC 70。
+68. **M68 RAW 统一放到卡片底部（F197）** ✅：三类卡片统一为"头部 → 正文 → 底部 RAW"：REPLY（正文后）、TOOL（`RESULT` 之后）、CTX（注入内容之后，原来它独自挂在头部右边）。`rawButton` 点击加 `stopPropagation()`，避免点 RAW 顺带折叠可点击的 CTX 整卡。回归：`smoke:render` 断言工具 RAW 在 RESULT 之后、CTX RAW 在 injected 之后、三张卡各一个 RAW（`step raw toggles: 3`）。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V108、SPEC 71。
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
