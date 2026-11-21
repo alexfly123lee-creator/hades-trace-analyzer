@@ -719,19 +719,7 @@
 - **回归（新增 `collapse` 检查）**：`mockup/check-collapse.mjs` **直接抽取 client.js 里两个 `useLayoutEffect` 的函数体**，在 Node 里用假元素跑 4 个场景：①子树有 height 动画在跑时外层**不得**再动画；②没有内部动画时异步增高仍要动画（200→400）；③已打开面板重跑时必须**从当前高度**起算；④首次打开仍从 0 起算。**对照实验**（`mockup/control-f188.mjs` 把两处修复回退）会立刻变红：`outer panel animated while a descendant height animation was running` / `re-open must start at the current height`。
 - **AC**：任意顺序打开/关闭 Step（含已有一个展开时打开另一个）**不再出现先塌后胀**；`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 
-## 66. Step 卡片：按操作切面的视图 Tab（F190）
-
-- **F190 需求（用户确认）**：视图放在 **Step 卡片内部**，切的是**操作的切面** —— **Prompt / Args / Result / Raw**；默认保留原来的混合时间线（用户认可"结构大体是对的"）。
-- **实现**：卡片顶部（摘要条之下）加一条分段 Tab：**All / Prompt / Args / Result / Raw**（role=tablist + aria-selected，激活态品牌色 2px 底线，11px 等宽大写）：
-  - **All**（默认）：原样的混合时间线 —— 用户指令、REPLY、TOOL、CTX、注释，一张卡都少；
-  - **Prompt**：这一步"给模型/来自模型"的内容 —— 用户指令卡、REPLY 文本、CTX 注入（notes 不混进来）；
-  - **Args**：每个工具调用的**入参**独立成卡（等宽、可换行、180px 内滚动、显示耗时）；
-  - **Result**：每个工具调用的**结果**（错误红框 + 错误文案，空结果标 (no output)）；
-  - **Raw**：每个操作一行 SEQ call+result，点开就地渲染完整 JSON（复用 EventDetail，带 Copy，按需加载）。
-- **状态**：facet 存在 StepContent 内部（每个 Step 独立记忆）；切 Tab 不重新请求数据；摘要条在所有 Tab 上共用。
-- **回归**：smoke:render 展开函数组件后断言 Step 卡片渲染 **1 个 tab 条 + 5 个 tab（all/prompt/args/result/raw）**，且默认 All 视图含操作卡片；check-served 增加 function ViewTabs / data-hades-tabs / step.facet.args / step.facet.result。node mockup/regress.mjs **ALL GREEN (9 checks)**。
-- **AC**：Step 卡片顶部五个切面可切换；Args/Result 只看工具入参与结果；Raw 是独立视图且按需展开；默认 All 与旧版完全一致。
-## 67. 范围外（v1 不做）
+## 65. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
