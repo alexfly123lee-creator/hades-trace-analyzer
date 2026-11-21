@@ -963,7 +963,9 @@ window.__ModuleLoader__.load({
     // a narrower Token column made the pair read as a primary metric plus an
     // appendix, and a 112px track squeezed the cumulative slices of F142.
     // Both columns: 150 track + 6 gap + 70 number = 226px.
-    const METRIC_W = 150;
+    // F199: the tracks were long enough to dominate the row; a third shorter
+    // (100 px) still fits the widest value at the mono 11 px size.
+    const METRIC_W = 100;
     const METRIC_NUM_W = 70;
     // Kept as named aliases so call sites stay readable (and a future split
     // stays a one-line change).
@@ -1338,7 +1340,7 @@ window.__ModuleLoader__.load({
     /**
      * One Step row under an expanded Run.
      *
-     * Columns match the Run row exactly: index, a 150px time track, a 110px token
+     * Columns match the Run row exactly: index, a 100px time track, a 100px token
      * track, then the step caption and the error dot. The index cell is narrowed
      * by the bracket indent so both bar columns align with the Run row above.
      */

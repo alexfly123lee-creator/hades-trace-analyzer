@@ -791,7 +791,13 @@
 - **改法**：把大写规则下沉到**组件层**，而不是逐处标注：`RowTag`（所有角色/标签胶囊的公共组件）加 `textTransform: uppercase`；CTX 的注入计数同样加 `textTransform: uppercase` + 字距 `.03em`。这样以后新增任何标签都自动大写。
 - **回归**：`smoke:render` 新增断言 —— 工具徽标节点的 `style.textTransform` 必须是 `uppercase`，且只出现一次。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 - **AC**：面板内所有标签（含工具名与 injected 计数）显示为大写。
-## 73. 范围外（v1 不做）
+## 73. Time / Token 条缩短三分之一（F199）
+
+- **F199**：Run 列表里 Time 与 Token 两条 track 太长、占了行宽，缩短 **1/3**：`METRIC_W` 150 → **100px**。
+- **实现**：所有宽度都从同一个常量派生（`MetricBar` 的 track、表头槽 `METRIC_W + 6 + METRIC_NUM_W`、Run 行与 Step 行），所以改一处即对齐；数值列 `METRIC_NUM_W` 保持 70px（最宽的 `120.0s` 仍放得下）。
+- **回归**：`check-served` 标记 `const METRIC_W = 150` 改为 `= 100`；`smoke:render` 新增断言 —— 渲染出的 track 里**不得再有 150px**、必须出现 ≥2 个 100px track、表头槽变为 176px（实测 `tracks 100px: 26 · 150px: 0 · header cols 176px: 26`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
+- **AC**：Time / Token 条比原来短 1/3，表头与行仍严格对齐。
+## 74. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
