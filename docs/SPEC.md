@@ -797,7 +797,13 @@
 - **实现**：所有宽度都从同一个常量派生（`MetricBar` 的 track、表头槽 `METRIC_W + 6 + METRIC_NUM_W`、Run 行与 Step 行），所以改一处即对齐；数值列 `METRIC_NUM_W` 保持 70px（最宽的 `120.0s` 仍放得下）。
 - **回归**：`check-served` 标记 `const METRIC_W = 150` 改为 `= 100`；`smoke:render` 新增断言 —— 渲染出的 track 里**不得再有 150px**、必须出现 ≥2 个 100px track、表头槽变为 176px（实测 `tracks 100px: 26 · 150px: 0 · header cols 176px: 26`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 - **AC**：Time / Token 条比原来短 1/3，表头与行仍严格对齐。
-## 74. 范围外（v1 不做）
+## 74. Run 序号不再着状态色（F200）
+
+- **F200**：Run 行的 `Run N` 之前会因异常变红（`color: abnormal ? T.error`），标题被染色干扰阅读。
+- **改法**：序号固定用文本色，**状态只由行尾的 8px 圆点**表示（该圆点保留）。
+- **回归**：`smoke:render` 新增断言 —— 12 个 `hades-idx` 序号单元中**没有**一个带 `style.color`（实测 `run ordinal cells: 12 · tinted: 0`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
+- **AC**：任何 Run（含异常 Run）的序号颜色一致；异常仍可通过行尾圆点识别。
+## 75. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

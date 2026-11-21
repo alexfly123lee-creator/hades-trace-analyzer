@@ -414,6 +414,7 @@ dsh-trace-analyzer/
 68. **M68 RAW 统一放到卡片底部（F197）** ✅：三类卡片统一为"头部 → 正文 → 底部 RAW"：REPLY（正文后）、TOOL（`RESULT` 之后）、CTX（注入内容之后，原来它独自挂在头部右边）。`rawButton` 点击加 `stopPropagation()`，避免点 RAW 顺带折叠可点击的 CTX 整卡。回归：`smoke:render` 断言工具 RAW 在 RESULT 之后、CTX RAW 在 injected 之后、三张卡各一个 RAW（`step raw toggles: 3`）。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V108、SPEC 71。
 69. **M69 所有标签字母大写（F198）** ✅：大写规则下沉到组件层 —— `RowTag`（所有角色/标签胶囊的公共组件）加 `textTransform: uppercase`，CTX 的 `injected ×N` 计数同步加 `textTransform` + 字距 `.03em`；工具名徽标因此也变成 `PWSH` 这样的大写，以后新增标签自动生效。回归：`smoke:render` 断言工具徽标节点 `style.textTransform === uppercase` 且只出现一次。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V109、SPEC 72。
 70. **M70 Time / Token 条缩短 1/3（F199）** ✅：`METRIC_W` 150 → **100px**（缩短三分之一）。所有宽度都从这一个常量派生（MetricBar track、表头槽 `METRIC_W+6+METRIC_NUM_W`、Run 行与 Step 行），改一处即全局对齐；数值列保持 70px。回归：`check-served` 标记同步改为 `= 100`；`smoke:render` 断言渲染结果里 0 个 150px track、26 个 100px track、表头槽 176px。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V110、SPEC 73。
+71. **M71 Run 序号不再着状态色（F200）** ✅：Run 行的 `Run N` 之前因异常变红，标题被染色 → 序号固定文本色，**状态只由行尾 8px 圆点**表示（圆点保留）。回归：`smoke:render` 断言 12 个 `hades-idx` 单元里没有带 `style.color` 的（`run ordinal cells: 12 · tinted: 0`）。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V111、SPEC 74。
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

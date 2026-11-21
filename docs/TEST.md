@@ -149,6 +149,7 @@ buildRunDetail(events, idx, opts) -> { payload:{idx,prompt,isSystemPrompt,steps[
 | V108 | RAW 统一在卡片底部（F197） | 展开 Step，看 REPLY / TOOL / CTX 三种卡片的 RAW 位置 | 三张卡都是"头部 → 正文 → 底部左侧 `▸ RAW`"，CTX 的 RAW **不再挂在头部右边**；点 CTX 的 RAW 只展开 JSON，**不会**顺带折叠整组；node mockup/regress.mjs **ALL GREEN (9 checks)**（`smoke:render` 断言工具 RAW 在 RESULT 之后、CTX RAW 在 injected 之后、共 3 个 RAW） |
 | V109 | 所有标签字母大写（F198） | 看 Step 面板与 Run 列表里的徽标：工具名、CTX/INJECTED、ARGS/RESULT/RAW、USER/REPLY | 全部显示为**大写**（工具名同样大写，如 `PWSH`）；新增标签也自动大写（规则在 `RowTag` 组件上）；node mockup/regress.mjs **ALL GREEN (9 checks)** |
 | V110 | Time / Token 条缩短 1/3（F199） | 看 Run 列表的时间条与 Token 条 | 两条 track 明显变短（150 → 100px），表头 Time/Token 与行内条形仍然对齐，数值列不变；node mockup/regress.mjs **ALL GREEN (9 checks)**（`smoke:render` 断言 0 个 150px track、≥2 个 100px track、表头槽 176px） |
+| V111 | Run 序号不染色（F200） | 看含异常 Run 的列表（行尾有红点的那几条） | `Run N` 颜色与普通行一致，**不再整段变红**；异常仍由行尾红点表示；node mockup/regress.mjs **ALL GREEN (9 checks)**（`smoke:render` 断言 ordinal 无 `style.color`） |
 | V48 | step 耗时含工具、不含等人 | 找一个跑了几分钟工具的 step；再找一个等你回答/审批的 step | 前者行上显示 模型+工具 的合计（工具时间算进去）；后者行上只显示模型的几十秒，旁边有 `⏸ 13.1min` 等待标记；`run.time = Σ 各步`；`mockup/verify-traj-align.mjs` 校验模型段 0 差异、工具段差额 = waitMs（F133） |
 | V47 | 标题可回原文 | hover 任一 step 标题 | tooltip 显示原始长摘要（正文全段 / `tool · 名字 · 参数`），压缩不丢信息；展开后详情面板按事件顺序出现说明行 `[压缩]`/`[命令]`/`[审批]`（F23.2） |
 | V24 | Run/Step 共同选中 | 点一个 step，再点另一 run 的 step；再点同一 step；折叠该 run | 选中 step 与其 run 分组出现同色轨道/加深底色；选中转移且旧选中消失；再次点击取消并收起；折叠 run 后选中清除（F128） |

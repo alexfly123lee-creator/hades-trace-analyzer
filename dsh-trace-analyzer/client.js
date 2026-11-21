@@ -1182,7 +1182,9 @@ window.__ModuleLoader__.load({
           },
             h('span', {
               className: 'hades-idx',
-              style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, color: abnormal ? T.error : undefined, fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 },
+              // F200: the title colour is neutral — status is carried by the dot
+              // at the end of the row, not by tinting the ordinal.
+              style: { flex: `0 0 ${RUN_IDX_W}px`, minWidth: 0, fontVariantNumeric: 'tabular-nums', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 2 },
             },
               r.stepCount ? h(Caret, { key: 'caret', open }) : null,
               `Run ${r.idx}`),
