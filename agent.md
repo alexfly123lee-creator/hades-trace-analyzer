@@ -22,7 +22,7 @@ Host (index.js)           路由表 + 快照/原文 LRU + 只读 JSON
 Client (client.js)        conversation.view：主题变量 + 数据 hook + 组件
   useRuns                 /runs 首屏、会话切换、缓存、可见变化签名
   Body                    app shell、实时节拍、跟随/聚焦/定位、渲染
-  OverviewBoard           热力矩阵（读数、窗口、命中解析）
+  OverviewBoard           热力矩阵（读数、命中解析）
   DualBarChart            run 表（排序、FLIP、行缓存、焦点重放）
   StepRow / StepContent   step 行与内容卡片（REPLY / 工具 / CTX / RAW）
   EventDetail             原文 JSON（loader 去重 + 预览上限）

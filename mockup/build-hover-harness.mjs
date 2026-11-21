@@ -1,6 +1,6 @@
 // F202 hover harness: REAL card geometry (legend · marker lane · three metric
-// rows with 1px column gaps and 4px row gaps · 46px label gutter · window
-// slider) driven by the SHIPPED `columnFromPoint` / `syncFocusRow`, extracted
+// rows with 1px column gaps and 4px row gaps · 46px label gutter · footer line
+// below) driven by the SHIPPED `columnFromPoint` / `syncFocusRow`, extracted
 // verbatim from client.js. The legacy wiring (plot-level mouseleave + closest()
 // on the cell) sits next to it as a control, so a check can prove the defect is
 // still reproducible when the fix is reverted.
@@ -51,8 +51,7 @@ const CSS = [
   '.mrow .lbl{flex:0 0 46px;text-align:right;font:11px/1 Consolas,monospace;color:#61666b}',
   '.mrow .grid{flex:1 1 auto;min-width:0;display:grid;gap:1px;cursor:pointer}',
   '.mrow i{display:block;height:11px;border-radius:1px;background:color-mix(in srgb,#3b82f6 22%,#fff)}',
-  '.slider{display:flex;align-items:center;gap:10px;min-height:18px;margin-top:8px;padding-top:8px;border-top:1px solid #00000014;font:11px/1.2 Consolas,monospace;color:#61666b}',
-  '.slider .track{flex:1 1 auto;height:3px;border-radius:999px;background:#0000001f}',
+  '.footer{display:flex;align-items:center;gap:10px;min-height:18px;margin-top:8px;padding-top:8px;border-top:1px solid #00000014;font:11px/1.2 Consolas,monospace;color:#61666b}',
   '.band{position:absolute;top:-8px;bottom:-2px;pointer-events:none;display:none;background:color-mix(in srgb,#3b82f6 18%,transparent);border-left:1px solid #3b82f6;border-right:1px solid #3b82f6}',
   '.out{font:11px/1.2 Consolas,monospace;color:#61666b;margin-top:6px}',
   '.list{margin-top:4px;border-top:1px solid #00000014}',
@@ -95,7 +94,7 @@ const PAGE = `
     el.setAttribute('data-card', mode);
     el.innerHTML = '<div class="legend"><b data-readout="' + mode + '">hover a run</b><span style="flex:1 1 auto"></span><span>Time</span><span>Token</span><span>Steps</span></div>'
       + '<div class="plot" data-plot="' + mode + '">' + plotBody(COLS) + '<span class="band" data-band="' + mode + '"></span></div>'
-      + '<div class="slider"><span>latest ' + COLS + ' / ' + COLS + ' runs</span><span class="track"></span></div>'
+      + '<div class="footer">every run \u00b7 one column each</div>'
       + '<div class="out" data-out="' + mode + '">hover: —</div>'
       + '<div class="cap">' + caption + '</div>';
     root.appendChild(el);
@@ -194,7 +193,7 @@ const PAGE = `
     const plot = plotRect(mode);
     const grid = gridRect(mode);
     const legend = q('[data-card="' + mode + '"] .legend').getBoundingClientRect();
-    const slider = q('[data-card="' + mode + '"] .slider').getBoundingClientRect();
+    const footer = q('[data-card="' + mode + '"] .footer').getBoundingClientRect();
     const lane = q('[data-card="' + mode + '"] [data-lane-grid="1"]').getBoundingClientRect();
     const track = (grid.width - (COLS - 1)) / COLS;
     return {
@@ -213,7 +212,7 @@ const PAGE = `
       gutterX: (plot.left + grid.left) / 2,
       laneY: lane.top + 1.5,
       legendY: legend.top + legend.height / 2,
-      sliderY: slider.top + slider.height / 2,
+      footerY: footer.top + footer.height / 2,
       padX: card.left + 4,
       outsideX: Math.max(2, card.left - 30),
       outsideY: Math.max(2, card.top - 20),

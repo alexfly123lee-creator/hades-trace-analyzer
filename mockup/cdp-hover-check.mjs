@@ -4,7 +4,7 @@
 // Drives the SHIPPED `columnFromPoint` (extracted from client.js into the harness)
 // with real mouse moves over the real card geometry: legend above, marker lane,
 // three metric rows separated by 4px margins, 1px column gaps, a 46px label
-// gutter, a window slider below.
+// gutter, a footer line below.
 //
 // The five invariants are the ones the user's report maps onto:
 //   1. entering through a 1px gap resolves to the column the gap sits between;
@@ -42,13 +42,13 @@ try {
   if (s.new.hover !== expectedGap) problems.push(`a move into the 1px gap kept ${s.new.hover} instead of ${expectedGap}`);
   if (s.new.hover === idxOf[3]) problems.push('the gap move froze on the previous column');
 
-  // 2. drift into the dead zones: legend, label gutter, card padding, slider
+  // 2. drift into the dead zones: legend, label gutter, card padding, footer
   const held = s.new.hover;
   for (const [name, x, y] of [
     ['legend', geo.colX[5], geo.legendY],
     ['label gutter', geo.gutterX, geo.rowY],
     ['card padding', geo.padX, geo.rowY],
-    ['window slider', geo.colX[5], geo.sliderY],
+    ['card footer', geo.colX[5], geo.footerY],
   ]) {
     await move(x, y);
     const now = await state();

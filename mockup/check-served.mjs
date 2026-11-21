@@ -34,7 +34,7 @@ const groups = {
     'sortCol', 'sortHoverLine', 'aria-sort', "sortCol('time', 'Time'", 'nextSort',
     "tone: hover ? T.brand", 'aria-pressed', 'stepSelBg', 'groupRing',
     'stepGroupRing', 'is-focus', 'hades-lane', 'hades-prompt', 'hadesSkeleton',
-    'hover a run · click to locate', 'latest ${n} / ${total} runs',
+    'hover a run · click to locate',
     'Jump to the latest Run', 'data-hades-latest', 'tailPad',
     'data-hades-tail', 'data-hades-tick', "Run ${r.idx}", "data-hades-scroll",
     'overscrollBehavior', 'overflowAnchor: ', 'shellH', 'new ResizeObserver',
@@ -46,8 +46,7 @@ const groups = {
     'function OverviewBoard', "data-hades-board", 'const markerBg = (run) =>',
     "data-hades-lane-grid': '1'", "'data-idx': r.idx", 'bandLayer(',
     'clickColumn(event, event.currentTarget)', 'setSelected(idx)',
-    'setHover(run.idx)', 'onMatrixKeyDown', 'ArrowLeft', 'data-hades-window',
-    "type: 'range'",
+    'setHover(run.idx)', 'onMatrixKeyDown', 'ArrowLeft',
     'darker = slower relative to the session', 'darker = more tokens in the session',
     'darker = more steps in the session',
     // F202: card-level pointer + geometric resolver + focus re-assertion
@@ -102,6 +101,10 @@ const absent = [
   'LIGHT_TINT',
   'const label = (k, fb)',
   'const EN = {',
+  // The matrix window slider was removed: the grid always shows every Run.
+  'data-hades-window',
+  "type: 'range'",
+  'hades-range',
 ];
 
 const stat = statSync(file);
