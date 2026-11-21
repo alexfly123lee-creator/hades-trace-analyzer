@@ -4,13 +4,44 @@
   "private": true,
   "type": "module",
   "license": "MIT",
+  "description": "Trace Lab: a session trace-log view for DeepSeek Harness — heat matrix of runs, step-by-step tool calls, official timing and read-only live updates.",
+  "keywords": [
+    "dsh",
+    "dsh-bundle",
+    "deepseek-harness",
+    "trace",
+    "observability",
+    "session",
+    "heatmap",
+    "debugging"
+  ],
+  "author": "Heisenberg",
+  "homepage": "https://github.com/alexfly123lee-creator/hades-trace-analyzer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexfly123lee-creator/hades-trace-analyzer.git",
+    "directory": "dsh-trace-analyzer"
+  },
+  "engines": {
+    "dsh": ">=0.2.2-rc.1"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
     "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg"
+    "./icon": "./icon.svg",
+    "./docs/*": "./docs/*"
   },
-  "files": ["index.js", "client.js", "lib/*.js", "cordis.patch.yml", "locale/*.json", "docs", "icon.svg"],
+  "files": [
+    "index.js",
+    "client.js",
+    "lib/*.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "README.md"
+  ],
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": {

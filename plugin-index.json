@@ -1,0 +1,86 @@
+{
+  "format": 1,
+  "title": {
+    "en": "Hades plug-ins",
+    "zh": "Hades 插件"
+  },
+  "description": {
+    "en": "Bundles for DeepSeek Harness, published by the Trace Lab author.",
+    "zh": "DeepSeek Harness 的组合包，由 Trace Lab 作者发布。"
+  },
+  "metadata": {
+    "categories": {
+      "observability": {
+        "title": {
+          "en": "Observability",
+          "zh": "可观测性"
+        }
+      }
+    },
+    "labels": {
+      "trace": {
+        "title": {
+          "en": "Trace",
+          "zh": "轨迹"
+        }
+      },
+      "session": {
+        "title": {
+          "en": "Session",
+          "zh": "会话"
+        }
+      }
+    },
+    "sortKeys": {}
+  },
+  "plugins": [
+    {
+      "name": "dsh-trace-analyzer",
+      "title": {
+        "en": "Trace Lab",
+        "zh": "Trace Lab"
+      },
+      "description": {
+        "en": "Reads the current session's trace log as a product view instead of raw JSON. Open the Trace Lab tab in the conversation view ring, next to Trajectory.",
+        "zh": "把当前会话的 trace 日志读成产品视图，而不是翻原始 JSON。在会话视图环里点「Trace Lab」标签（就在「轨迹」旁边）。"
+      },
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzNiIgaGVpZ2h0PSIzNiIgdmlld0JveD0iMCAwIDM2IDM2Ij4KICA8ZyBmaWxsPSIjNmI3YzkzIj4KICAgIDxyZWN0IHg9IjQiIHk9IjYuNSIgd2lkdGg9IjI4IiBoZWlnaHQ9IjUiIHJ4PSIyLjUiLz4KICAgIDxyZWN0IHg9IjQiIHk9IjE1LjUiIHdpZHRoPSIyOCIgaGVpZ2h0PSI1IiByeD0iMi41Ii8+CiAgICA8cmVjdCB4PSI0IiB5PSIyNC41IiB3aWR0aD0iMjgiIGhlaWdodD0iNSIgcng9IjIuNSIvPgogIDwvZz4KICA8cmVjdCB4PSIxOSIgeT0iMy41IiB3aWR0aD0iNSIgaGVpZ2h0PSIyOSIgcng9IjIuNSIgZmlsbD0iIzNiODJmNiIvPgo8L3N2Zz4K",
+      "author": "Heisenberg",
+      "homepage": "https://github.com/alexfly123lee-creator/hades-trace-analyzer",
+      "repository": {
+        "url": "https://github.com/alexfly123lee-creator/hades-trace-analyzer",
+        "directory": "dsh-trace-analyzer"
+      },
+      "metadata": {
+        "category": "observability",
+        "keywords": [
+          "dsh",
+          "dsh-bundle",
+          "deepseek-harness",
+          "trace",
+          "observability",
+          "session",
+          "heatmap",
+          "debugging"
+        ],
+        "labels": [
+          "trace",
+          "session"
+        ],
+        "sortKeys": {}
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795276196,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1"
+          }
+        }
+      ]
+    }
+  ]
+}

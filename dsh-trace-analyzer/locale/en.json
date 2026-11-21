@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "Trace analysis",
-    "description": "A main conversation view tab that turns a session's trace log into a product-grade view: execution waterfall, token usage, latency analysis, anomaly highlighting, search, and export.",
+    "title": "Trace Lab",
+    "description": "Reads the current session's trace log as a product view instead of raw JSON. Open the Trace Lab tab in the conversation view ring, next to Trajectory. The top card is a heat matrix with one column per run — three metric rows (time, tokens, steps, shaded by rank inside the session) plus a marker lane for errors and slow operations. Point at a column to read that run and highlight its row; click to park it at the top of the list and expand it. Below, every run row carries its own time and token bars and a tag telling you what the step did; expand a step to see the model reply, each tool's arguments and result, the injected context, and a collapsed RAW view of the original events. Timing is the official one: step time is model plus tools, waiting for you is listed separately and never counted. The panel is read-only — it adds no model requests, reads the session log locally, and polls the log offset every 2 seconds while visible so a live session keeps updating. It covers the current session only: there is no cross-session comparison, lineage view, search or export.",
     "detail": "docs/DETAIL.md"
   }
 }
