@@ -741,7 +741,19 @@
 - **视觉**：10.5px 等宽大写、字距 `.03em`、激活态品牌色 1.5px 底线 + 主文本色，非激活 faint；放在卡片右上角，与耗时/错误文案同一行。
 - **回归**：`smoke:render` 断言"卡片切面序列 = reply / raw / args / result / raw"（即 REPLY 卡两切面、TOOL 卡三切面），且默认渲染回复正文与入参正文；`check-served` 增加 `data-hades-facet` / `const facetTabs = (cardKey` / `step.facet.result`。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 - **AC**：每张操作卡各自有切面 Tab；REPLY 默认正文、TOOL 默认入参；Result/Raw 一键可看；整张 Step 卡片**没有**全局切换条。
-## 67. 范围外（v1 不做）
+## 67. Step 面板：去掉重复小字，工具标签写工具名（F193）
+
+- **F193 两条要求**：① 去掉**无用/重复/赘述的小字**（尤其 Step 面板）；② 工具在 Step 里**不要再标 TOOL**，是什么工具就写什么，与 Run 里展开的写法一致。
+- **改法**：
+  - **TOOL 卡**：角色 churn 的 `TOOL` 徽标 + 后面重复的工具名 → **只保留工具名徽标**（如 `pwsh`），与 Run 的步骤行（`StepTag` 用工具动词）完全一致；
+  - **REPLY 卡**：`REPLY` 徽标后面还写了一遍 `model call` → 删除重复文案；
+  - **指令卡**：`${runPrompt.length} chars` → 删除（无决策价值）；
+  - **注入组**：`expand` / `collapse` 文字 → 换成 `▸` / `▾` 指示；
+  - **摘要条**：`model 1` 的计数去掉，直接显示模型 id（如 `deepseek/deepseek-chat`，title 标 `model`）；`tools 0` / `contexts 0` 这类**零计数**整组不显示（连带省掉它的分隔线）。
+- **保留**：`ARGS` / `RESULT` 两个小标题（区分两块正文所必需）、耗时、错误/慢标记、`raw` 下拉、`in/out` token、step 的 `time · tokens` 摘要。
+- **回归**：`smoke:render` 新增 —— Step 面板**不得出现 `TOOL`**、必须出现工具名 `pwsh`、**不得出现 `model call`**（重复标签）、**不得出现 `chars`**；`check-served` 增加 `chipOf(String(op.name ?? 'tool')` 标记。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
+- **AC**：Step 面板里工具徽标是工具名；没有重复的 `model call`、字符数、`expand/collapse` 文案；零计数分组不出现。
+## 68. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。
