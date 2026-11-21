@@ -138,6 +138,9 @@ window.__ModuleLoader__.load({
     // Indent for the Step level: Step rows and their bracket sit one level in
     // from the Run group, so nesting reads by position, not only by color.
     const STEP_INDENT = 12;
+    // F209: columns within this many runs of the clicked one only preview (see
+    // OverviewBoard's pointer handler) — the drift tolerance after a click.
+    const PARK_BAND = 4;
     // F138: a run may hold 200+ steps; render them in pages so a single expand
     // cannot mount thousands of nodes at once.
     const STEP_PAGE = 80;
@@ -580,14 +583,13 @@ window.__ModuleLoader__.load({
       // F166: a stable handle for the pointer-scrub path.
       const scrubRef = useRef(onScrub);
       scrubRef.current = onScrub;
-      // F208: "parked" = a click just put a Run at the top of the list and the
-      // pointer has not left the matrix since. While parked, moving over columns
-      // updates the band and the readout only — it does NOT scroll and does NOT dim
-      // the list, so the Run stays exactly where it expanded.
-      //   F183 got this wrong by dimming + moving the focus without scrolling (list
-      //   looked broken); F206 got it wrong the other way by scrolling on every
-      //   column change (the parked Run slid away as soon as the pointer moved).
-      const parked = useRef(false);
+      // F209: right after a click, columns within PARK_BAND of the clicked one only
+      // PREVIEW (band + readout) — no focus change, no scroll, no dim — so a few
+      // pixels of drift while the pointer leaves cannot drag the parked Run away.
+      // Outside the band the list follows the pointer exactly like a normal hover.
+      //   F183 froze the whole matrix (dim + no highlight + no scroll);
+      //   F206 scrolled on every column (the parked Run slid away on a 1px drift).
+      const parkedFrom = useRef(null);
       // F172: where the list is currently reading — the wheel steps from here when
       // the pointer is not over a column (otherwise one notch could teleport the
       // list to the stale selection's region).
@@ -652,9 +654,9 @@ window.__ModuleLoader__.load({
       const clickColumn = (event, container) => {
         const idx = indexAt(event, container);
         if (idx == null) return;
-        // F183/F208: the click parks this Run at the top; the pointer stays useful
-        // for the readout but must not drag the list around until it leaves.
-        parked.current = true;
+        // F183/F209: the click parks this Run at the top; nearby columns then only
+        // preview, so the list stays exactly where the click put it.
+        parkedFrom.current = idx;
         setSelected(idx);
         setTimeout(() => locateRef.current(idx), 0);
       };
@@ -885,12 +887,13 @@ window.__ModuleLoader__.load({
               const next = indexAt(event, gridEl);
               if (next == null || next === hoverRef.current) return;
               setHover(next);
-              // F208: parked after a click — band + readout only.
-              if (parked.current) return;
+              // F209: near the clicked column → preview only (no focus/scroll/dim).
+              const from = parkedFrom.current;
+              if (from != null && Math.abs(next - from) <= PARK_BAND) return;
               if (scrubRef.current) scrubRef.current(next);
             },
             onMouseLeave: () => {
-              parked.current = false;
+              parkedFrom.current = null;
               setHover(null);
               if (scrubRef.current) scrubRef.current(null);
             },
