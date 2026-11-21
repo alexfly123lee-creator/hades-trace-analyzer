@@ -105,6 +105,10 @@ const absent = [
   'data-hades-window',
   "type: 'range'",
   'hades-range',
+  // F203: the hover band must not be suppressed on the selected column — after a
+  // click the pointer usually still sits inside that column, and "no bar under the
+  // pointer" read as "hover stopped working".
+  'hoverPos !== selectedPos',
 ];
 
 const stat = statSync(file);

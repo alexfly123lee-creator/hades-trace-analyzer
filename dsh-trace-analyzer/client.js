@@ -648,6 +648,11 @@ window.__ModuleLoader__.load({
         // pointer moves around the matrix.
         hoverLock.current = true;
         setSelected(idx);
+        // F203: the pointer IS on this column, so it is also the hover. Without
+        // this the band under the pointer had to wait for the pointer to change
+        // column — and at 4px per column it may not change for a long time, which
+        // reads as "after selecting a column the matrix stopped highlighting".
+        setHover(idx);
         setTimeout(() => locateRef.current(idx), 0);
       };
 
@@ -905,8 +910,11 @@ window.__ModuleLoader__.load({
             },
               grid,
               // F157/F168: two distinct states — selected (26% fill + 2px edges,
-              // stays) and hover (18% + 1px, follows). Fill strengths come from
-              // the DESIGN table so the two can never drift apart.
+              // stays) and hover (18% + 1px, follows). F203: hover is drawn
+              // whenever the pointer is on a column, INCLUDING the selected one.
+              // Suppressing it there meant the column under the pointer could show
+              // no bar at all (the pointer sits inside a 4px column most of the
+              // time), which read as "hover stopped working after a click".
               selectedPos >= 0 ? bandLayer('sel-fill', {
                 left: bandAt(selectedPos).left, width: bandAt(selectedPos).width,
                 background: `color-mix(in srgb, ${T.brand} ${DESIGN.alpha.bandSel}%, transparent)`,
@@ -915,12 +923,12 @@ window.__ModuleLoader__.load({
               selectedPos >= 0 ? bandLayer('sel-r', {
                 left: `calc(${bandAt(selectedPos).left} + (${bandAt(selectedPos).width}) - 2px)`, width: 2, background: T.brand,
               }) : null,
-              hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-fill', {
+              hoverPos >= 0 ? bandLayer('hov-fill', {
                 left: bandAt(hoverPos).left, width: bandAt(hoverPos).width,
                 background: `color-mix(in srgb, ${T.brand} ${DESIGN.alpha.bandHover}%, transparent)`,
               }) : null,
-              hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-l', { left: bandAt(hoverPos).left, width: 1, background: T.brand }) : null,
-              hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-r', {
+              hoverPos >= 0 ? bandLayer('hov-l', { left: bandAt(hoverPos).left, width: 1, background: T.brand }) : null,
+              hoverPos >= 0 ? bandLayer('hov-r', {
                 left: `calc(${bandAt(hoverPos).left} + (${bandAt(hoverPos).width}) - 1px)`, width: 1, background: T.brand,
               }) : null,
             ),
