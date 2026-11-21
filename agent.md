@@ -405,8 +405,6 @@ dsh-trace-analyzer/
 
 60. **M59 Step 乱序打开的跳动：Collapse 两条竞态（F188）** ✅：① **外层面板跟着内层动画一起动** —— Run 面板的"内容增高跟随"以 `children` 为依赖，每次渲染都跑；内层 Step 正在做高度动画时，外层拿过期 `prev` 去 animate 到当前 `scrollHeight`，两个高度动画互相拉扯 → 先跳再跟上。改为**先检查子树里是否已有 height 动画在跑**（`getAnimations({subtree:true})` 过滤关键帧含 `height` 且 running），有就跳过并刷新基线。② **重跑打开效果从 0 开始** —— `expandMs` 变化会让打开效果重跑，首帧恒为 `height: 0` → 塌到 0 再长回。改为 `from = min(heightRef.current ?? 0, height)` 起算，首次打开仍是 `[0, height]`。**回归新增 `collapse` 检查**：直接抽取 client.js 两个 `useLayoutEffect` 的函数体，在 Node 里用假元素跑 4 个场景；对照实验（`control-f188.mjs` 回退修复）立刻变红。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V100、SPEC 64。
 
-61. **M60 Step 卡片升级：视图 Tab（F189）** ✅：新增 `ViewTabs`（`role=tablist/tab` + `aria-selected`，激活态品牌色 2px 底线），卡片顶部三视图——① **Activity**（默认，原时间线卡片不变）；② **Timeline**（本步瀑布：顶部 model/tools/wait 用时占比条 + 图例，每个操作一行按时间偏移定位，tool 画时长、其余画起点刻度，右侧 `+偏移`/时长，底部 `0 … 总时长` 轴）；③ **Raw**（升级为独立视图：每个操作一行 `SEQ call+result`，点开就地渲染完整 JSON，复用 `EventDetail` 与 Copy，按需加载）。`view` 状态留在 `StepContent` 内部（每个 Step 独立记忆），摘要条三视图共用。**回归**：`smoke:render` 的 `walk` 现在会展开函数组件，断言 Step 卡片渲染 1 个 tab 条 + 3 个 tab（activity/timeline/raw）且默认视图含操作卡片；`check-served` 增加 `function ViewTabs` / `data-hades-tabs` / `step.tab.timeline` / `step.split.model`。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V101、SPEC 65。
-
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。
