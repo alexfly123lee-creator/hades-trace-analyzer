@@ -405,6 +405,7 @@ dsh-trace-analyzer/
 
 60. **M59 Step 乱序打开的跳动：Collapse 两条竞态（F188）** ✅：① **外层面板跟着内层动画一起动** —— Run 面板的"内容增高跟随"以 `children` 为依赖，每次渲染都跑；内层 Step 正在做高度动画时，外层拿过期 `prev` 去 animate 到当前 `scrollHeight`，两个高度动画互相拉扯 → 先跳再跟上。改为**先检查子树里是否已有 height 动画在跑**（`getAnimations({subtree:true})` 过滤关键帧含 `height` 且 running），有就跳过并刷新基线。② **重跑打开效果从 0 开始** —— `expandMs` 变化会让打开效果重跑，首帧恒为 `height: 0` → 塌到 0 再长回。改为 `from = min(heightRef.current ?? 0, height)` 起算，首次打开仍是 `[0, height]`。**回归新增 `collapse` 检查**：直接抽取 client.js 两个 `useLayoutEffect` 的函数体，在 Node 里用假元素跑 4 个场景；对照实验（`control-f188.mjs` 回退修复）立刻变红。本轮 `node mockup/regress.mjs`：**ALL GREEN (9 checks)**。见 TEST V100、SPEC 64。
 
+62. **M61 Step 卡片：按操作切面的视图 Tab（F190）** ✅：按用户确认的方案重做 —— 视图在 **Step 卡片内部**、切的是**操作切面**：**All / Prompt / Args / Result / Raw**（默认 All 与旧版完全一致）。Prompt 只有指令 + REPLY + CTX；Args 每个工具入参独立成卡（等宽/换行/耗时）；Result 显示结果（错误红框、空结果提示）；Raw 每操作一行、就地展开 JSON（复用 EventDetail + Copy，按需加载）。facet 状态存在 StepContent 内部，切 Tab 不重新请求。回归：smoke:render 断言 1 个 tab 条 + 5 个 tab 且默认视图含操作卡片；check-served 加 ViewTabs / step.facet.* 标记。本轮 node mockup/regress.mjs：**ALL GREEN (9 checks)**。见 TEST V102、SPEC 66。
 ## 8. 待开工确认清单（第 0 步执行）
 
 - [x] 主对话区视图注册机制（R2）：`conversation.view` 槽（`@deepseek-ai/dsh-client-ui-conversation`，已读 trajectory 源码）。

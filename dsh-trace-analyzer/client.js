@@ -337,6 +337,38 @@ window.__ModuleLoader__.load({
         open ? children : lastChildren.current);
     }
 
+    /**
+     * F190: a small segmented control for the Step card — one tab per facet of the
+     * step's operations (all / prompt / args / result / raw).
+     */
+    function ViewTabs({ tabs, value, onChange }) {
+      return h('div', {
+        role: 'tablist',
+        'data-hades-tabs': '1',
+        style: { display: 'flex', alignItems: 'flex-end', gap: DESIGN.space.md, marginBottom: DESIGN.space.sm },
+      },
+        tabs.map((tab) => {
+          const active = tab.id === value;
+          return h('button', {
+            key: tab.id,
+            type: 'button',
+            role: 'tab',
+            'aria-selected': active ? 'true' : 'false',
+            'data-hades-tab': tab.id,
+            onClick: () => onChange(tab.id),
+            style: {
+              font: `11px/1 ${T.mono}`, letterSpacing: '.04em', textTransform: 'uppercase',
+              color: active ? T.text : T.muted,
+              background: 'transparent', border: 'none', padding: '0 0 4px',
+              cursor: 'pointer',
+              borderBottom: '2px solid ' + (active ? T.brand : 'transparent'),
+              transition: `color ${DESIGN.motion.fast}ms ease, border-color ${DESIGN.motion.fast}ms ease`,
+            },
+          }, tab.text);
+        }),
+      );
+    }
+
     /** The ▸/▾ affordance as one glyph that rotates, so expanding never reflows. */
     function Caret({ open, tone, ms = 160 }) {
       return h('span', {
@@ -1485,6 +1517,8 @@ window.__ModuleLoader__.load({
       const [rawOpen, setRawOpen] = useState(() => new Set());
       // F159: context/system injections collapse into one row by default.
       const [ctxOpen, setCtxOpen] = useState(false);
+      // F190: which facet of this step's operations is on screen.
+      const [facet, setFacet] = useState('all');
       // F140: the parent bumps this token when the session log grew, so an open
       // panel shows a running tool call turning into "finished + duration"
       // without the user closing and reopening the step.
@@ -1645,6 +1679,10 @@ window.__ModuleLoader__.load({
       };
 
       const timeline = [];
+      // F190: the same operations, sliced by facet. `All` keeps the mixed timeline.
+      const promptCards = [];
+      const argsCards = [];
+      const resultCards = [];
 
       if (stepIdx === 0 && runActor === 'user' && runPrompt) {
         timeline.push(h('div', { key: 'instruction', style: { position: 'relative', marginBottom: 8 } },
@@ -1659,6 +1697,7 @@ window.__ModuleLoader__.load({
             }, runPrompt),
           ),
         ));
+        promptCards.push(timeline[timeline.length - 1]);
       }
 
       for (let i = 0; i < items.length; i++) {
@@ -1689,6 +1728,7 @@ window.__ModuleLoader__.load({
               rawPanel(item.seqs),
             ),
           ));
+          promptCards.push(timeline[timeline.length - 1]);
           continue;
         }
         const op = item;
@@ -1712,6 +1752,7 @@ window.__ModuleLoader__.load({
               rawPanel([op.seq]),
             ),
           ));
+          promptCards.push(timeline[timeline.length - 1]);
           continue;
         }
         if (op.kind === 'tool') {
@@ -1741,6 +1782,33 @@ window.__ModuleLoader__.load({
               rawPanel([op.callSeq, op.resultSeq]),
             ),
           ));
+          // F190: the tool's facets, as standalone cards.
+          argsCards.push(h('div', { key: 'args-' + op.seq, style: { marginBottom: DESIGN.space.sm } },
+            h('div', { style: cardBox(failed ? { borderColor: T.error } : null) },
+              capRow(
+                h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8, minWidth: 0 } },
+                  chipOf('ARGS', 'tool'),
+                  h('span', { style: { fontSize: 12, ...mono11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, String(op.name ?? ''))),
+                h('span', { style: { ...mono11, color: T.muted } }, op.durationMs != null ? fmtMs(op.durationMs) : ''),
+              ),
+              h('div', {
+                style: { marginTop: 3, ...mono11, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 180, overflow: 'auto' },
+              }, op.args || label('step.noArgs', '(no arguments)')),
+            ),
+          ));
+          resultCards.push(h('div', { key: 'res-' + op.seq, style: { marginBottom: DESIGN.space.sm } },
+            h('div', { style: cardBox(failed ? { borderColor: T.error } : null) },
+              capRow(
+                h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8, minWidth: 0 } },
+                  chipOf(failed ? 'ERROR' : 'RESULT', failed ? 'error' : 'tool'),
+                  h('span', { style: { fontSize: 12, ...mono11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, String(op.name ?? ''))),
+                h('span', { style: { fontSize: 11, color: failed ? T.error : T.muted } }, failed ? (op.error ?? 'error') : (op.durationMs != null ? fmtMs(op.durationMs) : '')),
+              ),
+              h('div', {
+                style: { marginTop: 3, ...mono11, color: failed ? T.error : T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 220, overflow: 'auto' },
+              }, op.result || label('step.noOutput', '(no output)')),
+            ),
+          ));
           continue;
         }
         // note rows keep the compact one-liner look (they are annotations, not work)
@@ -1765,18 +1833,63 @@ window.__ModuleLoader__.load({
         ));
       }
 
-      const empty = timeline.length === 0;
-      return h('div', { style: cardStyle },
-        strip,
-        empty
-          ? h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, label('step.empty', 'No content in this step'))
-          : h('div', { style: { position: 'relative', paddingLeft: 14 } },
-            h('span', {
-              style: { position: 'absolute', left: 4, top: 6, bottom: 6, width: 1, background: 'color-mix(in srgb, ' + T.text + ' 12%, transparent)' },
-            }),
-            timeline,
-          ),
-      );
+      // ---- F190 facets ---------------------------------------------------
+      const TABS = [
+        { id: 'all', text: label('step.facet.all', 'All') },
+        { id: 'prompt', text: label('step.facet.prompt', 'Prompt') },
+        { id: 'args', text: label('step.facet.args', 'Args') },
+        { id: 'result', text: label('step.facet.result', 'Result') },
+        { id: 'raw', text: label('step.facet.raw', 'Raw') },
+      ];
+      const listOf = (cards) => (cards.length === 0
+        ? null
+        : h('div', { style: { position: 'relative', paddingLeft: 14 } },
+          h('span', {
+            style: { position: 'absolute', left: 4, top: 6, bottom: 6, width: 1, background: 'color-mix(in srgb, ' + T.text + ' 12%, transparent)' },
+          }),
+          cards,
+        ));
+      const nothing = (text) => h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, text);
+      const allView = timeline.length === 0 ? nothing(label('step.empty', 'No content in this step')) : listOf(timeline);
+      const promptView = promptCards.length === 0 ? nothing(label('step.noPrompt', 'No prompt in this step')) : listOf(promptCards);
+      const argsView = argsCards.length === 0 ? nothing(label('step.noTools', 'No tool calls in this step')) : listOf(argsCards);
+      const resultView = resultCards.length === 0 ? nothing(label('step.noTools', 'No tool calls in this step')) : listOf(resultCards);
+      const seqsOf = (op) => (op.kind === 'tool'
+        ? [op.callSeq ?? op.seq, op.resultSeq].filter((value) => value != null)
+        : [op.seq].filter((value) => value != null));
+      const rawView = (data.operations ?? []).length === 0
+        ? nothing(label('step.empty', 'No content in this step'))
+        : h('div', { style: { marginTop: 2, display: 'flex', flexDirection: 'column', gap: DESIGN.space.xs } },
+          (data.operations ?? []).map((op, i) => {
+            const seqs = seqsOf(op);
+            const rawKey = seqs.join(',');
+            const open = rawOpen.has(rawKey);
+            const tone = palette(op.kind === 'tool' ? 'tool' : (op.kind === 'assistant' ? 'assistant' : 'context'));
+            const caption = op.kind === 'tool' ? op.name : (op.kind === 'assistant' ? label('step.modelCall', 'model call') : op.text);
+            return h('div', { key: 'rw-' + (op.seq ?? i) },
+              h('button', {
+                type: 'button',
+                onClick: () => toggleRaw(rawKey),
+                style: { ...cardBox({ padding: '3px 9px', width: '100%', textAlign: 'left', cursor: 'pointer' }), display: 'flex', alignItems: 'center', gap: DESIGN.space.sm },
+              },
+                h(RowTag, { text: 'SEQ ' + seqs.join('+'), color: tone.color, background: tone.background }),
+                h('span', { style: { flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: T.text } },
+                  String(caption ?? '').slice(0, 90)),
+                h('span', { style: { fontFamily: T.mono, fontSize: 11, color: open ? T.text : T.faint } }, open ? 'hide' : 'raw'),
+              ),
+              open ? h(EventDetail, { sessionId, seqs }) : null,
+            );
+          }),
+        );
+
+      const view = facet === 'raw' ? rawView
+        : facet === 'args' ? argsView
+          : facet === 'result' ? resultView
+            : facet === 'prompt' ? promptView
+              : allView;
+      return h('div', { style: cardStyle }, strip,
+        h(ViewTabs, { tabs: TABS, value: facet, onChange: setFacet }),
+        view);
     }
 
 
