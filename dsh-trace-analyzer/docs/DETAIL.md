@@ -22,7 +22,7 @@
 
 ## 数据来源
 
-只读使用 DSH 的 `sessionQuery` 服务（`listEvents` / `readEvent` / `readSession` / `traceSession` / `traceEvent` / `filterEvents`），不修改任何会话事件。
+只读使用 DSH 的 `sessionQuery` 服务：`inspectSession`（活跃会话的内存日志+版本号）、`readSession`（冷会话回放）、`readEvent`（单条原文）。经 `/api/trace-analyzer/{runs,run,step,event}` 四个只读路由暴露给面板，不修改任何会话事件。
 
 ## 局限
 
