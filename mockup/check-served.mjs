@@ -49,13 +49,18 @@ const groups = {
     'setHover(run.idx)', 'onMatrixKeyDown', 'ArrowLeft',
     'darker = slower relative to the session', 'darker = more tokens in the session',
     'darker = more steps in the session',
-    // F202: card-level pointer + geometric resolver + focus re-assertion
+    // F202: geometric resolver + focus re-assertion
     'const columnFromPoint = (point, plotRect, gridRect, list) =>',
     'const syncFocusRow = (host, idx) =>',
     'syncFocusRow(listRef.current, focusRun)',
     "data-hades-plot': '1'",
-    'F202: pointer tracking lives on the CARD',
-    'onMouseMove: (event) =>',
+    // F203: the hover band is painted from the pointer event, and the pointer
+    // handlers sit on the whole matrix block (not the ~52px plot strip).
+    'const paintHoverBand = (plot, grid, pos, total) =>',
+    "data-hades-hover-band': '1'",
+    '.hades-hover-band{display:none}',
+    'const onPointerMove = (event) =>',
+    'onMouseMove: onPointerMove',
   ],
   // ---- scroll / focus / follow --------------------------------------------
   navigation: [

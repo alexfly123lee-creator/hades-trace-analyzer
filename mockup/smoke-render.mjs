@@ -123,29 +123,36 @@ if (laneGrids !== 1) throw new Error('the marker lane must own one click contain
 if (rowGrids !== 3) throw new Error('each metric row must own one click container');
 if (handCursors < 4) throw new Error('the matrix plot area must show the hand cursor');
 if (promptFades !== rows.length) throw new Error('every run row must carry the prompt fade class');
-// F202: pointer tracking belongs to the CARD (the plot strip is ~52px tall and a
-// 3px drift off it used to clear the hover), and the strip itself must not own a
-// leave handler. The plot also carries the marker the harness keys on.
+// F202/F203: pointer tracking belongs to the whole matrix BLOCK (card + the 12px
+// gap under it) — one handler, high in the tree. The ~52px plot strip must own
+// none: a 3px drift off it used to clear the hover.
 {
   const matrixNodes = [];
   walk(matrixTree, (node) => matrixNodes.push(node));
   let cards = 0;
   let plots = 0;
+  let moveHandlers = 0;
+  let blockOwns = false;
   for (const node of matrixNodes) {
     if (node.props?.className === 'hades-matrix') {
       cards += 1;
-      if (typeof node.props.onMouseMove !== 'function') throw new Error('the matrix card must own the pointer handler');
-      if (typeof node.props.onMouseLeave !== 'function') throw new Error('the matrix card must own the leave handler');
+      if (node.props.onMouseMove != null) throw new Error('the matrix card must not own a second pointer handler');
     }
     if (node.props?.['data-hades-plot'] != null) {
       plots += 1;
       if (node.props.onMouseLeave != null) throw new Error('the plot strip must not clear the hover on leave');
       if (node.props.onMouseMove != null) throw new Error('the plot strip must not own the pointer handler');
     }
+    if (typeof node.props?.onMouseMove === 'function') {
+      moveHandlers += 1;
+      if (node.props.style?.marginBottom === 12 && node.props.onMouseLeave != null) blockOwns = true;
+    }
   }
-  console.log('matrix cards:', cards, '· plot surfaces:', plots);
+  console.log('matrix cards:', cards, '· plot surfaces:', plots, '· pointer handlers:', moveHandlers);
   if (cards !== 1) throw new Error('expected exactly one matrix card');
   if (plots !== 1) throw new Error('expected exactly one plot surface');
+  if (moveHandlers !== 1) throw new Error('expected exactly one pointer handler on the matrix block');
+  if (!blockOwns) throw new Error('the pointer handler must sit on the matrix block wrapper');
 }
 // F186: the Step bracket must reserve its border widths and margins in BOTH
 // states, otherwise opening a step shifts the row by ~7px before the height

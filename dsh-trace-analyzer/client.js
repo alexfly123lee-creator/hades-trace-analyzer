@@ -155,6 +155,7 @@ window.__ModuleLoader__.load({
     // the arrow keys. (The window slider that used to live under the grid is gone:
     // the matrix always shows every Run of the session.)
     const MATRIX_CSS = `
+      .hades-hover-band{display:none}
       .hades-matrix:focus{outline:none}
       .hades-matrix:focus-visible{outline:2px solid color-mix(in srgb,var(--hades-brand) 38%,transparent);outline-offset:2px;border-radius:10px}
       .hades-tick{font-variant-numeric:tabular-nums;color:var(--hades-brand)}
@@ -371,6 +372,29 @@ window.__ModuleLoader__.load({
         if (raf != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
         raf = null;
       };
+    };
+
+    /**
+     * F203: paint the matrix's hover band straight from the pointer event.
+     *
+     * The band used to be a React child keyed on `hover` state, so its visibility
+     * depended on a state update landing — and on the selected column it was
+     * suppressed outright. Painting it here means "the pointer is on column k"
+     * always produces a visible band at exactly the cells' geometry, independent of
+     * renders; the state is only what the readout line prints.
+     */
+    const paintHoverBand = (plot, grid, pos, total) => {
+      if (plot == null || grid == null || typeof plot.querySelector !== 'function') return;
+      const band = plot.querySelector('[data-hades-hover-band]');
+      if (band == null) return;
+      if (pos == null || pos < 0 || !(total > 0)) { band.style.display = 'none'; return; }
+      const plotRect = plot.getBoundingClientRect();
+      const gridRect = grid.getBoundingClientRect();
+      if (!(gridRect.width > 0)) { band.style.display = 'none'; return; }
+      const track = (gridRect.width - Math.max(0, total - 1)) / total;
+      band.style.display = 'block';
+      band.style.left = (gridRect.left - plotRect.left + pos * (track + 1)) + 'px';
+      band.style.width = Math.max(1, track) + 'px';
     };
 
     // Short tag for the explanation-only rows a step panel gained in F23.2
@@ -735,6 +759,34 @@ window.__ModuleLoader__.load({
         if (scrubRef.current) scrubRef.current(run.idx);
       };
 
+      // F203: the pointer path. It resolves the column, paints the band straight
+      // from the event, then updates readout/focus. A move inside the block but off
+      // the plot keeps the last column; leaving the block clears everything.
+      const rowGrid = () => {
+        const card = cardRef.current;
+        return card != null && typeof card.querySelector === 'function'
+          ? card.querySelector('[data-hades-row-grid]')
+          : null;
+      };
+      const onPointerMove = (event) => {
+        const gridEl = rowGrid();
+        const next = indexAt(event, gridEl);
+        if (next == null) return; // legend / padding inside the block
+        const list = shownRef.current;
+        paintHoverBand(plotRef.current, gridEl, list.findIndex((r) => r.idx === next), list.length);
+        if (next === hoverRef.current) return;
+        setHover(next);
+        if (hoverLock.current) {
+          if (focusOnlyRef.current) focusOnlyRef.current(next);
+        } else if (scrubRef.current) scrubRef.current(next);
+      };
+      const onPointerLeave = () => {
+        paintHoverBand(plotRef.current, rowGrid(), -1, 0);
+        hoverLock.current = false;
+        setHover(null);
+        if (scrubRef.current) scrubRef.current(null);
+      };
+
       // F170: while the panel follows the live edge, the matrix cursor rides the
       // newest Run. It is a hook, so it must sit before the empty-table return.
       useEffect(() => {
@@ -857,6 +909,10 @@ window.__ModuleLoader__.load({
         ref: wrapRef,
         // F153/F187: the wrapper paints the surface colour so no seam shows the
         // list behind it; the matrix is the only card above the list now.
+        // F203: the pointer handlers sit on this whole block (card + the 12px gap
+        // under it), so a 1px drift off the card cannot silently stop the hover.
+        onMouseMove: onPointerMove,
+        onMouseLeave: onPointerLeave,
         style: { marginBottom: 12, background: T.surface },
       },
         // F165: the custom range styling lives with the card, not the page shell.
@@ -868,27 +924,6 @@ window.__ModuleLoader__.load({
             role: 'group',
             'aria-label': 'run heat matrix',
             onKeyDown: onMatrixKeyDown,
-            // F202: pointer tracking lives on the CARD, not on the ~52px plot
-            // strip. The strip is thinner than a mouse wobbles: one 3px drift up
-            // into the legend used to fire mouseleave and drop the hover plus the
-            // whole list focus. Off-plot moves now keep the last column; only
-            // leaving the card clears it.
-            onMouseMove: (event) => {
-              const gridEl = cardRef.current != null && typeof cardRef.current.querySelector === 'function'
-                ? cardRef.current.querySelector('[data-hades-row-grid]')
-                : null;
-              const next = indexAt(event, gridEl);
-              if (next == null || next === hoverRef.current) return;
-              setHover(next);
-              if (hoverLock.current) {
-                if (focusOnlyRef.current) focusOnlyRef.current(next);
-              } else if (scrubRef.current) scrubRef.current(next);
-            },
-            onMouseLeave: () => {
-              hoverLock.current = false;
-              setHover(null);
-              if (scrubRef.current) scrubRef.current(null);
-            },
             style: {
               border: '1px solid ' + T.border, borderRadius: T.radiusMd,
               padding: '10px 12px 10px', background: T.surface,
@@ -909,12 +944,11 @@ window.__ModuleLoader__.load({
               style: { position: 'relative', overscrollBehavior: 'contain', cursor: 'pointer' },
             },
               grid,
-              // F157/F168: two distinct states — selected (26% fill + 2px edges,
-              // stays) and hover (18% + 1px, follows). F203: hover is drawn
-              // whenever the pointer is on a column, INCLUDING the selected one.
-              // Suppressing it there meant the column under the pointer could show
-              // no bar at all (the pointer sits inside a 4px column most of the
-              // time), which read as "hover stopped working after a click".
+              // F157: the selection band (26% fill + 2px edges) stays where the
+              // user clicked. The hover band is NOT a React child any more — it is
+              // painted by `paintHoverBand` straight from the pointer event, so it
+              // cannot be skipped by a render and is always drawn on the column
+              // under the pointer, including that selection.
               selectedPos >= 0 ? bandLayer('sel-fill', {
                 left: bandAt(selectedPos).left, width: bandAt(selectedPos).width,
                 background: `color-mix(in srgb, ${T.brand} ${DESIGN.alpha.bandSel}%, transparent)`,
@@ -923,14 +957,18 @@ window.__ModuleLoader__.load({
               selectedPos >= 0 ? bandLayer('sel-r', {
                 left: `calc(${bandAt(selectedPos).left} + (${bandAt(selectedPos).width}) - 2px)`, width: 2, background: T.brand,
               }) : null,
-              hoverPos >= 0 ? bandLayer('hov-fill', {
-                left: bandAt(hoverPos).left, width: bandAt(hoverPos).width,
-                background: `color-mix(in srgb, ${T.brand} ${DESIGN.alpha.bandHover}%, transparent)`,
-              }) : null,
-              hoverPos >= 0 ? bandLayer('hov-l', { left: bandAt(hoverPos).left, width: 1, background: T.brand }) : null,
-              hoverPos >= 0 ? bandLayer('hov-r', {
-                left: `calc(${bandAt(hoverPos).left} + (${bandAt(hoverPos).width}) - 1px)`, width: 1, background: T.brand,
-              }) : null,
+              h('div', {
+                key: 'hover-band',
+                className: 'hades-hover-band',
+                'data-hades-hover-band': '1',
+                style: {
+                  position: 'absolute', top: -8, bottom: -2, pointerEvents: 'none',
+                  boxSizing: 'border-box', borderRadius: 1,
+                  background: `color-mix(in srgb, ${T.brand} ${DESIGN.alpha.bandHover}%, transparent)`,
+                  borderLeft: '1px solid ' + T.brand,
+                  borderRight: '1px solid ' + T.brand,
+                },
+              }),
             ),
           ),
         ),

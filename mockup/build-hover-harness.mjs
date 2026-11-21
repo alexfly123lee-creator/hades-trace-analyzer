@@ -30,7 +30,7 @@ function extract(name) {
   throw new Error(`unbalanced ${name}`);
 }
 
-const shipped = ['columnFromPoint', 'syncFocusRow']
+const shipped = ['columnFromPoint', 'paintHoverBand', 'syncFocusRow']
   .map((name) => {
     const { params, body } = extract(name);
     return `function ${name}${params.slice(params.indexOf('('))} ${body}`;
@@ -52,7 +52,7 @@ const CSS = [
   '.mrow .grid{flex:1 1 auto;min-width:0;display:grid;gap:1px;cursor:pointer}',
   '.mrow i{display:block;height:11px;border-radius:1px;background:color-mix(in srgb,#3b82f6 22%,#fff)}',
   '.footer{display:flex;align-items:center;gap:10px;min-height:18px;margin-top:8px;padding-top:8px;border-top:1px solid #00000014;font:11px/1.2 Consolas,monospace;color:#61666b}',
-  '.band{position:absolute;top:-8px;bottom:-2px;pointer-events:none;display:none;background:color-mix(in srgb,#3b82f6 18%,transparent);border-left:1px solid #3b82f6;border-right:1px solid #3b82f6}',
+  '.band{position:absolute;top:-8px;bottom:-2px;pointer-events:none;display:none;box-sizing:border-box;background:color-mix(in srgb,#3b82f6 18%,transparent);border-left:1px solid #3b82f6;border-right:1px solid #3b82f6}',
   '.out{font:11px/1.2 Consolas,monospace;color:#61666b;margin-top:6px}',
   '.list{margin-top:4px;border-top:1px solid #00000014}',
   '.hades-run-group{display:flex;align-items:center;height:22px;padding:0 4px;font:11px/1 Consolas,monospace;color:#3f4650}',
@@ -93,7 +93,7 @@ const PAGE = `
     el.className = 'card';
     el.setAttribute('data-card', mode);
     el.innerHTML = '<div class="legend"><b data-readout="' + mode + '">hover a run</b><span style="flex:1 1 auto"></span><span>Time</span><span>Token</span><span>Steps</span></div>'
-      + '<div class="plot" data-plot="' + mode + '">' + plotBody(COLS) + '<span class="band" data-band="' + mode + '"></span></div>'
+      + '<div class="plot" data-plot="' + mode + '">' + plotBody(COLS) + '<span class="band" data-hades-hover-band="1"></span></div>'
       + '<div class="footer">every run \u00b7 one column each</div>'
       + '<div class="out" data-out="' + mode + '">hover: —</div>'
       + '<div class="cap">' + caption + '</div>';
@@ -113,21 +113,20 @@ const PAGE = `
 
   function paint(mode, idx) {
     state[mode].hover = idx;
-    const band = q('[data-band="' + mode + '"]');
     const out = q('[data-out="' + mode + '"]');
     const readout = q('[data-readout="' + mode + '"]');
+    // F203: the band is painted by the SHIPPED helper, not by the harness.
+    paintHoverBand(
+      q('[data-plot="' + mode + '"]'),
+      q('[data-card="' + mode + '"] [data-row-grid="1"]'),
+      idx == null ? -1 : idx,
+      COLS,
+    );
     if (idx == null) {
-      band.style.display = 'none';
       out.textContent = 'hover: —';
       readout.textContent = 'hover a run';
       return;
     }
-    const grid = gridRect(mode);
-    const plot = plotRect(mode);
-    const track = (grid.width - (COLS - 1)) / COLS;
-    band.style.display = 'block';
-    band.style.left = (grid.left - plot.left + idx * (track + 1)) + 'px';
-    band.style.width = track + 'px';
     out.textContent = 'hover: Run ' + idx;
     readout.textContent = 'Run ' + idx + ' · 12.3s · 45.6k tok';
   }
@@ -224,6 +223,28 @@ const PAGE = `
     gridRect(mode || 'new'),
     LIST,
   );
+  // F203: the band the shipped paintHoverBand produced, and the geometry it
+  // should have produced for a given column.
+  window.__band = (modeArg) => {
+    const mode = modeArg || 'new';
+    const band = q('[data-card="' + mode + '"] [data-hades-hover-band]');
+    const plot = plotRect(mode);
+    const rect = band.getBoundingClientRect();
+    return {
+      visible: getComputedStyle(band).display !== 'none',
+      left: Math.round(rect.left - plot.left),
+      width: Math.round(rect.width),
+    };
+  };
+  window.__expectBand = (pos, modeArg) => {
+    const mode = modeArg || 'new';
+    const grid = gridRect(mode);
+    const track = (grid.width - (COLS - 1)) / COLS;
+    return {
+      left: Math.round(grid.left - plotRect(mode).left + pos * (track + 1)),
+      width: Math.round(track),
+    };
+  };
   window.__focus = (idx) => syncFocusRow(focusHost, idx);
   window.__wipeFocus = () => {
     const el = focusHost.querySelector('.hades-run-group.is-focus');

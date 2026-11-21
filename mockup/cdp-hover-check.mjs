@@ -35,6 +35,14 @@ try {
   let s = await state();
   if (s.new.hover !== idxOf[3]) problems.push(`entering at column ${idxOf[3]} resolved ${s.new.hover}`);
 
+  // F203: the band must be painted on the column under the pointer, at the
+  // geometry the cells use — and it must not wait for a render.
+  const band = await evaluate('window.__band("new")');
+  const expectBand = await evaluate(`window.__expectBand(${idxOf[3]}, "new")`);
+  if (!band.visible) problems.push('no hover band was painted under the pointer');
+  if (Math.abs(band.left - expectBand.left) > 1) problems.push(`band left ${band.left} vs expected ${expectBand.left}`);
+  if (Math.abs(band.width - expectBand.width) > 1) problems.push(`band width ${band.width} vs expected ${expectBand.width}`);
+
   await move(geo.gapX, geo.rowY);
   const expectedGap = await evaluate(`window.__expectedAt(${geo.gapX}, ${geo.rowY}, "new")`);
   s = await state();
@@ -88,6 +96,8 @@ try {
   s = await state();
   if (s.new.hover != null) problems.push('leaving the card did not clear the hover');
   if (s.new.leaves < 1) problems.push('leaving the card did not fire a single mouseleave');
+  const bandGone = await evaluate('window.__band("new")');
+  if (bandGone.visible) problems.push('the hover band stayed visible after leaving the card');
 
   // 6. the focus highlight must come back after a className rewrite wipes it
   const focusOf = async () => (await state()).focus.join(',');
