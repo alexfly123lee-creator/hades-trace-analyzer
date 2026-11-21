@@ -651,8 +651,18 @@ window.__ModuleLoader__.load({
           ? gridEl.getBoundingClientRect() : null;
         return columnFromPoint({ x: event.clientX, y: event.clientY }, plotRect, gridRect, shownRef.current);
       };
-      const clickColumn = (event, container) => {
-        const idx = indexAt(event, container);
+      const rowGrid = () => {
+        const card = cardRef.current;
+        return card != null && typeof card.querySelector === 'function'
+          ? card.querySelector('[data-hades-row-grid]')
+          : null;
+      };
+      // F210: the CLICK surface is the whole plot (lane + rows + the 4px gaps
+      // between them), resolved geometrically. Per-row handlers left the row gaps
+      // and the label gutter dead even though the cursor there is a hand, which
+      // read as "clicking the heat matrix sometimes does nothing".
+      const clickColumn = (event) => {
+        const idx = indexAt(event, rowGrid());
         if (idx == null) return;
         // F183/F209: the click parks this Run at the top; nearby columns then only
         // preview, so the list stays exactly where the click put it.
@@ -666,7 +676,6 @@ window.__ModuleLoader__.load({
           h('span', { style: { flex: `0 0 ${MX_LABEL_W}px` } }),
           h('div', {
             'data-hades-lane-grid': '1',
-            onClick: (event) => clickColumn(event, event.currentTarget),
             style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1, cursor: 'pointer' },
           },
             shown.map((r) => h('div', {
@@ -687,7 +696,6 @@ window.__ModuleLoader__.load({
           }, row.text),
           h('div', {
             'data-hades-row-grid': '1',
-            onClick: (event) => clickColumn(event, event.currentTarget),
             style: { flex: '1 1 auto', minWidth: 0, display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 1, cursor: 'pointer' },
           },
             shown.map((r) => h('div', {
@@ -912,8 +920,10 @@ window.__ModuleLoader__.load({
             h('div', {
               ref: plotRef,
               'data-hades-plot': '1',
-              // F185: the whole plot area is clickable — hand cursor everywhere,
-              // including the 1px gaps and the 4px row margins.
+              // F185/F210: the whole plot is the click surface — hand cursor
+              // everywhere, and a click anywhere in the bar area (cells, 1px column
+              // gaps, 4px row margins) resolves to the column it belongs to.
+              onClick: clickColumn,
               style: { position: 'relative', overscrollBehavior: 'contain', cursor: 'pointer' },
             },
               grid,
