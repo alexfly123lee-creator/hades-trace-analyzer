@@ -82,8 +82,11 @@ window.__ModuleLoader__.load({
         stepSel: [22, 36],
         sortHover: [14, 26],
         sortLine: [80, 90],
-        bandSel: 26,
-        bandHover: 18,
+        // F204: at 250 runs a column is ~6–12px wide, so a 18/26% wash over the
+        // already-tinted cells was invisible: the band read as two hairlines rather
+        // than "this column". The fill is the signal; the edges only frame it.
+        bandSel: 42,
+        bandHover: 26,
         scrubDim: 0.22,
         marker: 0.85,
       },
@@ -988,6 +991,12 @@ window.__ModuleLoader__.load({
               // F157/F168: two distinct states — selected (26% fill + 2px edges,
               // stays) and hover (18% + 1px, follows). Fill strengths come from
               // the DESIGN table so the two can never drift apart.
+              // F204: the hover band is drawn on the column under the pointer even
+              // when that column is the selected one. Suppressing it there meant
+              // "click a column → the matrix stops highlighting" for as long as the
+              // pointer stayed inside that column (at 244 runs a column is ~3px, so
+              // "inside" is most of the time). All six layers are borderless
+              // rectangles — a bordered box on a 3px column renders as a wedge.
               selectedPos >= 0 ? bandLayer('sel-fill', {
                 left: bandAt(selectedPos).left, width: bandAt(selectedPos).width,
                 background: `color-mix(in srgb, ${T.brand} ${DESIGN.alpha.bandSel}%, transparent)`,
@@ -996,12 +1005,12 @@ window.__ModuleLoader__.load({
               selectedPos >= 0 ? bandLayer('sel-r', {
                 left: `calc(${bandAt(selectedPos).left} + (${bandAt(selectedPos).width}) - 2px)`, width: 2, background: T.brand,
               }) : null,
-              hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-fill', {
+              hoverPos >= 0 ? bandLayer('hov-fill', {
                 left: bandAt(hoverPos).left, width: bandAt(hoverPos).width,
                 background: `color-mix(in srgb, ${T.brand} ${DESIGN.alpha.bandHover}%, transparent)`,
               }) : null,
-              hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-l', { left: bandAt(hoverPos).left, width: 1, background: T.brand }) : null,
-              hoverPos >= 0 && hoverPos !== selectedPos ? bandLayer('hov-r', {
+              hoverPos >= 0 ? bandLayer('hov-l', { left: bandAt(hoverPos).left, width: 1, background: T.brand }) : null,
+              hoverPos >= 0 ? bandLayer('hov-r', {
                 left: `calc(${bandAt(hoverPos).left} + (${bandAt(hoverPos).width}) - 1px)`, width: 1, background: T.brand,
               }) : null,
             ),
