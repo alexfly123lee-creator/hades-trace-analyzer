@@ -52,7 +52,9 @@ const CSS = [
   '.mrow .grid{flex:1 1 auto;min-width:0;display:grid;gap:1px;cursor:pointer}',
   '.mrow i{display:block;height:11px;border-radius:1px;background:color-mix(in srgb,#3b82f6 22%,#fff)}',
   '.footer{display:flex;align-items:center;gap:10px;min-height:18px;margin-top:8px;padding-top:8px;border-top:1px solid #00000014;font:11px/1.2 Consolas,monospace;color:#61666b}',
-  '.band{position:absolute;top:-8px;bottom:-2px;pointer-events:none;display:none;box-sizing:border-box;background:color-mix(in srgb,#3b82f6 18%,transparent);border-left:1px solid #3b82f6;border-right:1px solid #3b82f6}',
+  '.band{position:absolute;top:-8px;bottom:-2px;pointer-events:none;display:none}',
+  '.band.fill{background:color-mix(in srgb,#3b82f6 18%,transparent)}',
+  '.band.line{width:1px;background:#3b82f6}',
   '.out{font:11px/1.2 Consolas,monospace;color:#61666b;margin-top:6px}',
   '.list{margin-top:4px;border-top:1px solid #00000014}',
   '.hades-run-group{display:flex;align-items:center;height:22px;padding:0 4px;font:11px/1 Consolas,monospace;color:#3f4650}',
@@ -93,7 +95,10 @@ const PAGE = `
     el.className = 'card';
     el.setAttribute('data-card', mode);
     el.innerHTML = '<div class="legend"><b data-readout="' + mode + '">hover a run</b><span style="flex:1 1 auto"></span><span>Time</span><span>Token</span><span>Steps</span></div>'
-      + '<div class="plot" data-plot="' + mode + '">' + plotBody(COLS) + '<span class="band" data-hades-hover-band="1"></span></div>'
+      + '<div class="plot" data-plot="' + mode + '">' + plotBody(COLS)
+      + '<span class="band fill" data-hades-hover-fill="1"></span>'
+      + '<span class="band line" data-hades-hover-l="1"></span>'
+      + '<span class="band line" data-hades-hover-r="1"></span></div>'
       + '<div class="footer">every run \u00b7 one column each</div>'
       + '<div class="out" data-out="' + mode + '">hover: —</div>'
       + '<div class="cap">' + caption + '</div>';
@@ -227,13 +232,21 @@ const PAGE = `
   // should have produced for a given column.
   window.__band = (modeArg) => {
     const mode = modeArg || 'new';
-    const band = q('[data-card="' + mode + '"] [data-hades-hover-band]');
     const plot = plotRect(mode);
-    const rect = band.getBoundingClientRect();
+    const card = '[data-card="' + mode + '"] ';
+    const fill = q(card + '[data-hades-hover-fill]');
+    const l = q(card + '[data-hades-hover-l]');
+    const r = q(card + '[data-hades-hover-r]');
+    const fr = fill.getBoundingClientRect();
+    const lr = l.getBoundingClientRect();
+    const rr = r.getBoundingClientRect();
     return {
-      visible: getComputedStyle(band).display !== 'none',
-      left: Math.round(rect.left - plot.left),
-      width: Math.round(rect.width),
+      visible: getComputedStyle(fill).display !== 'none',
+      left: Math.round(fr.left - plot.left),
+      width: Math.round(fr.width),
+      edgeL: { left: Math.round(lr.left - plot.left), width: Math.round(lr.width) },
+      edgeR: { left: Math.round(rr.left - plot.left), width: Math.round(rr.width) },
+      fillBorder: getComputedStyle(fill).borderLeftWidth,
     };
   };
   window.__expectBand = (pos, modeArg) => {

@@ -382,19 +382,36 @@ window.__ModuleLoader__.load({
      * suppressed outright. Painting it here means "the pointer is on column k"
      * always produces a visible band at exactly the cells' geometry, independent of
      * renders; the state is only what the readout line prints.
+     *
+     * Three rectangles, never one bordered box: a 1px border on each side of a
+     * 3–5px column collapses into a tapered wedge (the F152 "梯形" artefact), which
+     * is exactly what a single bordered hover bar looked like once it was painted
+     * over the selected column.
      */
     const paintHoverBand = (plot, grid, pos, total) => {
       if (plot == null || grid == null || typeof plot.querySelector !== 'function') return;
-      const band = plot.querySelector('[data-hades-hover-band]');
-      if (band == null) return;
-      if (pos == null || pos < 0 || !(total > 0)) { band.style.display = 'none'; return; }
+      const fill = plot.querySelector('[data-hades-hover-fill]');
+      const lineL = plot.querySelector('[data-hades-hover-l]');
+      const lineR = plot.querySelector('[data-hades-hover-r]');
+      if (fill == null || lineL == null || lineR == null) return;
+      if (pos == null || pos < 0 || !(total > 0)) {
+        fill.style.display = 'none';
+        lineL.style.display = 'none';
+        lineR.style.display = 'none';
+        return;
+      }
       const plotRect = plot.getBoundingClientRect();
       const gridRect = grid.getBoundingClientRect();
-      if (!(gridRect.width > 0)) { band.style.display = 'none'; return; }
-      const track = (gridRect.width - Math.max(0, total - 1)) / total;
-      band.style.display = 'block';
-      band.style.left = (gridRect.left - plotRect.left + pos * (track + 1)) + 'px';
-      band.style.width = Math.max(1, track) + 'px';
+      if (!(gridRect.width > 0)) return;
+      const track = Math.max(1, (gridRect.width - Math.max(0, total - 1)) / total);
+      const left = gridRect.left - plotRect.left + pos * (track + 1);
+      fill.style.display = 'block';
+      fill.style.left = left + 'px';
+      fill.style.width = track + 'px';
+      lineL.style.display = 'block';
+      lineL.style.left = left + 'px';
+      lineR.style.display = 'block';
+      lineR.style.left = (left + track - 1) + 'px';
     };
 
     // Short tag for the explanation-only rows a step panel gained in F23.2
@@ -957,18 +974,13 @@ window.__ModuleLoader__.load({
               selectedPos >= 0 ? bandLayer('sel-r', {
                 left: `calc(${bandAt(selectedPos).left} + (${bandAt(selectedPos).width}) - 2px)`, width: 2, background: T.brand,
               }) : null,
-              h('div', {
-                key: 'hover-band',
-                className: 'hades-hover-band',
-                'data-hades-hover-band': '1',
-                style: {
-                  position: 'absolute', top: -8, bottom: -2, pointerEvents: 'none',
-                  boxSizing: 'border-box', borderRadius: 1,
-                  background: `color-mix(in srgb, ${T.brand} ${DESIGN.alpha.bandHover}%, transparent)`,
-                  borderLeft: '1px solid ' + T.brand,
-                  borderRight: '1px solid ' + T.brand,
-                },
-              }),
+              h('div', { key: 'hover-fill', className: 'hades-hover-band', 'data-hades-hover-fill': '1',
+                style: { position: 'absolute', top: -8, bottom: -2, pointerEvents: 'none',
+                  background: `color-mix(in srgb, ${T.brand} ${DESIGN.alpha.bandHover}%, transparent)` } }),
+              h('div', { key: 'hover-l', className: 'hades-hover-band', 'data-hades-hover-l': '1',
+                style: { position: 'absolute', top: -8, bottom: -2, width: 1, pointerEvents: 'none', background: T.brand } }),
+              h('div', { key: 'hover-r', className: 'hades-hover-band', 'data-hades-hover-r': '1',
+                style: { position: 'absolute', top: -8, bottom: -2, width: 1, pointerEvents: 'none', background: T.brand } }),
             ),
           ),
         ),

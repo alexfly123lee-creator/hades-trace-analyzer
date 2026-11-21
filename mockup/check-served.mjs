@@ -57,7 +57,9 @@ const groups = {
     // F203: the hover band is painted from the pointer event, and the pointer
     // handlers sit on the whole matrix block (not the ~52px plot strip).
     'const paintHoverBand = (plot, grid, pos, total) =>',
-    "data-hades-hover-band': '1'",
+    "data-hades-hover-fill': '1'",
+    "data-hades-hover-l': '1'",
+    "data-hades-hover-r': '1'",
     '.hades-hover-band{display:none}',
     'const onPointerMove = (event) =>',
     'onMouseMove: onPointerMove',

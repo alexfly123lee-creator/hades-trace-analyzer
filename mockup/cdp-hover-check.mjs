@@ -42,6 +42,15 @@ try {
   if (!band.visible) problems.push('no hover band was painted under the pointer');
   if (Math.abs(band.left - expectBand.left) > 1) problems.push(`band left ${band.left} vs expected ${expectBand.left}`);
   if (Math.abs(band.width - expectBand.width) > 1) problems.push(`band width ${band.width} vs expected ${expectBand.width}`);
+  // F203: three rectangles, 1px edges — a bordered box on a 3–5px column renders
+  // as a tapered wedge (the F152 artefact the user saw as a "梯形").
+  if (band.fillBorder !== '0px') problems.push(`the hover fill must not carry a border (got ${band.fillBorder})`);
+  if (band.edgeL.width !== 1) problems.push(`left edge width ${band.edgeL.width} (expected 1px)`);
+  if (band.edgeR.width !== 1) problems.push(`right edge width ${band.edgeR.width} (expected 1px)`);
+  if (Math.abs(band.edgeL.left - band.left) > 1) problems.push(`left edge at ${band.edgeL.left}, fill starts at ${band.left}`);
+  if (Math.abs(band.edgeR.left - (band.left + band.width - 1)) > 1) {
+    problems.push(`right edge at ${band.edgeR.left}, fill ends at ${band.left + band.width}`);
+  }
 
   await move(geo.gapX, geo.rowY);
   const expectedGap = await evaluate(`window.__expectedAt(${geo.gapX}, ${geo.rowY}, "new")`);
