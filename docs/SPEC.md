@@ -719,7 +719,18 @@
 - **回归（新增 `collapse` 检查）**：`mockup/check-collapse.mjs` **直接抽取 client.js 里两个 `useLayoutEffect` 的函数体**，在 Node 里用假元素跑 4 个场景：①子树有 height 动画在跑时外层**不得**再动画；②没有内部动画时异步增高仍要动画（200→400）；③已打开面板重跑时必须**从当前高度**起算；④首次打开仍从 0 起算。**对照实验**（`mockup/control-f188.mjs` 把两处修复回退）会立刻变红：`outer panel animated while a descendant height animation was running` / `re-open must start at the current height`。
 - **AC**：任意顺序打开/关闭 Step（含已有一个展开时打开另一个）**不再出现先塌后胀**；`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 
-## 65. 范围外（v1 不做）
+## 66. Step 卡片：每个操作卡片内部的切面 Tab（F191）
+
+- **F191 需求（用户两次确认后）**：切面 Tab 放在**每个操作卡片内部**（不是整张 Step 卡片顶部），每张卡只看自己那一个操作；默认展示该卡的**主内容**。
+- **实现**：
+  - **REPLY 卡**：`reply` / `raw` 两个切面，默认 `reply`（回复正文）；
+  - **TOOL 卡**：`args` / `result` / `raw` 三个切面，默认 `args`（入参正文，可换行、180px 内滚动）；切到 `result` 看结果（错误红框 + 错误色，220px 内滚动，空结果提示 (no output)）；`raw` 就地渲染 call+result 的完整 JSON；
+  - CTX 注入组与注释行保持原样（它们没有多切面）。
+- **状态**：`facets` 是 `Map`（键 `a:<seq>` / `t:<seq>`），每张卡独立记忆；切切面只重渲染，不重新请求；Tab 点击 `stopPropagation`，不会误触外层；
+- **视觉**：10.5px 等宽大写、字距 `.03em`、激活态品牌色 1.5px 底线 + 主文本色，非激活 faint；放在卡片右上角，与耗时/错误文案同一行。
+- **回归**：`smoke:render` 断言"卡片切面序列 = reply / raw / args / result / raw"（即 REPLY 卡两切面、TOOL 卡三切面），且默认渲染回复正文与入参正文；`check-served` 增加 `data-hades-facet` / `const facetTabs = (cardKey` / `step.facet.result`。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
+- **AC**：每张操作卡各自有切面 Tab；REPLY 默认正文、TOOL 默认入参；Result/Raw 一键可看；整张 Step 卡片**没有**全局切换条。
+## 67. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

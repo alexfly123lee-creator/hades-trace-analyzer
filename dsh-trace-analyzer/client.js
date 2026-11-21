@@ -1485,6 +1485,17 @@ window.__ModuleLoader__.load({
       const [rawOpen, setRawOpen] = useState(() => new Set());
       // F159: context/system injections collapse into one row by default.
       const [ctxOpen, setCtxOpen] = useState(false);
+      // F191: each operation card remembers its own facet.
+      const [facets, setFacets] = useState(() => new Map());
+      const facetOf = (key, fallback) => {
+        const value = facets.get(key);
+        return value ?? fallback;
+      };
+      const pickFacet = (key, value) => setFacets((prev) => {
+        const next = new Map(prev);
+        next.set(key, value);
+        return next;
+      });
       // F140: the parent bumps this token when the session log grew, so an open
       // panel shows a running tool call turning into "finished + duration"
       // without the user closing and reopening the step.
@@ -1644,6 +1655,29 @@ window.__ModuleLoader__.load({
         }, label('step.original', 'raw'));
       };
 
+      // F191: a compact tab row that lives INSIDE one operation card.
+      const facetTabs = (cardKey, options, current) => h('span', {
+        style: { display: 'inline-flex', alignItems: 'baseline', gap: 8, flex: '0 0 auto' },
+      },
+        options.map((option) => h('button', {
+          key: option.id,
+          type: 'button',
+          'data-hades-facet': option.id,
+          'aria-pressed': current === option.id ? 'true' : 'false',
+          onClick: (event) => {
+            event.stopPropagation();
+            pickFacet(cardKey, option.id);
+          },
+          style: {
+            font: `10.5px/1 ${T.mono}`, letterSpacing: '.03em', textTransform: 'uppercase',
+            color: current === option.id ? T.text : T.faint,
+            background: 'transparent', border: 'none', padding: '0 0 2px',
+            cursor: 'pointer',
+            borderBottom: '1.5px solid ' + (current === option.id ? T.brand : 'transparent'),
+          },
+        }, option.text)),
+      );
+
       const timeline = [];
 
       if (stepIdx === 0 && runActor === 'user' && runPrompt) {
@@ -1694,6 +1728,9 @@ window.__ModuleLoader__.load({
         const op = item;
         if (op.kind === 'assistant') {
           const value = op.usage ?? {};
+          // F191: this card's own facets — the reply text, or the raw event.
+          const cardKey = 'a:' + op.seq;
+          const current = facetOf(cardKey, 'reply');
           timeline.push(h('div', { key: 'op-' + op.seq, style: { position: 'relative', marginBottom: 8 } },
             dotOf('assistant'),
             h('div', { style: cardBox() },
@@ -1703,13 +1740,17 @@ window.__ModuleLoader__.load({
                   h('span', { style: { fontSize: 12, ...mono11 } }, label('step.modelCall', 'model call'))),
                 h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
                   h('span', { style: { ...mono11, color: T.muted } }, `in ${fmtK(value.input)} · out ${fmtK(value.output)}`),
-                  rawButton([op.seq])),
+                  facetTabs(cardKey, [
+                    { id: 'reply', text: label('step.facet.reply', 'reply') },
+                    { id: 'raw', text: label('step.facet.raw', 'raw') },
+                  ], current)),
               ),
-              op.text ? h('div', {
-                title: op.text,
-                style: { marginTop: 2, fontSize: 12, lineHeight: 1.55, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 132, overflow: 'auto' },
-              }, op.text) : null,
-              rawPanel([op.seq]),
+              current === 'raw'
+                ? rawPanel([op.seq])
+                : (op.text ? h('div', {
+                  title: op.text,
+                  style: { marginTop: 2, fontSize: 12, lineHeight: 1.55, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 132, overflow: 'auto' },
+                }, op.text) : null),
             ),
           ));
           continue;
@@ -1718,6 +1759,20 @@ window.__ModuleLoader__.load({
           const failed = op.error != null || op.isError;
           const isSlow = typeof op.durationMs === 'number' && op.durationMs > slowMs;
           const errorText = failed ? (op.error ?? 'error') : (isSlow ? label('step.slow', 'slow') : null);
+          // F191: this card's own facets — arguments, result, or the raw events.
+          const cardKey = 't:' + op.seq;
+          const current = facetOf(cardKey, 'args');
+          const body = current === 'raw'
+            ? rawPanel([op.callSeq, op.resultSeq])
+            : current === 'result'
+              ? h('div', {
+                title: op.result ?? '',
+                style: { marginTop: 3, ...mono11, color: failed ? T.error : T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 220, overflow: 'auto' },
+              }, op.result || label('step.noOutput', '(no output)'))
+              : h('div', {
+                title: op.args ?? '',
+                style: { marginTop: 3, ...mono11, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 180, overflow: 'auto' },
+              }, op.args || label('step.noArgs', '(no arguments)'));
           timeline.push(h('div', { key: 'op-' + op.seq, style: { position: 'relative', marginBottom: 8 } },
             dotOf(failed ? 'error' : 'tool'),
             h('div', { style: cardBox(failed ? { borderColor: T.error } : null) },
@@ -1728,17 +1783,13 @@ window.__ModuleLoader__.load({
                 h('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 8 } },
                   errorText != null ? h('span', { style: { fontSize: 11, color: failed ? T.error : T.warn } }, errorText) : null,
                   h('span', { style: { ...mono11, color: T.muted } }, op.durationMs != null ? fmtMs(op.durationMs) : '—'),
-                  rawButton([op.callSeq, op.resultSeq])),
+                  facetTabs(cardKey, [
+                    { id: 'args', text: label('step.facet.args', 'args') },
+                    { id: 'result', text: label('step.facet.result', 'result') },
+                    { id: 'raw', text: label('step.facet.raw', 'raw') },
+                  ], current)),
               ),
-              op.args ? h('div', {
-                title: op.args,
-                style: { marginTop: 3, ...mono11, color: T.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-              }, op.args) : null,
-              op.result ? h('div', {
-                title: op.result,
-                style: { marginTop: 1, ...mono11, color: failed ? T.error : T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-              }, op.result) : (op.durationMs != null ? h('div', { style: { marginTop: 1, ...mono11, color: T.faint } }, 'no output') : null),
-              rawPanel([op.callSeq, op.resultSeq]),
+              body,
             ),
           ));
           continue;
@@ -2812,6 +2863,8 @@ window.__ModuleLoader__.load({
           'loadingDetail': 'loading Steps…',
           'step.model': 'model', 'step.timing': 'elapsed', 'step.tokens': 'tokens', 'step.summary': 'summary',
           'step.args': 'args', 'step.result': 'result', 'step.original': 'raw', 'step.loading': 'loading Step…',
+          'step.facet.reply': 'reply', 'step.facet.args': 'args', 'step.facet.result': 'result', 'step.facet.raw': 'raw',
+          'step.noArgs': '(no arguments)', 'step.noOutput': '(no output)',
           'step.retry': 'Retry', 'step.empty': 'Empty Step', 'step.instruction': 'instruction',
           'step.countModels': 'model calls', 'step.countTools': 'tool calls', 'step.countContexts': 'context',
           'step.modelCall': 'model call', 'step.injected': 'injected', 'step.systemPrompt': 'system prompt', 'step.slow': 'slow',
