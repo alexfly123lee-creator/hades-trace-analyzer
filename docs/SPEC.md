@@ -719,7 +719,18 @@
 - **回归（新增 `collapse` 检查）**：`mockup/check-collapse.mjs` **直接抽取 client.js 里两个 `useLayoutEffect` 的函数体**，在 Node 里用假元素跑 4 个场景：①子树有 height 动画在跑时外层**不得**再动画；②没有内部动画时异步增高仍要动画（200→400）；③已打开面板重跑时必须**从当前高度**起算；④首次打开仍从 0 起算。**对照实验**（`mockup/control-f188.mjs` 把两处修复回退）会立刻变红：`outer panel animated while a descendant height animation was running` / `re-open must start at the current height`。
 - **AC**：任意顺序打开/关闭 Step（含已有一个展开时打开另一个）**不再出现先塌后胀**；`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 
-## 66. Step 卡片：每个操作卡片内部的切面 Tab（F191）
+## 66. 操作卡片：args/result 直接展开 + raw 折叠下拉（F192）
+
+- **F192 需求（用户反馈）**：① raw 打不开；② 工具的 **args / result 直接在卡片里展开**，raw 作为**下拉选项（默认收起）**；REPLY 卡同理。
+- **raw 打不开的根因**：F191 的 `raw` 切面只把状态写进 `facets`，而 `rawPanel()` 只根据 `rawOpen`（另一套 Set）决定是否渲染 —— 所以点 raw 什么都没有。
+- **改法**：删掉 F191 的切面 Tab 与 `facets` 状态；卡片内容改为**直接展开**，raw 走原有的 `rawButton` / `rawPanel`（即真正的下拉，默认收起）：
+  - **TOOL 卡**：`ARGS` / `RESULT` 两个小标题 + 正文（等宽、可换行、ARGS 160px、RESULT 200px 内滚动，失败时 RESULT 用错误色 + 卡片红边）；右下角 `▸ raw` 下拉，点开就地渲染 call+result 的完整 JSON；
+  - **REPLY 卡**：回复正文（200px 内滚动）+ 右下角 `▸ raw` 下拉；
+  - raw 下拉的文案带 `▸ / ▾` 旋转指示，默认收起；
+- **顺带修复**：`check-served` 的标记表在一次 PowerShell 往返中被破坏了中文/符号标记（`…`、`×`），已用 Node 重写并**逐条对着 client.js 校验**（缺失项会打印告警而不是静默丢弃）。
+- **回归**：`smoke:render` 断言 —— 工具卡同时含 args 与 result 正文、两处小标题、**每张操作卡各有一个 raw 下拉（`▸ raw`）**、且不再存在 `data-hades-facet`；`check-served` 反向断言 `data-hades-facet` / `const facetTabs = (cardKey` 不得出现。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
+- **AC**：args 与 result 一屏都能看到；raw 默认收起、点开能展开 JSON；REPLY 同理。
+## 65（已被 F192 取代）. Step 卡片：每个操作卡片内部的切面 Tab（F191）
 
 - **F191 需求（用户两次确认后）**：切面 Tab 放在**每个操作卡片内部**（不是整张 Step 卡片顶部），每张卡只看自己那一个操作；默认展示该卡的**主内容**。
 - **实现**：
