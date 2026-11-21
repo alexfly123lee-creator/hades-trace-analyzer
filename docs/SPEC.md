@@ -759,7 +759,14 @@
 - **改法**：raw 下拉的样式加 textTransform: uppercase + 等宽 11px + 字距 .03em（与其他标签同一套），locale 值也从 raw 改为 RAW（双保险）。
 - **回归**：`smoke:render` 新增断言 —— 每个 raw 下拉的文案必须等于其大写形式（当前输出 `▸ RAW | ▸ RAW`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**。
 - **AC**：Step 卡片内所有小标签（含 raw 下拉）全部大写。
-## 69. 范围外（v1 不做）
+## 69. 去掉 Step 摘要条（F195）
+
+- **F195**：Step 卡片顶部那条摘要（`deepseek-account/deepseek-v4-pro` · `tools 1` · `time … · tokens …`）没有价值 —— 模型与计数在每个卡片里/在 Run 的步骤行里已经有了。
+- **改法**：整条 `strip` 删除，Step 卡片直接从操作时间线开始；连带删除只服务它的 `sumChip` / `tokenText` / `usage` / `counts` 计算与 `time · tokens` 汇总（净减 ~1.8 KB）。
+- **保留**：每张操作卡片里的 `in/out` token、工具耗时、错误/慢标记、`ARGS`/`RESULT`、`RAW` 下拉；Run 列表行里的时间/Token 条形与数值。
+- **回归**：`smoke:render` 新增断言 —— Step 树里**不得再有 `key: strip` 节点**、也不得出现 `tools N` 这类计数文案（当前输出 `step strip nodes: 0`）。`node mockup/regress.mjs` **ALL GREEN (9 checks)**；`check-served` 150/150。
+- **AC**：Step 卡片顶部不再有摘要条；打开 Step 直接看到操作卡片。
+## 70. 范围外（v1 不做）
 
 - 跨会话对比（并行对比多个会话 trace）。
 - 事件追加 / 自定义事件类型 / 写回。

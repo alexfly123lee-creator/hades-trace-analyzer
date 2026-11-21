@@ -1541,8 +1541,6 @@ window.__ModuleLoader__.load({
 
       const data = state.data;
       const slowMs = data.slowMs ?? DEFAULT_SLOW_MS;
-      const usage = data.usage ?? {};
-      const counts = data.counts ?? { models: 0, tools: 0, contexts: 0 };
 
       const toggleRaw = (rawKey) => setRawOpen((prev) => {
         const next = new Set(prev);
@@ -1575,34 +1573,6 @@ window.__ModuleLoader__.load({
         left,
         h('span', { style: { flex: '1 1 auto' } }),
         right ?? null);
-
-      // ---- E: summary strip -------------------------------------------------
-      const sumChip = (text, role, title) => h('span', {
-        key: 'sum-' + text,
-        style: { display: 'inline-flex', alignItems: 'baseline', gap: 5, color: palette(role).color },
-      },
-        h('b', { style: { fontSize: 12, fontWeight: 600 } }, text),
-        title ? h('span', { style: { fontSize: 11, color: T.muted } }, title) : null);
-
-      const tokenText = 'in ' + fmtK(usage.input) + ' / out ' + fmtK(usage.output)
-        + ((usage.cacheRead ?? 0) > 0 ? ` · cache ${fmtK(usage.cacheRead)}` : '')
-        + ((usage.reasoning ?? 0) > 0 ? ` · think ${fmtK(usage.reasoning)}` : '');
-      const strip = h('div', {
-        key: 'strip',
-        style: {
-          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-          padding: '5px 10px', marginBottom: 8,
-          border: '1px solid ' + T.border, borderRadius: T.radiusSm, background: T.surface,
-        },
-      },
-        data.model ? sumChip([data.model.provider, data.model.model].filter(Boolean).join('/'), 'assistant', label('step.model', 'model')) : null,
-        data.model && (counts.tools ?? 0) > 0 ? h('span', { style: { width: 1, height: 11, background: T.border } }) : null,
-        (counts.tools ?? 0) > 0 ? sumChip(`tools ${counts.tools}`, 'tool') : null,
-        (counts.contexts ?? 0) > 0 ? h('span', { style: { width: 1, height: 11, background: T.border } }) : null,
-        (counts.contexts ?? 0) > 0 ? sumChip(`contexts ${counts.contexts}`, 'context') : null,
-        h('span', { style: { flex: '1 1 auto' } }),
-        h('span', { style: { ...mono11, color: T.muted } }, `time ${fmtMs(data.timeMs)} · ${tokenText}`),
-      );
 
       // ---- B: timeline ------------------------------------------------------
       // Group the injections so a step with six system-reminders still reads as
@@ -1771,7 +1741,6 @@ window.__ModuleLoader__.load({
 
       const empty = timeline.length === 0;
       return h('div', { style: cardStyle },
-        strip,
         empty
           ? h('div', { style: { marginTop: 4, fontSize: 12, color: T.muted } }, label('step.empty', 'No content in this step'))
           : h('div', { style: { position: 'relative', paddingLeft: 14 } },
